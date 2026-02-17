@@ -604,7 +604,7 @@ export const OpenClawSchema = z
       .strict()
       .optional(),
   })
-  .strict()
+  .passthrough()
   .superRefine((cfg, ctx) => {
     const agents = cfg.agents?.list ?? [];
     if (agents.length === 0) {

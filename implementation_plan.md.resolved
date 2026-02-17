@@ -1,0 +1,330 @@
+# Transform OpenClaw into Text2LLM Agent
+
+Convert the generic OpenClaw personal assistant into a **specialized Text2LLM agent** — an AI bot that uses virtual AI lab tools and skills to create LLMs from scratch, end-to-end, from a simple text prompt.
+
+> [!IMPORTANT]
+> This is a **workspace-level transformation**, not a fork of OpenClaw's core engine. We leverage OpenClaw's skill/tool/config system as the runtime and replace the *persona, skills, and workspace configuration* to specialize the bot.
+
+## User Review Required
+
+> [!WARNING]
+> **Approach Decision:** We are NOT modifying OpenClaw's core TypeScript source code. Instead, we create a **workspace overlay** — custom [AGENTS.md](file:///c:/Users/4HIN/source/openclaw/AGENTS.md), `SOUL.md`, [TOOLS.md](file:///c:/Users/4HIN/source/openclaw/docs/reference/templates/TOOLS.md), new skills, and `openclaw.json` config — that turns any OpenClaw instance into a Text2LLM agent. This keeps the upstream repo intact and makes upgrading easy. **Do you agree with this approach, or would you prefer to hard-fork and strip the code?**
+
+> [!IMPORTANT]
+> **Skill scope:** The plan below defines **9 new AI-lab skills** and **removes/disables 52 generic skills**. Each new skill is a [SKILL.md](file:///c:/Users/4HIN/source/openclaw/skills/coding-agent/SKILL.md) + helper scripts. Should all 9 be built now, or should we start with a smaller subset (e.g., just data-pipeline + training)?
+
+---
+
+## Architecture Overview
+
+```mermaid
+graph TB
+    User["User: 'Build me a 1B medical LLM'"] --> Agent["Text2LLM Agent (OpenClaw runtime)"]
+    Agent --> S1["Skill: data-pipeline"]
+    Agent --> S2["Skill: tokenizer-trainer"]
+    Agent --> S3["Skill: model-architect"]
+    Agent --> S4["Skill: gpu-provisioner"]
+    Agent --> S5["Skill: training-runner"]
+    Agent --> S6["Skill: wandb-tracker"]
+    Agent --> S7["Skill: eval-bench"]
+    Agent --> S8["Skill: model-publisher"]
+    Agent --> S9["Skill: cloud-storage"]
+
+    S1 --> Tools["OpenClaw Core Tools: exec, process, web_fetch, web_search, browser"]
+    S2 --> Tools
+    S3 --> Tools
+    S4 --> Tools
+    S5 --> Tools
+    S6 --> Tools
+    S7 --> Tools
+    S8 --> Tools
+    S9 --> Tools
+
+    Tools --> Python["Python Scripts (PyTorch, HF, SentencePiece, etc.)"]
+    Tools --> Cloud["Cloud APIs (RunPod, Vast.ai, WandB, HF Hub)"]
+    Tools --> Storage["User Cloud Storage (Google Drive, Dropbox, OneDrive, MEGA) via OAuth"]
+```
+
+---
+
+## Proposed Changes
+
+### Component 1: Agent Identity (Workspace Files)
+
+These files define who the agent *is* and how it behaves.
+
+---
+
+#### [NEW] [AGENTS.md](file:///c:/Users/4HIN/source/openclaw/workspace/AGENTS.md)
+
+New agent identity file for Text2LLM. Replaces the generic OpenClaw assistant persona with a specialized AI lab director persona. Contains:
+- Role definition: "You are Text2LLM, a virtual AI lab agent that builds LLMs from scratch"
+- Pipeline-aware instructions: always follow Data → Tokenizer → Architecture → Training → Eval → Publish
+- Safety constraints: cost estimates before GPU provisioning, user confirmation for spend > $100
+- Tool preferences: always use `exec` with `pty:true` for training scripts
+
+#### [NEW] [SOUL.md](file:///c:/Users/4HIN/source/openclaw/workspace/SOUL.md)
+
+Personality and behavioral guidelines:
+- Speaks like a senior ML engineer
+- Proactively warns about data quality issues
+- Always shows cost estimates before provisioning GPUs
+- Cites reference models (TinyLlama, SmolLM, DeepSeek V3) for architecture decisions
+
+#### [NEW] [TOOLS.md](file:///c:/Users/4HIN/source/openclaw/workspace/TOOLS.md)
+
+Tool usage guidance specific to LLM training workflows:
+- When to use `exec` vs `process` (background for long training runs)
+- How to monitor training via `process:log` and parse loss curves
+- When to use `web_search` to find latest training recipes
+
+---
+
+### Component 2: New AI Lab Skills (9 Skills)
+
+Each skill is a directory under `workspace/skills/` containing a [SKILL.md](file:///c:/Users/4HIN/source/openclaw/skills/coding-agent/SKILL.md) with YAML frontmatter.
+
+---
+
+#### [NEW] [data-pipeline/SKILL.md](file:///c:/Users/4HIN/source/openclaw/workspace/skills/data-pipeline/SKILL.md)
+
+**Purpose:** Data curation, cleaning, deduplication, and tokenization pipeline.
+
+**Key instructions:**
+- Uses `trafilatura` / `resiliparse` for text extraction
+- MinHash deduplication via `datasketch`
+- Quality filtering with ML classifiers (FineWeb-Edu approach)
+- PII removal
+- Domain balancing
+
+**Requires:** `python3`, `pip` (or `uv`)
+
+---
+
+#### [NEW] [tokenizer-trainer/SKILL.md](file:///c:/Users/4HIN/source/openclaw/workspace/skills/tokenizer-trainer/SKILL.md)
+
+**Purpose:** Train custom BPE/SentencePiece tokenizers.
+
+**Key instructions:**
+- BPE via `tokenizers` (HuggingFace) or `sentencepiece`
+- Configurable vocab size (32K-50K)
+- Special tokens: `<BOS>`, `<EOS>`, `<PAD>`, `<UNK>`
+- Outputs HF-compatible tokenizer files
+
+**Requires:** `python3`, `pip`
+
+---
+
+#### [NEW] [model-architect/SKILL.md](file:///c:/Users/4HIN/source/openclaw/workspace/skills/model-architect/SKILL.md)
+
+**Purpose:** Generate model architecture configs (Llama-style, MoE, NanoGPT).
+
+**Key instructions:**
+- Templates for common architectures by scale (100M → 7B+)
+- GQA, SwiGLU, RoPE, RMSNorm selection
+- Outputs [config.json](file:///c:/Users/4HIN/source/openclaw/tsconfig.json) compatible with HuggingFace Transformers
+- Calculates parameter count and memory requirements
+
+**Requires:** `python3`
+
+---
+
+#### [NEW] [gpu-provisioner/SKILL.md](file:///c:/Users/4HIN/source/openclaw/workspace/skills/gpu-provisioner/SKILL.md)
+
+**Purpose:** Provision cloud GPUs for training (RunPod, Vast.ai, Lambda).
+
+**Key instructions:**
+- Uses provider CLIs/APIs to find cheapest GPU instances
+- Calculates estimated cost before provisioning
+- **Requires explicit user confirmation** for any spend
+- SSH key setup and instance management
+- Auto-termination timers to prevent runaway costs
+
+**Requires:** `python3`, optionally `runpodctl` or `vastai` CLI  
+**Env:** `RUNPOD_API_KEY` and/or `VAST_API_KEY`
+
+---
+
+#### [NEW] [training-runner/SKILL.md](file:///c:/Users/4HIN/source/openclaw/workspace/skills/training-runner/SKILL.md)
+
+**Purpose:** Launch and monitor pre-training runs (NanoGPT, LitGPT, HF Trainer).
+
+**Key instructions:**
+- Generates training scripts with cosine LR schedule, gradient clipping, mixed precision
+- Runs via `exec` with `background:true` + `pty:true`
+- Monitors via `process:log`, parses loss values
+- Multi-phase training (broad → curated → domain-specific → cooldown)
+- Checkpoint management
+
+**Requires:** `python3`, `pip`, `torch`
+
+---
+
+#### [NEW] [wandb-tracker/SKILL.md](file:///c:/Users/4HIN/source/openclaw/workspace/skills/wandb-tracker/SKILL.md)
+
+**Purpose:** Integrate Weights & Biases for experiment tracking.
+
+**Key instructions:**
+- Initialize W&B runs with proper project/entity/tags
+- Log training metrics (loss, LR, throughput)
+- Artifact versioning for checkpoints and datasets
+- Compare runs for hyperparameter tuning
+
+**Requires:** `python3`, `wandb` CLI  
+**Env:** `WANDB_API_KEY`
+
+---
+
+#### [NEW] [eval-bench/SKILL.md](file:///c:/Users/4HIN/source/openclaw/workspace/skills/eval-bench/SKILL.md)
+
+**Purpose:** Evaluate trained models against standard benchmarks.
+
+**Key instructions:**
+- Runs lm-evaluation-harness (MMLU, HellaSwag, ARC, etc.)
+- Ragas for RAG evaluation
+- Perplexity measurement
+- Human-readable report generation
+
+**Requires:** `python3`, `pip`
+
+---
+
+#### [NEW] [model-publisher/SKILL.md](file:///c:/Users/4HIN/source/openclaw/workspace/skills/model-publisher/SKILL.md)
+
+**Purpose:** Publish trained models to HuggingFace Hub or local registry.
+
+**Key instructions:**
+- Converts checkpoints to SafeTensors format
+- Creates model card (README.md) with training details
+- Pushes to HuggingFace Hub via `huggingface-cli`
+- Optional GGUF quantization for local inference
+
+**Requires:** `python3`, `huggingface-cli`  
+**Env:** `HF_TOKEN`
+
+---
+
+#### [NEW] [cloud-storage/SKILL.md](file:///c:/Users/4HIN/source/openclaw/workspace/skills/cloud-storage/SKILL.md)
+
+**Purpose:** Persist training artifacts (datasets, checkpoints, models, evaluation reports) to the user's own cloud storage via OAuth.
+
+**Supported providers:**
+- **Google Drive** — via `pydrive2` (OAuth 2.0)
+- **Dropbox** — via `dropbox` SDK (OAuth 2.0 PKCE)
+- **Microsoft OneDrive** — via `msal` + Microsoft Graph API (OAuth 2.0)
+- **MEGA** — via `mega.py` (session auth)
+
+**Key instructions:**
+- **User-side OAuth only** — the agent never stores provider credentials itself; it initiates a browser-based OAuth flow and the user grants access to *their own* account
+- Uploads/downloads to a standard project path: `Text2LLM/<project-name>/{data,tokenizer,checkpoints,evals,model}/`
+- Automatic checkpoint syncing: after each training checkpoint, upload to the user's chosen provider
+- Resumable uploads for large files (multi-GB checkpoints)
+- Provider selection: user picks their preferred provider during onboarding; the skill remembers the choice per project
+- Quota awareness: check available storage before uploading and warn the user if space is low
+
+**Requires:** `python3`, `pip`  
+**Env:** OAuth tokens are stored per-user session (not in openclaw.json)
+
+---
+
+### Component 3: Configuration
+
+#### [NEW] [openclaw.json](file:///c:/Users/4HIN/source/openclaw/workspace/openclaw.json)
+
+OpenClaw configuration that:
+- Sets tool profile to `coding` (enables `exec`, `process`, `read`, `write`, `edit`)
+- Enables `group:web` (for research)
+- Enables [browser](file:///c:/Users/4HIN/source/openclaw/Dockerfile.sandbox-browser) (for GPU provider dashboards)
+- Disables all messaging tools (no Discord/Slack/Telegram/WhatsApp needed)
+- Disables all channel-related extensions
+- Configures skill entries with environment variable mappings:
+  - `WANDB_API_KEY`, `HF_TOKEN`, `RUNPOD_API_KEY`, `VAST_API_KEY`
+  - Cloud storage OAuth tokens managed per-user session (Google Drive, Dropbox, OneDrive, MEGA)
+
+```json5
+{
+  tools: {
+    profile: "coding",
+    allow: ["group:web", "browser", "group:fs", "group:runtime", "group:memory"],
+    deny: ["group:messaging", "group:nodes", "group:automation", "canvas", "cron", "gateway"],
+  },
+  skills: {
+    allowBundled: [],  // Disable ALL bundled skills
+    entries: {
+      "data-pipeline": { enabled: true },
+      "tokenizer-trainer": { enabled: true },
+      "model-architect": { enabled: true },
+      "gpu-provisioner": { enabled: true, env: { RUNPOD_API_KEY: "", VAST_API_KEY: "" } },
+      "training-runner": { enabled: true },
+      "wandb-tracker": { enabled: true, apiKey: "", env: { WANDB_API_KEY: "" } },
+      "eval-bench": { enabled: true },
+      "model-publisher": { enabled: true, env: { HF_TOKEN: "" } },
+      "cloud-storage": { enabled: true },
+    },
+  },
+}
+```
+
+---
+
+### Component 4: Cleanup (Skills to Remove/Disable)
+
+All **52 bundled skills** (1password, apple-notes, bear-notes, spotify, discord, slack, etc.) are disabled via `skills.allowBundled: []` in the config. They remain on disk but are never loaded into the agent prompt.
+
+All **35 channel extensions** (bluebubbles, discord, slack, telegram, whatsapp, matrix, etc.) are irrelevant and disabled by not configuring their tokens/credentials.
+
+---
+
+## File Structure Summary
+
+```
+workspace/
+├── AGENTS.md              # Agent identity: "I am Text2LLM"
+├── SOUL.md                # Personality + behavioral rules
+├── TOOLS.md               # Tool usage guidance for ML workflows
+├── openclaw.json          # Config: coding profile, no messaging, AI lab skills only
+└── skills/
+    ├── data-pipeline/
+    │   └── SKILL.md
+    ├── tokenizer-trainer/
+    │   └── SKILL.md
+    ├── model-architect/
+    │   └── SKILL.md
+    ├── gpu-provisioner/
+    │   └── SKILL.md
+    ├── training-runner/
+    │   └── SKILL.md
+    ├── wandb-tracker/
+    │   └── SKILL.md
+    ├── eval-bench/
+    │   └── SKILL.md
+    ├── model-publisher/
+    │   └── SKILL.md
+    └── cloud-storage/
+    	└── SKILL.md
+```
+
+---
+
+## Verification Plan
+
+### Automated Tests
+
+1. **Skill format validation:** Run `pnpm test` from the OpenClaw root to ensure our [SKILL.md](file:///c:/Users/4HIN/source/openclaw/skills/coding-agent/SKILL.md) files parse correctly with the skill loader.
+   ```bash
+   cd c:\Users\4HIN\source\openclaw
+   pnpm install
+   pnpm test -- --grep "skill"
+   ```
+
+2. **Config validation:** Start the gateway with the new config and verify no errors:
+   ```bash
+   cd c:\Users\4HIN\source\openclaw
+   pnpm openclaw doctor
+   ```
+
+### Manual Verification
+
+1. **Skill loading check:** After creating all files, run `pnpm openclaw gateway --verbose` and verify the logs show exactly 9 skills loaded (the AI lab skills), and 0 bundled skills.
+2. **Agent prompt check:** Send a test message like "Build me a 100M parameter LLM for medical text" and verify the agent references the AI lab skills in its response.
+3. **Python dependency check:** Verify that `python3 --version` and `pip --version` are accessible from the workspace (needed by most skills).

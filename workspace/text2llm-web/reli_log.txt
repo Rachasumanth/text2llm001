@@ -1,0 +1,26 @@
+﻿Starting Reliability Tests...
+
+--- Queue Saturation ---
+Launched instance: gpu-1771083518239-jgbvg0
+Status codes: [
+  200, 200, 200, 200,
+  200, 200, 200, 404,
+  404, 404, 404, 404,
+  404, 404, 404
+]
+Queue Saturation (expect 429): FAIL
+
+--- Budget Cap ---
+Budget Launch Status: 400
+Budget Cap (expect launch blocked): PASS
+
+--- Fallback Route ---
+
+--- Fallback Route ---
+Fallback configured: PASS
+--- Circuit Breaker & Fallback ---
+Fallback Recovery: PASS
+Routed Instance: gpu-1771083518293-vmpr1p
+Executed on: gpu-1771083518293-vmpr1p
+Secondary ID: gpu-1771083518299-4vefn2
+Traffic stayed on Primary: FAIL

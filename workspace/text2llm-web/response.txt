@@ -1,0 +1,8 @@
+﻿chaevent: session
+data: {"sessionId":"web-1771238389041"}
+
+event: chunk
+data: {"text":"Hi! ð How can I help you today?"}
+
+event: done
+data: {"code":0,"fallback":"local"}

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Self-hosted SSH">
+  <rect x="6" y="10" width="52" height="44" rx="8" fill="#1f2937"/>
+  <rect x="10" y="14" width="44" height="28" rx="4" fill="#111827"/>
+  <path d="M20 25l8 5-8 5" stroke="#34d399" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <line x1="33" y1="35" x2="43" y2="35" stroke="#34d399" stroke-width="3" stroke-linecap="round"/>
+  <rect x="24" y="46" width="16" height="3" rx="1.5" fill="#6b7280"/>
+</svg>

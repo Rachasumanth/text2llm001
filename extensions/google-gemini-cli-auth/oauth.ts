@@ -71,11 +71,13 @@ export function extractGeminiCliCredentials(): { clientId: string; clientSecret:
     }
 
     const resolvedPath = realpathSync(geminiPath);
-    const geminiCliDir = dirname(dirname(resolvedPath));
+    const geminiBinDir = dirname(resolvedPath);
+    const geminiCliDir = dirname(geminiBinDir);
+    const candidateRoots = [geminiBinDir, geminiCliDir];
 
-    const searchPaths = [
+    const searchPaths = candidateRoots.flatMap((root) => [
       join(
-        geminiCliDir,
+        root,
         "node_modules",
         "@google",
         "gemini-cli-core",
@@ -85,7 +87,7 @@ export function extractGeminiCliCredentials(): { clientId: string; clientSecret:
         "oauth2.js",
       ),
       join(
-        geminiCliDir,
+        root,
         "node_modules",
         "@google",
         "gemini-cli-core",
@@ -93,7 +95,32 @@ export function extractGeminiCliCredentials(): { clientId: string; clientSecret:
         "code_assist",
         "oauth2.js",
       ),
-    ];
+      join(
+        root,
+        "node_modules",
+        "@google",
+        "gemini-cli",
+        "node_modules",
+        "@google",
+        "gemini-cli-core",
+        "dist",
+        "src",
+        "code_assist",
+        "oauth2.js",
+      ),
+      join(
+        root,
+        "node_modules",
+        "@google",
+        "gemini-cli",
+        "node_modules",
+        "@google",
+        "gemini-cli-core",
+        "dist",
+        "code_assist",
+        "oauth2.js",
+      ),
+    ]);
 
     let content: string | null = null;
     for (const p of searchPaths) {
@@ -103,7 +130,8 @@ export function extractGeminiCliCredentials(): { clientId: string; clientSecret:
       }
     }
     if (!content) {
-      const found = findFile(geminiCliDir, "oauth2.js", 10);
+      const found =
+        findFile(geminiBinDir, "oauth2.js", 10) ?? findFile(geminiCliDir, "oauth2.js", 10);
       if (found) {
         content = readFileSync(found, "utf8");
       }

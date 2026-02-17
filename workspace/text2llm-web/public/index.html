@@ -1,0 +1,1037 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes" />
+    <title>Text2LLM — AI Virtual Lab</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+    <!-- xterm.js CDN -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
+  </head>
+  <body>
+    <div class="app-layout">
+      <!-- Sidebar -->
+      <aside class="sidebar">
+        <div class="sidebar-header">
+          <div class="header-row" style="display: flex; align-items: center; justify-content: space-between; width: 100%; margin-bottom: 24px;">
+            <div class="logo-area" style="margin-bottom: 0;">
+              <span class="logo-text">text2llm</span>
+            </div>
+            <button id="sidebar-close-btn" class="icon-btn" aria-label="Toggle sidebar">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                <line x1="9" y1="3" x2="9" y2="21" />
+              </svg>
+            </button>
+          </div>
+
+          <button class="new-chat-btn new-project-btn" id="new-chat-btn">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M12 20h9" />
+              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+            </svg>
+            <span>New project</span>
+          </button>
+        </div>
+
+        <nav class="sidebar-nav">
+          <!-- ... existing nav content ... -->
+          <div class="nav-section">
+            <div class="nav-label" id="current-project-name">No project selected</div>
+            <a href="#" class="nav-item active" data-view="home">
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                <polyline points="9 22 9 12 15 12 15 22" />
+              </svg>
+              <span>HOME</span>
+            </a>
+            <!-- ... -->
+
+            <a href="#" class="nav-item" data-view="clui">
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+                <line x1="8" y1="21" x2="16" y2="21" />
+                <line x1="12" y1="17" x2="12" y2="21" />
+              </svg>
+              <span>CLUI</span>
+            </a>
+            <a href="#" class="nav-item" data-view="notebook">
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+                <path
+                  d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"
+                />
+              </svg>
+              <span>Notebook</span>
+            </a>
+            <a href="#" class="nav-item" data-view="data-studio" title="Open Data Studio">
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <ellipse cx="12" cy="5" rx="8" ry="3" />
+                <path d="M4 5v10c0 1.66 3.58 3 8 3s8-1.34 8-3V5" />
+                <path d="M4 10c0 1.66 3.58 3 8 3s8-1.34 8-3" />
+              </svg>
+              <span>Data Studio</span>
+            </a>
+          </div>
+
+          <div class="nav-section bottom-section">
+            <div class="nav-label">All products</div>
+            <a href="#" class="nav-item" data-view="projects">
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+              </svg>
+              <span>Projects</span>
+            </a>
+            <a href="#" class="nav-item" data-view="instances">
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+                <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
+                <line x1="6" y1="6" x2="6.01" y2="6" />
+                <line x1="6" y1="18" x2="6.01" y2="18" />
+              </svg>
+              <span>Instances</span>
+            </a>
+            <a href="#" class="nav-item" data-view="store">
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
+                <line x1="3" y1="6" x2="21" y2="6" />
+                <path d="M16 10a4 4 0 0 1-8 0" />
+              </svg>
+              <span>Store</span>
+            </a>
+            <a href="#" class="nav-item" data-view="settings">
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <line x1="4" y1="21" x2="4" y2="14"></line>
+                <line x1="4" y1="10" x2="4" y2="3"></line>
+                <line x1="12" y1="21" x2="12" y2="12"></line>
+                <line x1="12" y1="8" x2="12" y2="3"></line>
+                <line x1="20" y1="21" x2="20" y2="16"></line>
+                <line x1="20" y1="12" x2="20" y2="3"></line>
+                <line x1="1" y1="14" x2="7" y2="14"></line>
+                <line x1="9" y1="8" x2="15" y2="8"></line>
+                <line x1="17" y1="16" x2="23" y2="16"></line>
+              </svg>
+              <span>Settings</span>
+            </a>
+          </div>
+
+          <div class="user-profile">
+            <div class="avatar">
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                <circle cx="12" cy="7" r="4" />
+              </svg>
+            </div>
+            <div class="user-info">
+              <span class="user-name">User name</span>
+              <span class="user-plan">Free plan</span>
+            </div>
+            <button id="theme-toggle" class="icon-btn" style="margin-left: auto;" aria-label="Toggle theme">
+               <!-- Default Moon (Dark Mode) -->
+               <svg class="moon-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                 <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+               </svg>
+               <!-- Sun (Light Mode) - Hidden by default -->
+               <svg class="sun-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display: none;">
+                  <circle cx="12" cy="12" r="5"></circle>
+                  <line x1="12" y1="1" x2="12" y2="3"></line>
+                  <line x1="12" y1="21" x2="12" y2="23"></line>
+                  <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                  <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                  <line x1="1" y1="12" x2="3" y2="12"></line>
+                  <line x1="21" y1="12" x2="23" y2="12"></line>
+                  <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                  <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+               </svg>
+            </button>
+          </div>
+        </nav>
+      </aside>
+
+      <!-- Main Content -->
+      <main class="main-content">
+        <!-- Desktop Sidebar Toggle & Title (Visible when sidebar is closed) -->
+        <div class="desktop-header-controls" style="position: absolute; top: 20px; left: 20px; display: none; align-items: center; gap: 12px; z-index: 50;">
+          <button id="sidebar-open-btn" class="icon-btn" aria-label="Open sidebar">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+              <line x1="9" y1="3" x2="9" y2="21" />
+            </svg>
+          </button>
+          <span class="app-title-main" style="font-weight: 600; font-size: 1.1rem; color: var(--text);">text2llm</span>
+        </div>
+
+        <!-- Mobile Header -->
+        <header class="mobile-header">
+          <button class="menu-toggle" id="menu-toggle">
+            <svg
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <line x1="3" y1="12" x2="21" y2="12" />
+              <line x1="3" y1="6" x2="21" y2="6" />
+              <line x1="3" y1="18" x2="21" y2="18" />
+            </svg>
+          </button>
+          <span class="mobile-logo-text">text2llm</span>
+        </header>
+
+        <!-- HOME VIEW -->
+        <div id="home-view" class="view active">
+          <div class="home-chat-layout">
+            <button
+              type="button"
+              id="chat-list-toggle-btn"
+              class="chat-list-toggle-btn"
+              title="Hide chats"
+              aria-label="Hide chats"
+              aria-expanded="true"
+            >
+              ×
+            </button>
+            <aside class="chat-list-pane" aria-label="Chat Threads">
+              <div class="chat-list-header">
+                <div class="chat-list-title">Chats</div>
+                <button type="button" class="chat-thread-new-btn" id="home-new-chat-btn">+ New Chat</button>
+              </div>
+              <div class="chat-thread-list" id="chat-thread-list"></div>
+            </aside>
+
+            <section class="chat-main-pane">
+              <!-- Welcome Section (hidden when chatting) -->
+              <div id="welcome-section" class="welcome-container">
+                <h1 class="welcome-title">WELCOME</h1>
+                <p class="welcome-subtitle">I'm your AI lab assistant. Describe what you want to build.</p>
+
+                <div class="suggestion-chips">
+                  <button class="suggestion-chip">Build a 100M parameter LLM</button>
+                  <button class="suggestion-chip">Train a code generation model</button>
+                  <button class="suggestion-chip">Create a domain-specific chatbot</button>
+                </div>
+              </div>
+
+              <!-- Chat Messages Area -->
+              <div id="chat-messages" class="chat-messages"></div>
+
+              <!-- Chat Input -->
+              <form id="idea-form" class="chat-input-area">
+                <button type="button" class="action-btn add-btn" title="Attach file">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                </button>
+
+                <textarea id="idea-input" placeholder="Message Text2LLM..." rows="1"></textarea>
+
+                <button type="submit" class="action-btn submit-btn" id="send-btn" title="Send message">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="12" y1="19" x2="12" y2="5" />
+                    <polyline points="5 12 12 5 19 12" />
+                  </svg>
+                </button>
+                <button type="button" class="action-btn stop-btn" id="stop-btn" title="Stop generating" style="display:none;">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="6" y="6" width="12" height="12" rx="2" />
+                  </svg>
+                </button>
+              </form>
+            </section>
+          </div>
+        </div>
+        <!-- /HOME VIEW -->
+
+        <!-- INSTANCES VIEW -->
+        <div id="instances-view" class="view">
+          <div class="instances-container">
+            <div class="instances-header">
+              <h2 class="instances-title">Instances</h2>
+              <p class="instances-subtitle">Configure your AI backend, GPU resources, and storage</p>
+            </div>
+
+            <!-- Tab Bar -->
+            <div class="instances-tabs">
+              <button class="instance-tab active" data-tab="ai">AI</button>
+              <button class="instance-tab" data-tab="gpu">GPU</button>
+              <button class="instance-tab" data-tab="storage">Storage</button>
+            </div>
+
+            <!-- AI Tab Content -->
+            <div class="instance-tab-content active" id="tab-ai">
+              <p class="tab-description">Select the AI provider that powers your Text2LLM agent backend.</p>
+              <div class="provider-grid" id="provider-grid">
+                <!-- Provider cards will be injected by JS -->
+              </div>
+            </div>
+
+            <!-- GPU Tab Content -->
+            <div class="instance-tab-content" id="tab-gpu">
+              <!-- Readiness Banner -->
+              <div class="gpu-readiness-banner" id="gpu-readiness-banner">
+                <div class="gpu-readiness-dot"></div>
+                <span id="gpu-readiness-state">Not connected</span>
+              </div>
+              <p id="gpu-credentials-status" class="gpu-inline-status" style="display:none;"></p>
+
+              <!-- Provider Cards Grid -->
+              <div class="gpu-providers-section">
+                <div class="gpu-section-header">
+                  <h3>Connect a GPU Provider</h3>
+                  <p>Choose where to run your GPU workloads</p>
+                </div>
+                <div class="gpu-provider-grid-v2" id="gpu-provider-grid">
+                  <!-- GPU Provider cards injected by JS -->
+                </div>
+              </div>
+
+              <!-- Active Instances -->
+              <div class="gpu-instances-section">
+                <div class="gpu-section-header">
+                  <h3>Your Instances</h3>
+                  <button id="gpu-launch-open-btn" class="gpu-launch-trigger" type="button">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    New Instance
+                  </button>
+                </div>
+                <div id="gpu-instance-list" class="gpu-instance-grid"></div>
+              </div>
+
+              <!-- Launch Instance Drawer (hidden by default) -->
+              <div id="gpu-launch-drawer" class="gpu-launch-drawer hidden">
+                <div class="gpu-launch-drawer-inner">
+                  <div class="gpu-launch-drawer-header">
+                    <h3>Launch New Instance</h3>
+                    <button id="gpu-launch-close-btn" class="gpu-drawer-close" type="button">&times;</button>
+                  </div>
+                  <div class="gpu-launch-form">
+                    <div class="gpu-form-row">
+                      <label class="gpu-form-label">
+                        <span>Region</span>
+                        <select id="gpu-region-select" class="gpu-form-select"></select>
+                      </label>
+                      <label class="gpu-form-label">
+                        <span>GPU Type</span>
+                        <select id="gpu-type-select" class="gpu-form-select"></select>
+                      </label>
+                      <label class="gpu-form-label">
+                        <span>Count</span>
+                        <input id="gpu-count-input" class="gpu-form-input" type="number" min="1" value="1" />
+                      </label>
+                    </div>
+                    <label class="gpu-form-label">
+                      <span>Instance Name</span>
+                      <input id="gpu-name-input" class="gpu-form-input" type="text" placeholder="e.g. prod-inference-a100" />
+                    </label>
+                    <div class="gpu-launch-actions">
+                      <button id="gpu-launch-btn" class="gpu-launch-btn-primary" type="button">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                        Launch Instance
+                      </button>
+                      <p id="gpu-launch-status" class="gpu-inline-status"></p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Inference Playground -->
+              <div class="gpu-inference-section">
+                <div class="gpu-section-header">
+                  <h3>Inference Playground</h3>
+                  <p>Test your running instances with a quick prompt</p>
+                </div>
+                <div class="gpu-inference-card">
+                  <div class="gpu-inference-top">
+                    <label class="gpu-form-label gpu-infer-target">
+                      <span>Target Instance</span>
+                      <select id="gpu-infer-instance-select" class="gpu-form-select"></select>
+                    </label>
+                  </div>
+                  <div class="gpu-inference-input-area">
+                    <textarea id="gpu-infer-prompt" class="gpu-inference-textarea" rows="3" placeholder="Write a short response about your AI task..."></textarea>
+                    <button id="gpu-infer-btn" class="gpu-inference-run-btn" type="button">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    </button>
+                  </div>
+                  <p id="gpu-infer-status" class="gpu-inline-status"></p>
+                  <pre id="gpu-infer-output" class="gpu-infer-output"></pre>
+                </div>
+              </div>
+            </div>
+
+            <!-- Storage Tab Content -->
+            <div class="instance-tab-content" id="tab-storage">
+              <!-- Status banner (mirrors GPU readiness banner) -->
+              <div class="gpu-readiness-banner" id="storage-readiness-banner">
+                <div class="gpu-readiness-dot"></div>
+                <span id="storage-readiness-state">No providers connected</span>
+              </div>
+              <p id="storage-status" class="gpu-inline-status"></p>
+
+              <!-- Provider Cards Grid -->
+              <div class="gpu-providers-section">
+                <div class="gpu-section-header">
+                  <h3>Connect a Storage Provider</h3>
+                  <p>Choose where artifacts are stored. OAuth providers keep user-owned tokens per session.</p>
+                </div>
+                <div class="gpu-provider-grid-v2" id="storage-provider-grid">
+                  <!-- Storage provider cards injected by JS -->
+                </div>
+              </div>
+
+              <!-- Container Usage (read-only cards, like GPU instances) -->
+              <div class="gpu-instances-section">
+                <div class="gpu-section-header">
+                  <h3>Lifecycle Containers</h3>
+                  <p>Data, tokenizer, checkpoints, evals, and model exports</p>
+                </div>
+                <div id="storage-container-grid" class="storage-container-grid"></div>
+              </div>
+
+              <!-- Project & Sync Settings Drawer (hidden by default, like GPU launch drawer) -->
+              <div id="storage-settings-drawer" class="gpu-launch-drawer hidden">
+                <div class="gpu-launch-drawer-inner">
+                  <div class="gpu-launch-drawer-header">
+                    <h3>Storage Settings</h3>
+                    <button id="storage-settings-close-btn" class="gpu-drawer-close" type="button">&times;</button>
+                  </div>
+
+                  <div class="storage-settings-tabs">
+                    <button class="storage-settings-tab active" data-stab="project">Project</button>
+                    <button class="storage-settings-tab" data-stab="sync">Sync & Retention</button>
+                    <button class="storage-settings-tab" data-stab="replication">Replication</button>
+                    <button class="storage-settings-tab" data-stab="history">History</button>
+                  </div>
+
+                  <div class="storage-settings-panel active" id="storage-panel-project">
+                    <div class="gpu-launch-form">
+                      <div class="gpu-form-row">
+                        <label class="gpu-form-label">
+                          <span>Project Name</span>
+                          <input id="storage-project-name" class="gpu-form-input" type="text" placeholder="medical-llm-1b" />
+                        </label>
+                        <label class="gpu-form-label">
+                          <span>Default Provider</span>
+                          <select id="storage-default-provider" class="gpu-form-select"></select>
+                        </label>
+                        <label class="gpu-form-label">
+                          <span>Root Path</span>
+                          <input id="storage-root-path" class="gpu-form-input" type="text" placeholder="Text2LLM/medical-llm-1b" />
+                        </label>
+                      </div>
+                      <div class="gpu-launch-actions">
+                        <button id="storage-save-project-btn" class="gpu-launch-btn-primary" type="button">Save Mapping</button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="storage-settings-panel" id="storage-panel-sync">
+                    <div class="gpu-launch-form">
+                      <div class="gpu-form-row">
+                        <label class="gpu-form-label">
+                          <span>Sync Mode</span>
+                          <select id="storage-sync-mode" class="gpu-form-select">
+                            <option value="manual">Manual</option>
+                            <option value="steps">Every N steps</option>
+                            <option value="minutes">Every N minutes</option>
+                          </select>
+                        </label>
+                        <label class="gpu-form-label">
+                          <span>Keep Last N</span>
+                          <input id="storage-retention-keep" class="gpu-form-input" type="number" min="1" value="5" />
+                        </label>
+                      </div>
+                      <div class="gpu-form-row">
+                        <label class="gpu-form-label">
+                          <span>Every N Steps</span>
+                          <input id="storage-sync-steps" class="gpu-form-input" type="number" min="1" value="500" />
+                        </label>
+                        <label class="gpu-form-label">
+                          <span>Every N Minutes</span>
+                          <input id="storage-sync-minutes" class="gpu-form-input" type="number" min="1" value="15" />
+                        </label>
+                      </div>
+                      <div class="gpu-launch-actions">
+                        <button id="storage-save-policy-btn" class="gpu-launch-btn-primary" type="button">Save Policy</button>
+                        <button id="storage-sync-now-btn" class="gpu-launch-btn" type="button">Sync Now</button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="storage-settings-panel" id="storage-panel-replication">
+                    <div class="gpu-launch-form">
+                      <div class="gpu-form-row">
+                        <label class="gpu-form-label">
+                          <span>Primary Provider</span>
+                          <select id="storage-primary-provider" class="gpu-form-select"></select>
+                        </label>
+                        <label class="gpu-form-label">
+                          <span>Backup Provider</span>
+                          <select id="storage-backup-provider" class="gpu-form-select"></select>
+                        </label>
+                        <label class="gpu-form-label">
+                          <span>Replication</span>
+                          <select id="storage-replication-enabled" class="gpu-form-select">
+                            <option value="true">Enabled</option>
+                            <option value="false">Disabled</option>
+                          </select>
+                        </label>
+                      </div>
+                      <div class="gpu-launch-actions">
+                        <button id="storage-save-replication-btn" class="gpu-launch-btn-primary" type="button">Save Replication</button>
+                        <button id="storage-restore-latest-btn" class="gpu-launch-btn" type="button">Restore</button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="storage-settings-panel" id="storage-panel-history">
+                    <div class="storage-history-section">
+                      <h4 style="margin:0 0 8px;font-size:0.85rem;color:var(--text-secondary);">Sync Jobs</h4>
+                      <div id="storage-sync-history" class="storage-history-list">
+                        <div class="provider-loading">No sync jobs yet.</div>
+                      </div>
+                      <h4 style="margin:16px 0 8px;font-size:0.85rem;color:var(--text-secondary);">Restore Jobs</h4>
+                      <div id="storage-restore-history" class="storage-history-list">
+                        <div class="provider-loading">No restore jobs yet.</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Summary Bar (compact stats, like GPU inference section) -->
+              <div class="gpu-inference-section">
+                <div class="gpu-section-header">
+                  <h3>Storage Overview</h3>
+                  <div style="display:flex;gap:8px;align-items:center;">
+                    <button id="storage-settings-open-btn" class="gpu-launch-trigger" type="button">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                      Settings
+                    </button>
+                    <button id="storage-refresh-btn" class="gpu-launch-trigger" type="button">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.13-3.36L23 10M1 14l5.36 4.36A9 9 0 0 0 20.49 15"/></svg>
+                      Refresh
+                    </button>
+                  </div>
+                </div>
+                <div id="storage-cost-summary" class="storage-overview-bar"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- /INSTANCES VIEW -->
+
+        <!-- CLUI VIEW -->
+        <div id="clui-view" class="view">
+          <div class="terminal-container">
+            <div id="terminal"></div>
+          </div>
+        </div>
+        <!-- /CLUI VIEW -->
+
+        <!-- NOTEBOOK VIEW -->
+        <div id="notebook-view" class="view">
+          <div class="nb-container">
+            <div class="nb-header">
+              <div class="nb-header-left">
+                <h2 class="nb-title">Notebook</h2>
+                <span class="nb-subtitle">Python cells managed by OpenClaw</span>
+              </div>
+              <div class="nb-toolbar">
+                <button id="nb-run-all-btn" class="nb-toolbar-btn" type="button" title="Run all cells">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                  Run All
+                </button>
+                <button id="nb-clear-btn" class="nb-toolbar-btn" type="button" title="Clear all outputs">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
+                  Clear
+                </button>
+                <button id="nb-add-code-btn" class="nb-toolbar-btn nb-toolbar-primary" type="button" title="Add code cell">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  Code
+                </button>
+                <button id="nb-add-md-btn" class="nb-toolbar-btn" type="button" title="Add markdown cell">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  Markdown
+                </button>
+              </div>
+            </div>
+            <div id="nb-cells" class="nb-cells">
+              <!-- Cells rendered by JS -->
+            </div>
+            <p id="nb-status" class="nb-status-msg"></p>
+          </div>
+        </div>
+        <!-- /NOTEBOOK VIEW -->
+
+        <!-- DATA STUDIO VIEW -->
+        <div id="data-studio-view" class="view">
+            <div class="ds-container">
+              <div class="ds-header">
+                <div>
+                  <h2 class="ds-title">Data Studio</h2>
+                  <p class="ds-subtitle">Upload or connect datasets, clean/chunk/tag, split, and version data</p>
+                </div>
+                <button id="ds-refresh-btn" class="ds-btn" type="button">Refresh</button>
+              </div>
+
+              <section class="ds-import-card">
+                <div class="ds-import-grid">
+                  <label class="gpu-form-label">
+                    <span>Dataset name</span>
+                    <input id="ds-name-input" class="gpu-form-input" type="text" placeholder="e.g. support-conversations-v1" />
+                  </label>
+                  <label class="gpu-form-label">
+                    <span>Source</span>
+                    <select id="ds-source-select" class="gpu-form-select">
+                      <option value="paste">Paste text</option>
+                      <option value="upload">Upload file</option>
+                      <option value="url">Connect URL</option>
+                    </select>
+                  </label>
+                  <label class="gpu-form-label">
+                    <span>Format</span>
+                    <select id="ds-format-select" class="gpu-form-select">
+                      <option value="auto">Auto detect</option>
+                      <option value="json">JSON</option>
+                      <option value="jsonl">JSONL</option>
+                      <option value="csv">CSV</option>
+                      <option value="txt">Text lines</option>
+                    </select>
+                  </label>
+                </div>
+
+                <label id="ds-url-wrap" class="gpu-form-label ds-source-wrap hidden">
+                  <span>Dataset URL</span>
+                  <input id="ds-url-input" class="gpu-form-input" type="url" placeholder="https://..." />
+                </label>
+
+                <label id="ds-file-wrap" class="gpu-form-label ds-source-wrap hidden">
+                  <span>Upload file</span>
+                  <input id="ds-file-input" class="gpu-form-input" type="file" />
+                </label>
+
+                <label id="ds-content-wrap" class="gpu-form-label ds-source-wrap">
+                  <span>Paste content</span>
+                  <textarea id="ds-content-input" class="ds-content-input" rows="4" placeholder='[{"text":"example"}]'></textarea>
+                </label>
+
+                <div class="ds-import-actions">
+                  <button id="ds-create-btn" class="ds-btn ds-btn-primary" type="button">Create dataset</button>
+                  <p id="ds-status" class="gpu-inline-status"></p>
+                </div>
+              </section>
+
+              <div class="ds-workspace">
+                <aside class="ds-datasets-panel">
+                  <div class="ds-panel-head">
+                    <h3>Datasets</h3>
+                    <span id="ds-count" class="ds-count">0</span>
+                  </div>
+                  <div id="ds-dataset-list" class="ds-dataset-list"></div>
+                </aside>
+
+                <section class="ds-editor-panel">
+                  <div class="ds-editor-head">
+                    <div>
+                      <h3 id="ds-selected-name">No dataset selected</h3>
+                      <p id="ds-selected-meta" class="ds-selected-meta"></p>
+                    </div>
+                    <button id="ds-delete-btn" class="ds-btn ds-btn-danger" type="button">Delete</button>
+                  </div>
+
+                  <div class="ds-toolbar-row">
+                    <input id="ds-search-input" class="gpu-form-input" type="text" placeholder="Search rows" />
+                    <button id="ds-search-btn" class="ds-btn" type="button">Search</button>
+                    <button id="ds-clear-search-btn" class="ds-btn" type="button">Clear</button>
+                  </div>
+
+                  <div class="ds-ops-grid">
+                    <div class="ds-op-card">
+                      <h4>Clean</h4>
+                      <select id="ds-clean-op" class="gpu-form-select" title="Select clean operation">
+                        <option value="trim-text">Trim whitespace</option>
+                        <option value="remove-empty">Remove empty rows</option>
+                        <option value="dedupe">Deduplicate rows</option>
+                        <option value="lowercase">Lowercase field</option>
+                        <option value="filter-regex">Filter by regex</option>
+                      </select>
+                      <input id="ds-clean-field" class="gpu-form-input" type="text" placeholder="Field (default: text)" />
+                      <input id="ds-clean-pattern" class="gpu-form-input" type="text" placeholder="Pattern (regex only)" />
+                      <button id="ds-clean-btn" class="ds-btn" type="button">Apply clean</button>
+                    </div>
+
+                    <div class="ds-op-card">
+                      <h4>Chunk</h4>
+                      <input id="ds-chunk-field" class="gpu-form-input" type="text" placeholder="Field (default: text)" />
+                      <div class="ds-inline-2">
+                        <input id="ds-chunk-size" class="gpu-form-input" type="number" min="50" value="500" placeholder="Chunk size" />
+                        <input id="ds-chunk-overlap" class="gpu-form-input" type="number" min="0" value="50" placeholder="Overlap" />
+                      </div>
+                      <button id="ds-chunk-btn" class="ds-btn" type="button">Apply chunk</button>
+                    </div>
+
+                    <div class="ds-op-card">
+                      <h4>Tag</h4>
+                      <input id="ds-tag-field" class="gpu-form-input" type="text" placeholder="Tag field (default: tag)" />
+                      <input id="ds-tag-value" class="gpu-form-input" type="text" placeholder="Tag value" />
+                      <input id="ds-tag-match-field" class="gpu-form-input" type="text" placeholder="Match field (default: text)" />
+                      <input id="ds-tag-contains" class="gpu-form-input" type="text" placeholder="Only rows containing... (optional)" />
+                      <button id="ds-tag-btn" class="ds-btn" type="button">Apply tag</button>
+                    </div>
+
+                    <div class="ds-op-card">
+                      <h4>Train/Eval split</h4>
+                      <div class="ds-inline-3">
+                        <input id="ds-split-train" class="gpu-form-input" type="number" min="0" value="80" placeholder="Train" />
+                        <input id="ds-split-eval" class="gpu-form-input" type="number" min="0" value="10" placeholder="Eval" />
+                        <input id="ds-split-test" class="gpu-form-input" type="number" min="0" value="10" placeholder="Test" />
+                      </div>
+                      <input id="ds-split-field" class="gpu-form-input" type="text" placeholder="Split field (default: split)" />
+                      <button id="ds-split-btn" class="ds-btn" type="button">Apply split</button>
+                    </div>
+
+                    <div class="ds-op-card">
+                      <h4>Versioning</h4>
+                      <input id="ds-version-label" class="gpu-form-input" type="text" placeholder="Version label" />
+                      <button id="ds-version-btn" class="ds-btn" type="button">Create version</button>
+                      <select id="ds-version-select" class="gpu-form-select" title="Select version"></select>
+                      <button id="ds-rollback-btn" class="ds-btn" type="button">Rollback</button>
+                    </div>
+                  </div>
+
+                  <div class="ds-table-wrap">
+                    <table class="ds-table">
+                      <thead id="ds-table-head"></thead>
+                      <tbody id="ds-table-body"></tbody>
+                    </table>
+                  </div>
+
+                  <div class="ds-pagination">
+                    <button id="ds-prev-btn" class="ds-btn" type="button">Previous</button>
+                    <span id="ds-page-label">Page 1 of 1</span>
+                    <button id="ds-next-btn" class="ds-btn" type="button">Next</button>
+                  </div>
+                </section>
+              </div>
+          </div>
+        </div>
+        <!-- /DATA STUDIO VIEW -->
+
+        <!-- PROJECTS VIEW -->
+        <div id="projects-view" class="view">
+          <div class="instances-container">
+            <div class="instances-header">
+              <h2 class="instances-title">Projects</h2>
+              <p class="instances-subtitle">Manage and organize all your AI projects</p>
+            </div>
+            <div class="provider-grid" id="projects-grid">
+              <!-- Project cards will be injected by JS -->
+            </div>
+          </div>
+        </div>
+        <!-- /PROJECTS VIEW -->
+
+        <!-- STORE VIEW -->
+        <div id="store-view" class="view">
+          <div class="instances-container">
+            <div class="instances-header">
+              <h2 class="instances-title">Store</h2>
+              <p class="instances-subtitle">Discover AI resources — models, datasets, papers, code & tools</p>
+            </div>
+
+            <!-- Search Bar -->
+            <div class="store-search-bar">
+              <div class="store-search-input-wrap">
+                <svg class="store-search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+                <input id="store-search-input" class="store-search-input" type="text" placeholder="Search models, datasets, papers, tools..." />
+              </div>
+              <button id="store-search-btn" class="store-search-btn" type="button">Search</button>
+            </div>
+
+            <!-- Category Tabs -->
+            <div class="store-tabs">
+              <button class="store-tab active" data-store-type="all">All</button>
+              <button class="store-tab" data-store-type="model">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+                Models
+              </button>
+              <button class="store-tab" data-store-type="dataset">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v10c0 1.66 3.58 3 8 3s8-1.34 8-3V5"/><path d="M4 10c0 1.66 3.58 3 8 3s8-1.34 8-3"/></svg>
+                Datasets
+              </button>
+              <button class="store-tab" data-store-type="paper">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                Papers
+              </button>
+              <button class="store-tab" data-store-type="code">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                Code &amp; Tools
+              </button>
+            </div>
+
+            <!-- Source Filters & Sort -->
+            <div class="store-filters-row">
+              <div class="store-source-chips">
+                <span class="store-filter-label">Sources:</span>
+                <button class="store-source-chip active" data-store-source="all">All</button>
+                <button class="store-source-chip" data-store-source="huggingface">
+                  <span class="store-source-emoji">🤗</span> Hugging Face
+                </button>
+                <button class="store-source-chip" data-store-source="github">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/></svg>
+                  GitHub
+                </button>
+                <button class="store-source-chip" data-store-source="arxiv">
+                  <span class="store-source-emoji">📄</span> arXiv
+                </button>
+                <button class="store-source-chip" data-store-source="semanticscholar">
+                  <span class="store-source-emoji">🎓</span> Semantic Scholar
+                </button>
+                <button class="store-source-chip" data-store-source="civitai">
+                  <span class="store-source-emoji">🎨</span> Civitai
+                </button>
+                <button class="store-source-chip" data-store-source="kaggle">
+                  <img src="/logos/kaggle.svg" alt="Kaggle" width="13" height="13" style="vertical-align: -1px;" />
+                  Kaggle
+                </button>
+                <button class="store-source-chip" data-store-source="paperswithcode">
+                  <span class="store-source-emoji">📝</span> Papers With Code
+                </button>
+                <button class="store-source-chip" data-store-source="zenodo">
+                  <span class="store-source-emoji">🔬</span> Zenodo
+                </button>
+                <button class="store-source-chip" data-store-source="dblp">
+                  <span class="store-source-emoji">📚</span> DBLP
+                </button>
+                <button class="store-source-chip" data-store-source="ollama">
+                  <span class="store-source-emoji">🦙</span> Ollama
+                </button>
+                <button class="store-source-chip" data-store-source="replicate">
+                  <span class="store-source-emoji">🔄</span> Replicate
+                </button>
+              </div>
+              <div class="store-sort-wrap">
+                <label class="store-sort-label" for="store-sort-select">Sort:</label>
+                <select id="store-sort-select" class="store-sort-select">
+                  <option value="trending">Trending</option>
+                  <option value="downloads">Most downloads</option>
+                  <option value="stars">Most stars</option>
+                  <option value="citations">Most cited</option>
+                  <option value="recent">Most recent</option>
+                  <option value="relevance">Relevance</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Results Summary -->
+            <div class="store-results-summary" id="store-results-summary" style="display:none;">
+              <span id="store-results-count"></span>
+              <span id="store-results-query"></span>
+            </div>
+
+            <!-- Loading State -->
+            <div class="store-loading" id="store-loading" style="display:none;">
+              <div class="store-loading-spinner"></div>
+              <span>Searching resources...</span>
+            </div>
+
+            <!-- Empty State (fallback only) -->
+            <div class="store-empty" id="store-empty" style="display:none;">
+              <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" stroke-width="1.2">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              <h3>Explore AI Resources</h3>
+              <p>Search for models, datasets, research papers, and developer tools across Hugging Face, GitHub, arXiv, Kaggle, and more.</p>
+              <div class="store-quick-searches">
+                <button class="store-quick-chip" data-query="transformer language model">Transformers</button>
+                <button class="store-quick-chip" data-query="text generation">Text Generation</button>
+                <button class="store-quick-chip" data-query="image classification dataset">Image Classification</button>
+                <button class="store-quick-chip" data-query="reinforcement learning">RL</button>
+                <button class="store-quick-chip" data-query="diffusion model">Diffusion</button>
+                <button class="store-quick-chip" data-query="RAG retrieval augmented generation">RAG</button>
+                <button class="store-quick-chip" data-query="fine-tuning LORA">LoRA Fine-tuning</button>
+                <button class="store-quick-chip" data-query="speech recognition whisper">Speech</button>
+              </div>
+            </div>
+
+            <!-- Featured Storefront (auto-loaded, Amazon/Flipkart style) -->
+            <div class="store-featured" id="store-featured" style="display:none;"></div>
+
+            <!-- Resource Cards Grid -->
+            <div class="store-grid" id="store-grid"></div>
+
+            <!-- Pagination -->
+            <div class="store-pagination" id="store-pagination" style="display:none;">
+              <button id="store-prev-btn" class="store-page-btn" type="button" disabled>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+                Previous
+              </button>
+              <span id="store-page-label" class="store-page-label">Page 1</span>
+              <button id="store-next-btn" class="store-page-btn" type="button">
+                Next
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+              </button>
+            </div>
+
+            <!-- Project Resources (Added items) -->
+            <div class="store-project-resources" id="store-project-resources" style="display:none;">
+              <div class="store-section-header">
+                <h3>Added to Project</h3>
+                <span id="store-project-count" class="store-badge">0</span>
+              </div>
+              <div id="store-project-list" class="store-project-list"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Store Detail Modal -->
+        <div class="modal-overlay store-detail-modal" id="store-detail-modal" style="display:none;">
+          <div class="modal-content store-detail-content">
+            <div class="modal-header">
+              <div class="store-detail-header-info">
+                <span id="store-detail-source-badge" class="store-source-badge"></span>
+                <h3 id="store-detail-title"></h3>
+              </div>
+              <button class="modal-close" id="store-detail-close">&times;</button>
+            </div>
+            <div class="modal-body store-detail-body">
+              <p id="store-detail-author" class="store-detail-author"></p>
+              <p id="store-detail-description" class="store-detail-description"></p>
+              <div id="store-detail-metrics" class="store-detail-metrics"></div>
+              <div id="store-detail-tags" class="store-detail-tags"></div>
+              <div class="store-detail-meta">
+                <p id="store-detail-license" class="store-detail-meta-item"></p>
+                <p id="store-detail-updated" class="store-detail-meta-item"></p>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <a id="store-detail-link" class="store-detail-link-btn" href="#" target="_blank" rel="noopener">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                Open on source
+              </a>
+              <button id="store-detail-share-btn" class="store-detail-link-btn" style="background: none; border: 1px solid var(--border-color, #333); cursor: pointer; color: inherit; font-size: inherit; font-family: inherit; display: inline-flex; align-items: center; gap: 6px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+                Share
+              </button>
+              <button id="store-detail-add-btn" class="modal-save-btn store-detail-add-btn">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Add to project
+              </button>
+            </div>
+          </div>
+        </div>
+        <!-- /STORE VIEW -->
+
+        <!-- SETTINGS VIEW -->
+        <div id="settings-view" class="view">
+          <div class="instances-container">
+            <div class="instances-header">
+              <h2 class="instances-title">Settings</h2>
+              <p class="instances-subtitle">Configure your account and workspace preferences</p>
+            </div>
+            <div class="coming-soon">
+              <h3>Settings</h3>
+              <p>Settings panel is coming soon.</p>
+            </div>
+          </div>
+        </div>
+        <!-- /SETTINGS VIEW -->
+
+      </main>
+    </div>
+
+
+    <!-- xterm.js Scripts from CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+    <!-- Markdown renderer -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    
+    <!-- Retaining original script import -->
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

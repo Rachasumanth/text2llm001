@@ -1,0 +1,10 @@
+﻿Starting E2E Test
+PASS: GET /api/health
+PASS: GET /api/instances/gpu/providers
+PASS: POST /api/instances/gpu/provider/configure
+PASS: POST /api/instances/gpu/provider/test
+PASS: POST /api/instances/gpu/instance/launch
+Instance Launched: gpu-1771083334279-rgp6zq
+PASS: POST /api/instances/gpu/routing
+PASS: POST /api/instances/gpu/inference
+PASS: POST /api/instances/gpu/instance/action

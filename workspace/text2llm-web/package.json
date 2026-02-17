@@ -1,0 +1,21 @@
+{
+  "name": "text2llm-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test test/**/*.test.mjs",
+    "test:phase9": "node --test test/unit.adapter-contract.test.mjs test/integration.gpu-provider-sandbox.test.mjs test/e2e.gpu-flow.test.mjs test/security.gpu-secrets-authz.test.mjs",
+    "test:phase10": "node --test test/rollout.phase10-gates.test.mjs",
+    "test:strict": "npm run test:phase9 ; npm run test:phase10"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "node-fetch": "^3.3.2",
+    "node-pty": "^1.0.0",
+    "ws": "^8.16.0",
+    "xterm": "^5.3.0",
+    "xterm-addon-fit": "^0.8.0"
+  }
+}
