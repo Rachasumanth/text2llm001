@@ -1,4 +1,28 @@
-import type { OpenClawConfig } from "../config/config.js";
+import type { TEXT2LLMConfig } from "../config/config.js";
+import type { AnyAgentTool } from "./pi-tools.types.js";
+import type { SandboxToolPolicy } from "./sandbox.js";
+import { getChannelDock } from "../channels/dock.js";
+import { resolveChannelGroupToolsPolicy } from "../config/group-policy.js";
+import { resolveThreadParentSessionKey } from "../sessions/session-key-utils.js";
+import { normalizeMessageChannel } from "../utils/message-channel.js";
+import { resolveAgentConfig, resolveAgentIdFromSessionKey } from "./agent-scope.js";
+import { expandToolGroups, normalizeToolName } from "./tool-policy.js";
+
+type CompiledPattern =
+  | { kind: "all" }
+  | { kind: "exact"; value: string }
+  | { kind: "regex"; value: RegExp };
+
+function compilePattern(pattern: string): CompiledPattern {
+  const normalized = normalizeToolName(pattern);
+  if (!normalized) {
+    return { kind: "exact", value: "" };
+  }
+  if (normalized === "*") {
+    return { kind: "all" };
+  }
+  if (!normalized.includes("*")) {
+    return { kind: "exaimport type { TEXT2LLMConfig } from "../config/config.js";
 import type { AnyAgentTool } from "./pi-tools.types.js";
 import type { SandboxToolPolicy } from "./sandbox.js";
 import { getChannelDock } from "../channels/dock.js";
@@ -95,7 +119,7 @@ const DEFAULT_SUBAGENT_TOOL_DENY = [
   "memory_get",
 ];
 
-export function resolveSubagentToolPolicy(cfg?: OpenClawConfig): SandboxToolPolicy {
+export function resolveSubagentToolPolicy(cfg?: TEXT2LLMConfig): SandboxToolPolicy {
   const configured = cfg?.tools?.subagents?.tools;
   const deny = [
     ...DEFAULT_SUBAGENT_TOOL_DENY,
@@ -228,7 +252,7 @@ function resolveProviderToolPolicy(params: {
 }
 
 export function resolveEffectiveToolPolicy(params: {
-  config?: OpenClawConfig;
+  config?: TEXT2LLMConfig;
   sessionKey?: string;
   modelProvider?: string;
   modelId?: string;
@@ -273,7 +297,7 @@ export function resolveEffectiveToolPolicy(params: {
 }
 
 export function resolveGroupToolPolicy(params: {
-  config?: OpenClawConfig;
+  config?: TEXT2LLMConfig;
   sessionKey?: string;
   spawnedBy?: string | null;
   messageProvider?: string;

@@ -1,12 +1,12 @@
-import type { OpenClawConfig, WizardPrompter } from "openclaw/plugin-sdk";
-import { DEFAULT_ACCOUNT_ID, normalizeAccountId } from "openclaw/plugin-sdk";
+import type { Text2llmConfig, WizardPrompter } from "text2llm/plugin-sdk";
+import { DEFAULT_ACCOUNT_ID, normalizeAccountId } from "text2llm/plugin-sdk";
 
 type PromptAccountIdParams = {
-  cfg: OpenClawConfig;
+  cfg: Text2llmConfig;
   prompter: WizardPrompter;
   label: string;
   currentId?: string;
-  listAccountIds: (cfg: OpenClawConfig) => string[];
+  listAccountIds: (cfg: Text2llmConfig) => string[];
   defaultAccountId: string;
 };
 

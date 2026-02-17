@@ -1,17 +1,17 @@
-# Transform OpenClaw into Text2LLM Agent
+# Transform text2llm into Text2LLM Agent
 
-Convert the generic OpenClaw personal assistant into a **specialized Text2LLM agent** — an AI bot that uses virtual AI lab tools and skills to create LLMs from scratch, end-to-end, from a simple text prompt.
+Convert the generic text2llm personal assistant into a **specialized Text2LLM agent** — an AI bot that uses virtual AI lab tools and skills to create LLMs from scratch, end-to-end, from a simple text prompt.
 
 > [!IMPORTANT]
-> This is a **workspace-level transformation**, not a fork of OpenClaw's core engine. We leverage OpenClaw's skill/tool/config system as the runtime and replace the *persona, skills, and workspace configuration* to specialize the bot.
+> This is a **workspace-level transformation**, not a fork of text2llm's core engine. We leverage text2llm's skill/tool/config system as the runtime and replace the *persona, skills, and workspace configuration* to specialize the bot.
 
 ## User Review Required
 
 > [!WARNING]
-> **Approach Decision:** We are NOT modifying OpenClaw's core TypeScript source code. Instead, we create a **workspace overlay** — custom [AGENTS.md](file:///c:/Users/4HIN/source/openclaw/AGENTS.md), `SOUL.md`, [TOOLS.md](file:///c:/Users/4HIN/source/openclaw/docs/reference/templates/TOOLS.md), new skills, and `openclaw.json` config — that turns any OpenClaw instance into a Text2LLM agent. This keeps the upstream repo intact and makes upgrading easy. **Do you agree with this approach, or would you prefer to hard-fork and strip the code?**
+> **Approach Decision:** We are NOT modifying text2llm's core TypeScript source code. Instead, we create a **workspace overlay** — custom [AGENTS.md](file:///c:/Users/4HIN/source/text2llm/AGENTS.md), `SOUL.md`, [TOOLS.md](file:///c:/Users/4HIN/source/text2llm/docs/reference/templates/TOOLS.md), new skills, and `text2llm.json` config — that turns any text2llm instance into a Text2LLM agent. This keeps the upstream repo intact and makes upgrading easy. **Do you agree with this approach, or would you prefer to hard-fork and strip the code?**
 
 > [!IMPORTANT]
-> **Skill scope:** The plan below defines **9 new AI-lab skills** and **removes/disables 52 generic skills**. Each new skill is a [SKILL.md](file:///c:/Users/4HIN/source/openclaw/skills/coding-agent/SKILL.md) + helper scripts. Should all 9 be built now, or should we start with a smaller subset (e.g., just data-pipeline + training)?
+> **Skill scope:** The plan below defines **9 new AI-lab skills** and **removes/disables 52 generic skills**. Each new skill is a [SKILL.md](file:///c:/Users/4HIN/source/text2llm/skills/coding-agent/SKILL.md) + helper scripts. Should all 9 be built now, or should we start with a smaller subset (e.g., just data-pipeline + training)?
 
 ---
 
@@ -19,7 +19,7 @@ Convert the generic OpenClaw personal assistant into a **specialized Text2LLM ag
 
 ```mermaid
 graph TB
-    User["User: 'Build me a 1B medical LLM'"] --> Agent["Text2LLM Agent (OpenClaw runtime)"]
+    User["User: 'Build me a 1B medical LLM'"] --> Agent["Text2LLM Agent (text2llm runtime)"]
     Agent --> S1["Skill: data-pipeline"]
     Agent --> S2["Skill: tokenizer-trainer"]
     Agent --> S3["Skill: model-architect"]
@@ -30,7 +30,7 @@ graph TB
     Agent --> S8["Skill: model-publisher"]
     Agent --> S9["Skill: cloud-storage"]
 
-    S1 --> Tools["OpenClaw Core Tools: exec, process, web_fetch, web_search, browser"]
+    S1 --> Tools["text2llm Core Tools: exec, process, web_fetch, web_search, browser"]
     S2 --> Tools
     S3 --> Tools
     S4 --> Tools
@@ -55,15 +55,15 @@ These files define who the agent *is* and how it behaves.
 
 ---
 
-#### [NEW] [AGENTS.md](file:///c:/Users/4HIN/source/openclaw/workspace/AGENTS.md)
+#### [NEW] [AGENTS.md](file:///c:/Users/4HIN/source/text2llm/workspace/AGENTS.md)
 
-New agent identity file for Text2LLM. Replaces the generic OpenClaw assistant persona with a specialized AI lab director persona. Contains:
+New agent identity file for Text2LLM. Replaces the generic text2llm assistant persona with a specialized AI lab director persona. Contains:
 - Role definition: "You are Text2LLM, a virtual AI lab agent that builds LLMs from scratch"
 - Pipeline-aware instructions: always follow Data → Tokenizer → Architecture → Training → Eval → Publish
 - Safety constraints: cost estimates before GPU provisioning, user confirmation for spend > $100
 - Tool preferences: always use `exec` with `pty:true` for training scripts
 
-#### [NEW] [SOUL.md](file:///c:/Users/4HIN/source/openclaw/workspace/SOUL.md)
+#### [NEW] [SOUL.md](file:///c:/Users/4HIN/source/text2llm/workspace/SOUL.md)
 
 Personality and behavioral guidelines:
 - Speaks like a senior ML engineer
@@ -71,7 +71,7 @@ Personality and behavioral guidelines:
 - Always shows cost estimates before provisioning GPUs
 - Cites reference models (TinyLlama, SmolLM, DeepSeek V3) for architecture decisions
 
-#### [NEW] [TOOLS.md](file:///c:/Users/4HIN/source/openclaw/workspace/TOOLS.md)
+#### [NEW] [TOOLS.md](file:///c:/Users/4HIN/source/text2llm/workspace/TOOLS.md)
 
 Tool usage guidance specific to LLM training workflows:
 - When to use `exec` vs `process` (background for long training runs)
@@ -82,11 +82,11 @@ Tool usage guidance specific to LLM training workflows:
 
 ### Component 2: New AI Lab Skills (9 Skills)
 
-Each skill is a directory under `workspace/skills/` containing a [SKILL.md](file:///c:/Users/4HIN/source/openclaw/skills/coding-agent/SKILL.md) with YAML frontmatter.
+Each skill is a directory under `workspace/skills/` containing a [SKILL.md](file:///c:/Users/4HIN/source/text2llm/skills/coding-agent/SKILL.md) with YAML frontmatter.
 
 ---
 
-#### [NEW] [data-pipeline/SKILL.md](file:///c:/Users/4HIN/source/openclaw/workspace/skills/data-pipeline/SKILL.md)
+#### [NEW] [data-pipeline/SKILL.md](file:///c:/Users/4HIN/source/text2llm/workspace/skills/data-pipeline/SKILL.md)
 
 **Purpose:** Data curation, cleaning, deduplication, and tokenization pipeline.
 
@@ -101,7 +101,7 @@ Each skill is a directory under `workspace/skills/` containing a [SKILL.md](file
 
 ---
 
-#### [NEW] [tokenizer-trainer/SKILL.md](file:///c:/Users/4HIN/source/openclaw/workspace/skills/tokenizer-trainer/SKILL.md)
+#### [NEW] [tokenizer-trainer/SKILL.md](file:///c:/Users/4HIN/source/text2llm/workspace/skills/tokenizer-trainer/SKILL.md)
 
 **Purpose:** Train custom BPE/SentencePiece tokenizers.
 
@@ -115,21 +115,21 @@ Each skill is a directory under `workspace/skills/` containing a [SKILL.md](file
 
 ---
 
-#### [NEW] [model-architect/SKILL.md](file:///c:/Users/4HIN/source/openclaw/workspace/skills/model-architect/SKILL.md)
+#### [NEW] [model-architect/SKILL.md](file:///c:/Users/4HIN/source/text2llm/workspace/skills/model-architect/SKILL.md)
 
 **Purpose:** Generate model architecture configs (Llama-style, MoE, NanoGPT).
 
 **Key instructions:**
 - Templates for common architectures by scale (100M → 7B+)
 - GQA, SwiGLU, RoPE, RMSNorm selection
-- Outputs [config.json](file:///c:/Users/4HIN/source/openclaw/tsconfig.json) compatible with HuggingFace Transformers
+- Outputs [config.json](file:///c:/Users/4HIN/source/text2llm/tsconfig.json) compatible with HuggingFace Transformers
 - Calculates parameter count and memory requirements
 
 **Requires:** `python3`
 
 ---
 
-#### [NEW] [gpu-provisioner/SKILL.md](file:///c:/Users/4HIN/source/openclaw/workspace/skills/gpu-provisioner/SKILL.md)
+#### [NEW] [gpu-provisioner/SKILL.md](file:///c:/Users/4HIN/source/text2llm/workspace/skills/gpu-provisioner/SKILL.md)
 
 **Purpose:** Provision cloud GPUs for training (RunPod, Vast.ai, Lambda).
 
@@ -145,7 +145,7 @@ Each skill is a directory under `workspace/skills/` containing a [SKILL.md](file
 
 ---
 
-#### [NEW] [training-runner/SKILL.md](file:///c:/Users/4HIN/source/openclaw/workspace/skills/training-runner/SKILL.md)
+#### [NEW] [training-runner/SKILL.md](file:///c:/Users/4HIN/source/text2llm/workspace/skills/training-runner/SKILL.md)
 
 **Purpose:** Launch and monitor pre-training runs (NanoGPT, LitGPT, HF Trainer).
 
@@ -160,7 +160,7 @@ Each skill is a directory under `workspace/skills/` containing a [SKILL.md](file
 
 ---
 
-#### [NEW] [wandb-tracker/SKILL.md](file:///c:/Users/4HIN/source/openclaw/workspace/skills/wandb-tracker/SKILL.md)
+#### [NEW] [wandb-tracker/SKILL.md](file:///c:/Users/4HIN/source/text2llm/workspace/skills/wandb-tracker/SKILL.md)
 
 **Purpose:** Integrate Weights & Biases for experiment tracking.
 
@@ -175,7 +175,7 @@ Each skill is a directory under `workspace/skills/` containing a [SKILL.md](file
 
 ---
 
-#### [NEW] [eval-bench/SKILL.md](file:///c:/Users/4HIN/source/openclaw/workspace/skills/eval-bench/SKILL.md)
+#### [NEW] [eval-bench/SKILL.md](file:///c:/Users/4HIN/source/text2llm/workspace/skills/eval-bench/SKILL.md)
 
 **Purpose:** Evaluate trained models against standard benchmarks.
 
@@ -189,7 +189,7 @@ Each skill is a directory under `workspace/skills/` containing a [SKILL.md](file
 
 ---
 
-#### [NEW] [model-publisher/SKILL.md](file:///c:/Users/4HIN/source/openclaw/workspace/skills/model-publisher/SKILL.md)
+#### [NEW] [model-publisher/SKILL.md](file:///c:/Users/4HIN/source/text2llm/workspace/skills/model-publisher/SKILL.md)
 
 **Purpose:** Publish trained models to HuggingFace Hub or local registry.
 
@@ -204,7 +204,7 @@ Each skill is a directory under `workspace/skills/` containing a [SKILL.md](file
 
 ---
 
-#### [NEW] [cloud-storage/SKILL.md](file:///c:/Users/4HIN/source/openclaw/workspace/skills/cloud-storage/SKILL.md)
+#### [NEW] [cloud-storage/SKILL.md](file:///c:/Users/4HIN/source/text2llm/workspace/skills/cloud-storage/SKILL.md)
 
 **Purpose:** Persist training artifacts (datasets, checkpoints, models, evaluation reports) to the user's own cloud storage via OAuth.
 
@@ -223,18 +223,18 @@ Each skill is a directory under `workspace/skills/` containing a [SKILL.md](file
 - Quota awareness: check available storage before uploading and warn the user if space is low
 
 **Requires:** `python3`, `pip`  
-**Env:** OAuth tokens are stored per-user session (not in openclaw.json)
+**Env:** OAuth tokens are stored per-user session (not in text2llm.json)
 
 ---
 
 ### Component 3: Configuration
 
-#### [NEW] [openclaw.json](file:///c:/Users/4HIN/source/openclaw/workspace/openclaw.json)
+#### [NEW] [text2llm.json](file:///c:/Users/4HIN/source/text2llm/workspace/text2llm.json)
 
-OpenClaw configuration that:
+text2llm configuration that:
 - Sets tool profile to `coding` (enables `exec`, `process`, `read`, `write`, `edit`)
 - Enables `group:web` (for research)
-- Enables [browser](file:///c:/Users/4HIN/source/openclaw/Dockerfile.sandbox-browser) (for GPU provider dashboards)
+- Enables [browser](file:///c:/Users/4HIN/source/text2llm/Dockerfile.sandbox-browser) (for GPU provider dashboards)
 - Disables all messaging tools (no Discord/Slack/Telegram/WhatsApp needed)
 - Disables all channel-related extensions
 - Configures skill entries with environment variable mappings:
@@ -282,7 +282,7 @@ workspace/
 ├── AGENTS.md              # Agent identity: "I am Text2LLM"
 ├── SOUL.md                # Personality + behavioral rules
 ├── TOOLS.md               # Tool usage guidance for ML workflows
-├── openclaw.json          # Config: coding profile, no messaging, AI lab skills only
+├── text2llm.json          # Config: coding profile, no messaging, AI lab skills only
 └── skills/
     ├── data-pipeline/
     │   └── SKILL.md
@@ -310,21 +310,21 @@ workspace/
 
 ### Automated Tests
 
-1. **Skill format validation:** Run `pnpm test` from the OpenClaw root to ensure our [SKILL.md](file:///c:/Users/4HIN/source/openclaw/skills/coding-agent/SKILL.md) files parse correctly with the skill loader.
+1. **Skill format validation:** Run `pnpm test` from the text2llm root to ensure our [SKILL.md](file:///c:/Users/4HIN/source/text2llm/skills/coding-agent/SKILL.md) files parse correctly with the skill loader.
    ```bash
-   cd c:\Users\4HIN\source\openclaw
+   cd c:\Users\4HIN\source\text2llm
    pnpm install
    pnpm test -- --grep "skill"
    ```
 
 2. **Config validation:** Start the gateway with the new config and verify no errors:
    ```bash
-   cd c:\Users\4HIN\source\openclaw
-   pnpm openclaw doctor
+   cd c:\Users\4HIN\source\text2llm
+   pnpm text2llm doctor
    ```
 
 ### Manual Verification
 
-1. **Skill loading check:** After creating all files, run `pnpm openclaw gateway --verbose` and verify the logs show exactly 9 skills loaded (the AI lab skills), and 0 bundled skills.
+1. **Skill loading check:** After creating all files, run `pnpm text2llm gateway --verbose` and verify the logs show exactly 9 skills loaded (the AI lab skills), and 0 bundled skills.
 2. **Agent prompt check:** Send a test message like "Build me a 100M parameter LLM for medical text" and verify the agent references the AI lab skills in its response.
 3. **Python dependency check:** Verify that `python3 --version` and `pip --version` are accessible from the workspace (needed by most skills).

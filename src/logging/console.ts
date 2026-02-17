@@ -1,6 +1,37 @@
 import { createRequire } from "node:module";
 import util from "node:util";
-import type { OpenClawConfig } from "../config/types.js";
+import type { TEXT2LLMConfig } from "../config/types.js";
+import { isVerbose } from "../globals.js";
+import { stripAnsi } from "../terminal/ansi.js";
+import { readLoggingConfig } from "./config.js";
+import { type LogLevel, normalizeLogLevel } from "./levels.js";
+import { getLogger, type LoggerSettings } from "./logger.js";
+import { loggingState } from "./state.js";
+
+export type ConsoleStyle = "pretty" | "compact" | "json";
+type ConsoleSettings = {
+  level: LogLevel;
+  style: ConsoleStyle;
+};
+export type ConsoleLoggerSettings = ConsoleSettings;
+
+const requireConfig = createRequire(import.meta.url);
+
+function normalizeConsoleLevel(level?: string): LogLevel {
+  if (isVerbose()) {
+    return "debug";
+  }
+  return normalizeLogLevel(level, "info");
+}
+
+function normalizeConsoleStyle(style?: string): ConsoleStyle {
+  if (style === "compact" || style === "json" || style === "pretty") {
+    return style;
+  }
+  if (!process.stdout.isTTY) {
+    reimport { createRequire } from "node:module";
+import util from "node:util";
+import type { TEXT2LLMConfig } from "../config/types.js";
 import { isVerbose } from "../globals.js";
 import { stripAnsi } from "../terminal/ansi.js";
 import { readLoggingConfig } from "./config.js";
@@ -35,7 +66,7 @@ function normalizeConsoleStyle(style?: string): ConsoleStyle {
 }
 
 function resolveConsoleSettings(): ConsoleSettings {
-  let cfg: OpenClawConfig["logging"] | undefined =
+  let cfg: TEXT2LLMConfig["logging"] | undefined =
     (loggingState.overrideSettings as LoggerSettings | null) ?? readLoggingConfig();
   if (!cfg) {
     if (loggingState.resolvingConsoleSettings) {
@@ -44,7 +75,7 @@ function resolveConsoleSettings(): ConsoleSettings {
       loggingState.resolvingConsoleSettings = true;
       try {
         const loaded = requireConfig("../config/config.js") as {
-          loadConfig?: () => OpenClawConfig;
+          loadConfig?: () => TEXT2LLMConfig;
         };
         cfg = loaded.loadConfig?.().logging;
       } catch {

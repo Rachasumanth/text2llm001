@@ -1,12 +1,12 @@
 {
-  "name": "@openclaw/irc",
+  "name": "@text2llm/irc",
   "version": "2026.2.13",
-  "description": "OpenClaw IRC channel plugin",
+  "description": "text2llm IRC channel plugin",
   "type": "module",
   "devDependencies": {
-    "openclaw": "workspace:*"
+    "text2llm": "workspace:*"
   },
-  "openclaw": {
+  "text2llm": {
     "extensions": [
       "./index.ts"
     ]

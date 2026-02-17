@@ -6,7 +6,7 @@ import {
   MarkdownConfigSchema,
   ToolPolicySchema,
   requireOpenAllowFrom,
-} from "openclaw/plugin-sdk";
+} from "text2llm/plugin-sdk";
 import { z } from "zod";
 
 export const NextcloudTalkRoomSchema = z

@@ -1,0 +1,14 @@
+[Unit]
+Description=text2llm Auth Expiry Monitor
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/home/admin/text2llm/scripts/auth-monitor.sh
+# Configure notification channels via environment
+Environment=WARN_HOURS=2
+# Environment=NOTIFY_PHONE=+1234567890
+# Environment=NOTIFY_NTFY=text2llm-alerts
+
+[Install]
+WantedBy=default.target

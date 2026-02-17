@@ -3,13 +3,13 @@ import type {
   ChannelOutboundAdapter,
   ChannelPlugin,
   ChannelSetupInput,
-  OpenClawConfig,
-} from "openclaw/plugin-sdk";
+  Text2llmConfig,
+} from "text2llm/plugin-sdk";
 import {
   applyAccountNameToChannelSection,
   DEFAULT_ACCOUNT_ID,
   normalizeAccountId,
-} from "openclaw/plugin-sdk";
+} from "text2llm/plugin-sdk";
 import { tlonChannelConfigSchema } from "./config-schema.js";
 import { monitorTlonProvider } from "./monitor/index.js";
 import { tlonOnboardingAdapter } from "./onboarding.js";
@@ -30,10 +30,10 @@ type TlonSetupInput = ChannelSetupInput & {
 };
 
 function applyTlonSetupConfig(params: {
-  cfg: OpenClawConfig;
+  cfg: Text2llmConfig;
   accountId: string;
   input: TlonSetupInput;
-}): OpenClawConfig {
+}): Text2llmConfig {
   const { cfg, accountId, input } = params;
   const useDefault = accountId === DEFAULT_ACCOUNT_ID;
   const namedConfig = applyAccountNameToChannelSection({
@@ -203,7 +203,7 @@ export const tlonPlugin: ChannelPlugin = {
               enabled,
             },
           },
-        } as OpenClawConfig;
+        } as Text2llmConfig;
       }
       return {
         ...cfg,
@@ -220,7 +220,7 @@ export const tlonPlugin: ChannelPlugin = {
             },
           },
         },
-      } as OpenClawConfig;
+      } as Text2llmConfig;
     },
     deleteAccount: ({ cfg, accountId }) => {
       const useDefault = !accountId || accountId === "default";
@@ -236,7 +236,7 @@ export const tlonPlugin: ChannelPlugin = {
             ...cfg.channels,
             tlon: rest,
           },
-        } as OpenClawConfig;
+        } as Text2llmConfig;
       }
       // oxlint-disable-next-line no-unused-vars
       const { [accountId]: removed, ...remainingAccounts } = (cfg.channels?.tlon?.accounts ??
@@ -250,7 +250,7 @@ export const tlonPlugin: ChannelPlugin = {
             accounts: remainingAccounts,
           },
         },
-      } as OpenClawConfig;
+      } as Text2llmConfig;
     },
     isConfigured: (account) => account.configured,
     describeAccount: (account) => ({

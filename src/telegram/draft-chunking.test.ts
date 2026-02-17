@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { OpenClawConfig } from "../../config/config.js";
+import type { TEXT2LLMConfig } from "../../config/config.js";
 import { resolveTelegramDraftStreamingChunking } from "./draft-chunking.js";
 
 describe("resolveTelegramDraftStreamingChunking", () => {
@@ -13,7 +13,7 @@ describe("resolveTelegramDraftStreamingChunking", () => {
   });
 
   it("clamps to telegram.textChunkLimit", () => {
-    const cfg: OpenClawConfig = {
+    const cfg: TEXT2LLMConfig = {
       channels: { telegram: { allowFrom: ["*"], textChunkLimit: 150 } },
     };
     const chunking = resolveTelegramDraftStreamingChunking(cfg, "default");
@@ -25,7 +25,38 @@ describe("resolveTelegramDraftStreamingChunking", () => {
   });
 
   it("supports per-account overrides", () => {
-    const cfg: OpenClawConfig = {
+    const cfg: TEXT2LLMConfig = {
+      channels: {
+        telegram: {
+          allowFrom: ["*"],
+   import { describe, expect, it } from "vitest";
+import type { TEXT2LLMConfig } from "../../config/config.js";
+import { resolveTelegramDraftStreamingChunking } from "./draft-chunking.js";
+
+describe("resolveTelegramDraftStreamingChunking", () => {
+  it("uses smaller defaults than block streaming", () => {
+    const chunking = resolveTelegramDraftStreamingChunking(undefined, "default");
+    expect(chunking).toEqual({
+      minChars: 200,
+      maxChars: 800,
+      breakPreference: "paragraph",
+    });
+  });
+
+  it("clamps to telegram.textChunkLimit", () => {
+    const cfg: TEXT2LLMConfig = {
+      channels: { telegram: { allowFrom: ["*"], textChunkLimit: 150 } },
+    };
+    const chunking = resolveTelegramDraftStreamingChunking(cfg, "default");
+    expect(chunking).toEqual({
+      minChars: 150,
+      maxChars: 150,
+      breakPreference: "paragraph",
+    });
+  });
+
+  it("supports per-account overrides", () => {
+    const cfg: TEXT2LLMConfig = {
       channels: {
         telegram: {
           allowFrom: ["*"],

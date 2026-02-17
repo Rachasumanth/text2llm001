@@ -1,4 +1,4 @@
-import type { OpenClawConfig } from "../config/config.js";
+import type { TEXT2LLMConfig } from "../config/config.js";
 import type { RuntimeEnv } from "../runtime.js";
 import { resolveGatewayPort } from "../config/config.js";
 import { findTailscaleBinary } from "../infra/tailscale.js";
@@ -10,10 +10,39 @@ import { guardCancel, normalizeGatewayTokenInput, randomToken } from "./onboard-
 type GatewayAuthChoice = "token" | "password";
 
 export async function promptGatewayConfig(
-  cfg: OpenClawConfig,
+  cfg: TEXT2LLMConfig,
   runtime: RuntimeEnv,
 ): Promise<{
-  config: OpenClawConfig;
+  config: TEXT2LLMConfig;
+  port: number;
+  token?: string;
+}> {
+  const portRaw = guardCancel(
+    await text({
+      message: "Gateway port",
+      initialValue: String(resolveGatewayPort(cfg)),
+      validate: (value) => (Number.isFinite(Number(value)) ? undefined : "Invalid port"),
+    }),
+    runtime,
+  );
+  const port = Number.parseInt(String(portRaw), 10);
+
+  let binimport type { TEXT2LLMConfig } from "../config/config.js";
+import type { RuntimeEnv } from "../runtime.js";
+import { resolveGatewayPort } from "../config/config.js";
+import { findTailscaleBinary } from "../infra/tailscale.js";
+import { note } from "../terminal/note.js";
+import { buildGatewayAuthConfig } from "./configure.gateway-auth.js";
+import { confirm, select, text } from "./configure.shared.js";
+import { guardCancel, normalizeGatewayTokenInput, randomToken } from "./onboard-helpers.js";
+
+type GatewayAuthChoice = "token" | "password";
+
+export async function promptGatewayConfig(
+  cfg: TEXT2LLMConfig,
+  runtime: RuntimeEnv,
+): Promise<{
+  config: TEXT2LLMConfig;
   port: number;
   token?: string;
 }> {
@@ -144,7 +173,7 @@ export async function promptGatewayConfig(
   let tailscaleResetOnExit = false;
   if (tailscaleMode !== "off") {
     note(
-      ["Docs:", "https://docs.openclaw.ai/gateway/tailscale", "https://docs.openclaw.ai/web"].join(
+      ["Docs:", "https://docs.text2llm.ai/gateway/tailscale", "https://docs.text2llm.ai/web"].join(
         "\n",
       ),
       "Tailscale",

@@ -1,5 +1,24 @@
 import { Type } from "@sinclair/typebox";
-import type { OpenClawConfig } from "../../config/config.js";
+import type { TEXT2LLMConfig } from "../../config/config.js";
+import type { AnyAgentTool } from "./common.js";
+import { BLUEBUBBLES_GROUP_ACTIONS } from "../../channels/plugins/bluebubbles-actions.js";
+import {
+  listChannelMessageActions,
+  supportsChannelMessageButtons,
+  supportsChannelMessageCards,
+} from "../../channels/plugins/message-actions.js";
+import {
+  CHANNEL_MESSAGE_ACTION_NAMES,
+  type ChannelMessageActionName,
+} from "../../channels/plugins/types.js";
+import { loadConfig } from "../../config/config.js";
+import { GATEWAY_CLIENT_IDS, GATEWAY_CLIENT_MODES } from "../../gateway/protocol/client-info.js";
+import { getToolResult, runMessageAction } from "../../infra/outbound/message-action-runner.js";
+import { normalizeTargetForProvider } from "../../infra/outbound/target-normalization.js";
+import { normalizeAccountId } from "../../routing/session-key.js";
+import { stripReasoningTagsFromText } from "../../shared/text/reasoning-tags.js";
+import { normalizeMessimport { Type } from "@sinclair/typebox";
+import type { TEXT2LLMConfig } from "../../config/config.js";
 import type { AnyAgentTool } from "./common.js";
 import { BLUEBUBBLES_GROUP_ACTIONS } from "../../channels/plugins/bluebubbles-actions.js";
 import {
@@ -294,7 +313,7 @@ const MessageToolSchema = buildMessageToolSchemaFromActions(AllMessageActions, {
 type MessageToolOptions = {
   agentAccountId?: string;
   agentSessionKey?: string;
-  config?: OpenClawConfig;
+  config?: TEXT2LLMConfig;
   currentChannelId?: string;
   currentChannelProvider?: string;
   currentThreadTs?: string;
@@ -304,7 +323,7 @@ type MessageToolOptions = {
   requireExplicitTarget?: boolean;
 };
 
-function buildMessageToolSchema(cfg: OpenClawConfig) {
+function buildMessageToolSchema(cfg: TEXT2LLMConfig) {
   const actions = listChannelMessageActions(cfg);
   const includeButtons = supportsChannelMessageButtons(cfg);
   const includeCards = supportsChannelMessageCards(cfg);
@@ -350,7 +369,7 @@ function filterActionsForContext(params: {
 }
 
 function buildMessageToolDescription(options?: {
-  config?: OpenClawConfig;
+  config?: TEXT2LLMConfig;
   currentChannel?: string;
   currentChannelId?: string;
 }): string {

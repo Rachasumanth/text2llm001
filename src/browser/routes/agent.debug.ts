@@ -3,11 +3,35 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { BrowserRouteContext } from "../server-context.js";
 import type { BrowserRouteRegistrar } from "./types.js";
-import { resolvePreferredOpenClawTmpDir } from "../../infra/tmp-openclaw-dir.js";
+import { resolvePreferredTEXT2LLMTmpDir } from "../../infra/tmp-text2llm-dir.js";
 import { handleRouteError, readBody, requirePwAi, resolveProfileContext } from "./agent.shared.js";
 import { toBoolean, toStringOrEmpty } from "./utils.js";
 
-const DEFAULT_TRACE_DIR = resolvePreferredOpenClawTmpDir();
+const DEFAULT_TRACE_DIR = resolvePreferredTEXT2LLMTmpDir();
+
+export function registerBrowserAgentDebugRoutes(
+  app: BrowserRouteRegistrar,
+  ctx: BrowserRouteContext,
+) {
+  app.get("/console", async (req, res) => {
+    const profileCtx = resolveProfileContext(req, res, ctx);
+    if (!profileCtx) {
+      return;
+    }
+    const targetId = typeof req.query.targetId === "string" ? req.query.targetId.trim() : "";
+    const level = typeof req.query.level === "string" ? req.query.level : "";
+
+    try {
+      const tab = await profileCtx.ensureTabAvailable(targetimport crypto from "node:crypto";
+import fs from "node:fs/promises";
+import path from "node:path";
+import type { BrowserRouteContext } from "../server-context.js";
+import type { BrowserRouteRegistrar } from "./types.js";
+import { resolvePreferredTEXT2LLMTmpDir } from "../../infra/tmp-text2llm-dir.js";
+import { handleRouteError, readBody, requirePwAi, resolveProfileContext } from "./agent.shared.js";
+import { toBoolean, toStringOrEmpty } from "./utils.js";
+
+const DEFAULT_TRACE_DIR = resolvePreferredTEXT2LLMTmpDir();
 
 export function registerBrowserAgentDebugRoutes(
   app: BrowserRouteRegistrar,

@@ -1,5 +1,30 @@
 import { Type } from "@sinclair/typebox";
-import type { OpenClawConfig } from "../../config/config.js";
+import type { TEXT2LLMConfig } from "../../config/config.js";
+import type { AnyAgentTool } from "./common.js";
+import { normalizeGroupActivation } from "../../auto-reply/group-activation.js";
+import { getFollowupQueueDepth, resolveQueueSettings } from "../../auto-reply/reply/queue.js";
+import { buildStatusMessage } from "../../auto-reply/status.js";
+import { loadConfig } from "../../config/config.js";
+import {
+  loadSessionStore,
+  resolveStorePath,
+  type SessionEntry,
+  updateSessionStore,
+} from "../../config/sessions.js";
+import { loadCombinedSessionStoreForGateway } from "../../gateway/session-utils.js";
+import {
+  formatUsageWindowSummary,
+  loadProviderUsageSummary,
+  resolveUsageProviderId,
+} from "../../infra/provider-usage.js";
+import {
+  buildAgentMainSessionKey,
+  DEFAULT_AGENT_ID,
+  resolveAgentIdFromSessionKey,
+} from "../../routing/session-key.js";
+import { applyModelOverrideToSessionEntry } from "../../sessions/model-overrides.js";
+import { resolveAgenimport { Type } from "@sinclair/typebox";
+import type { TEXT2LLMConfig } from "../../config/config.js";
 import type { AnyAgentTool } from "./common.js";
 import { normalizeGroupActivation } from "../../auto-reply/group-activation.js";
 import { getFollowupQueueDepth, resolveQueueSettings } from "../../auto-reply/reply/queue.js";
@@ -66,7 +91,7 @@ function formatApiKeySnippet(apiKey: string): string {
 
 function resolveModelAuthLabel(params: {
   provider?: string;
-  cfg: OpenClawConfig;
+  cfg: TEXT2LLMConfig;
   sessionEntry?: SessionEntry;
   agentDir?: string;
 }): string | undefined {
@@ -164,7 +189,7 @@ function resolveSessionEntry(params: {
 }
 
 function resolveSessionKeyFromSessionId(params: {
-  cfg: OpenClawConfig;
+  cfg: TEXT2LLMConfig;
   sessionId: string;
   agentId?: string;
 }): string | null {
@@ -186,7 +211,7 @@ function resolveSessionKeyFromSessionId(params: {
 }
 
 async function resolveModelOverride(params: {
-  cfg: OpenClawConfig;
+  cfg: TEXT2LLMConfig;
   raw: string;
   sessionEntry?: SessionEntry;
   agentId: string;
@@ -250,7 +275,7 @@ async function resolveModelOverride(params: {
 
 export function createSessionStatusTool(opts?: {
   agentSessionKey?: string;
-  config?: OpenClawConfig;
+  config?: TEXT2LLMConfig;
 }): AnyAgentTool {
   return {
     label: "Session Status",

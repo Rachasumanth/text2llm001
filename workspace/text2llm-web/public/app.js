@@ -116,7 +116,7 @@ function isDiagnosticLine(line) {
     trimmed.startsWith("[tools]") ||
     trimmed.startsWith("[agent/embedded]") ||
     trimmed.startsWith("[diagnostic]") ||
-    trimmed.startsWith("🦞 OpenClaw") ||
+    trimmed.startsWith("🦞 text2llm") ||
     trimmed.includes("google tool schema snapshot") ||
     trimmed.includes("allowlist contains unknown entries") ||
     trimmed.startsWith("At line:") ||
@@ -660,6 +660,37 @@ function addMessage(role, content) {
   return bubble;
 }
 
+const TOOL_ICONS = {
+  read: "📄", write: "✏️", edit: "✏️", create: "📝",
+  exec: "⚡", bash: "⚡", shell: "⚡",
+  search: "🔍", grep: "🔍", find: "🔍",
+  list: "📂", ls: "📂",
+  ask: "💬", chat: "💬",
+  web: "🌐", fetch: "🌐", curl: "🌐",
+  think: "🧠", plan: "🧠",
+  default: "⚙️"
+};
+
+function getToolIcon(toolName) {
+  if (!toolName) return TOOL_ICONS.default;
+  const key = toolName.toLowerCase().replace(/[^a-z]/g, "");
+  for (const [k, v] of Object.entries(TOOL_ICONS)) {
+    if (key.includes(k)) return v;
+  }
+  return TOOL_ICONS.default;
+}
+
+function getToolLabel(toolName, meta) {
+  const name = toolName || "action";
+  if (meta) {
+    // Show short path: last 2 segments
+    const parts = meta.replace(/\\/g, "/").split("/");
+    const short = parts.length > 2 ? parts.slice(-2).join("/") : meta;
+    return `${name} ${short}`;
+  }
+  return name;
+}
+
 function addThinkingIndicator() {
   const msg = document.createElement("div");
   msg.className = "message bot";
@@ -672,8 +703,11 @@ function addThinkingIndicator() {
   const bubble = document.createElement("div");
   bubble.className = "message-bubble thinking";
   bubble.innerHTML = `
-    <div class="thinking-status">Thinking...</div>
-    <div class="thinking-dots"><span></span><span></span><span></span></div>
+    <div class="thinking-status">
+      <div class="thinking-dots"><span></span><span></span><span></span></div>
+      Working...
+    </div>
+    <div class="thinking-actions"></div>
     <div class="thinking-elapsed">0s</div>
   `;
 
@@ -687,19 +721,13 @@ function addThinkingIndicator() {
   }
   thinkingTicker = setInterval(() => {
     const elapsedEl = document.querySelector("#thinking-msg .thinking-elapsed");
-    if (!elapsedEl || !thinkingStartedAt) {
-      return;
-    }
-
-    const elapsedMs = Date.now() - thinkingStartedAt;
-    const seconds = Math.floor(elapsedMs / 1000);
+    if (!elapsedEl || !thinkingStartedAt) return;
+    const seconds = Math.floor((Date.now() - thinkingStartedAt) / 1000);
     if (seconds >= 60) {
-      const mins = Math.floor(seconds / 60);
-      const rem = seconds % 60;
-      elapsedEl.textContent = `${mins}m ${rem}s`;
-      return;
+      elapsedEl.textContent = `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+    } else {
+      elapsedEl.textContent = `${seconds}s`;
     }
-    elapsedEl.textContent = `${seconds}s`;
   }, 1000);
 
   scrollToBottom();
@@ -707,13 +735,124 @@ function addThinkingIndicator() {
 
 function updateThinkingIndicator(statusText) {
   const statusEl = document.querySelector("#thinking-msg .thinking-status");
-  if (!statusEl) {
+  if (!statusEl) return;
+  const next = sanitizeAgentText(statusText || "") || lastThinkingStatus || "Working...";
+  lastThinkingStatus = next;
+  // Keep the dots + text
+  const dots = statusEl.querySelector(".thinking-dots");
+  if (dots) {
+    // Preserve dots, update text after them
+    statusEl.childNodes.forEach(n => { if (n.nodeType === 3) n.remove(); });
+    statusEl.appendChild(document.createTextNode(" " + next));
+  } else {
+    statusEl.textContent = next;
+  }
+}
+
+function handleThinkingEvent(data) {
+  const actionsEl = document.querySelector("#thinking-msg .thinking-actions");
+  if (!actionsEl) return;
+
+  if (data.phase === "start" && data.tool) {
+    const row = document.createElement("div");
+    row.className = "thinking-action running";
+    row.dataset.tool = data.tool;
+    row.innerHTML = `
+      <span class="thinking-action-icon">${getToolIcon(data.tool)}</span>
+      <span class="thinking-action-label">${getToolLabel(data.tool, data.meta)}</span>
+      <span class="thinking-action-status">⟳</span>
+    `;
+    actionsEl.appendChild(row);
+    actionsEl.scrollTop = actionsEl.scrollHeight;
+
+    // Update thinking status header with action count
+    const count = actionsEl.querySelectorAll(".thinking-action").length;
+    updateThinkingIndicator(`${count} action${count !== 1 ? "s" : ""}`);
+    scrollToBottom();
+  }
+
+  if (data.phase === "end" && data.tool) {
+    // Find the last running action with this tool name
+    const rows = actionsEl.querySelectorAll(`.thinking-action.running[data-tool="${data.tool}"]`);
+    const row = rows[rows.length - 1];
+    if (row) {
+      row.classList.remove("running");
+      row.classList.add("done");
+      const statusIcon = row.querySelector(".thinking-action-status");
+      if (statusIcon) statusIcon.textContent = "✓";
+    }
+  }
+
+  if (data.phase === "info" && data.text) {
+    updateThinkingIndicator(data.text);
+  }
+}
+
+function updateProgressSummary() {
+  const actionsEl = document.querySelector("#thinking-msg .thinking-actions");
+  if (!actionsEl) return;
+  const total = actionsEl.querySelectorAll(".thinking-action").length;
+  if (total === 0) return;
+  const done = actionsEl.querySelectorAll(".thinking-action.done").length;
+  const running = actionsEl.querySelectorAll(".thinking-action.running").length;
+  if (running > 0) {
+    updateThinkingIndicator(`${done}/${total} steps complete`);
+  } else {
+    updateThinkingIndicator(`${done}/${total} steps complete`);
+  }
+}
+
+function handleProgressEvent(data) {
+  const actionsEl = document.querySelector("#thinking-msg .thinking-actions");
+  if (!actionsEl) return;
+
+  const stepId = String(data.id || "").trim();
+  const labelText = sanitizeAgentText(data.label || data.detail || stepId || "Working");
+  const detailText = sanitizeAgentText(data.detail || "");
+  const label = detailText ? `${labelText} — ${detailText}` : labelText;
+  const state = String(data.state || "running").toLowerCase();
+
+  if (!stepId) {
+    if (label) {
+      updateThinkingIndicator(label);
+    }
     return;
   }
 
-  const next = sanitizeAgentText(statusText || "") || lastThinkingStatus || "Thinking...";
-  lastThinkingStatus = next;
-  statusEl.textContent = next;
+  let row = actionsEl.querySelector(`.thinking-action[data-progress-id="${stepId}"]`);
+  if (!row) {
+    row = document.createElement("div");
+    row.className = "thinking-action running";
+    row.dataset.progressId = stepId;
+    row.innerHTML = `
+      <span class="thinking-action-icon">⚙️</span>
+      <span class="thinking-action-label"></span>
+      <span class="thinking-action-status">⟳</span>
+    `;
+    actionsEl.appendChild(row);
+  }
+
+  const labelEl = row.querySelector(".thinking-action-label");
+  if (labelEl) {
+    labelEl.textContent = label || stepId;
+  }
+
+  const statusEl = row.querySelector(".thinking-action-status");
+  row.classList.remove("running", "done", "error");
+  if (state === "done") {
+    row.classList.add("done");
+    if (statusEl) statusEl.textContent = "✓";
+  } else if (state === "error") {
+    row.classList.add("error");
+    if (statusEl) statusEl.textContent = "!";
+  } else {
+    row.classList.add("running");
+    if (statusEl) statusEl.textContent = "⟳";
+  }
+
+  updateProgressSummary();
+  actionsEl.scrollTop = actionsEl.scrollHeight;
+  scrollToBottom();
 }
 
 function removeThinkingIndicator() {
@@ -722,7 +861,7 @@ function removeThinkingIndicator() {
     thinkingTicker = null;
   }
   thinkingStartedAt = 0;
-  lastThinkingStatus = "Thinking...";
+  lastThinkingStatus = "Working...";
   const el = document.getElementById("thinking-msg");
   if (el) el.remove();
 }
@@ -966,7 +1105,7 @@ async function sendMessage(prompt) {
   chatHistory.push({ role: "user", content: prompt });
   syncThreadFromRuntime(true);
   addThinkingIndicator();
-  updateThinkingIndicator("Connecting to OpenClaw...");
+  updateThinkingIndicator("Connecting to text2llm...");
   setStreamingState(true);
 
   abortController = new AbortController();
@@ -1043,6 +1182,18 @@ async function sendMessage(prompt) {
               }
               break;
               }
+
+            case "thinking":
+              if (!botBubble) {
+                handleThinkingEvent(data);
+              }
+              break;
+
+            case "progress":
+              if (!botBubble) {
+                handleProgressEvent(data);
+              }
+              break;
 
             case "heartbeat":
               if (!botBubble) {

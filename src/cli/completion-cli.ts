@@ -26,6 +26,34 @@ export function resolveShellFromEnv(env: NodeJS.ProcessEnv = process.env): Compl
     return "fish";
   }
   if (shellName === "pwsh" || shellName === "powershell") {
+ import { Command, Option } from "commander";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { resolveStateDir } from "../config/paths.js";
+import { pathExists } from "../utils.js";
+import { getSubCliEntries, registerSubCliByName } from "./program/register.subclis.js";
+
+const COMPLETION_SHELLS = ["zsh", "bash", "powershell", "fish"] as const;
+type CompletionShell = (typeof COMPLETION_SHELLS)[number];
+
+function isCompletionShell(value: string): value is CompletionShell {
+  return COMPLETION_SHELLS.includes(value as CompletionShell);
+}
+
+export function resolveShellFromEnv(env: NodeJS.ProcessEnv = process.env): CompletionShell {
+  const shellPath = env.SHELL?.trim() ?? "";
+  const shellName = shellPath ? path.basename(shellPath).toLowerCase() : "";
+  if (shellName === "zsh") {
+    return "zsh";
+  }
+  if (shellName === "bash") {
+    return "bash";
+  }
+  if (shellName === "fish") {
+    return "fish";
+  }
+  if (shellName === "pwsh" || shellName === "powershell") {
     return "powershell";
   }
   return "zsh";
@@ -34,7 +62,7 @@ export function resolveShellFromEnv(env: NodeJS.ProcessEnv = process.env): Compl
 function sanitizeCompletionBasename(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) {
-    return "openclaw";
+    return "text2llm";
   }
   return trimmed.replace(/[^a-zA-Z0-9._-]/g, "-");
 }
@@ -54,7 +82,7 @@ export function resolveCompletionCachePath(shell: CompletionShell, binName: stri
 /** Check if the completion cache file exists for the given shell. */
 export async function completionCacheExists(
   shell: CompletionShell,
-  binName = "openclaw",
+  binName = "text2llm",
 ): Promise<boolean> {
   const cachePath = resolveCompletionCachePath(shell, binName);
   return pathExists(cachePath);
@@ -99,7 +127,7 @@ function formatCompletionSourceLine(
 }
 
 function isCompletionProfileHeader(line: string): boolean {
-  return line.trim() === "# OpenClaw Completion";
+  return line.trim() === "# text2llm Completion";
 }
 
 function isCompletionProfileLine(line: string, binName: string, cachePath: string | null): boolean {
@@ -114,7 +142,7 @@ function isCompletionProfileLine(line: string, binName: string, cachePath: strin
 
 /** Check if a line uses the slow dynamic completion pattern (source <(...)) */
 function isSlowDynamicCompletionLine(line: string, binName: string): boolean {
-  // Matches patterns like: source <(openclaw completion --shell zsh)
+  // Matches patterns like: source <(text2llm completion --shell zsh)
   return (
     line.includes(`<(${binName} completion`) ||
     (line.includes(`${binName} completion`) && line.includes("| source"))
@@ -146,7 +174,7 @@ function updateCompletionProfile(
   }
 
   const trimmed = filtered.join("\n").trimEnd();
-  const block = `# OpenClaw Completion\n${sourceLine}`;
+  const block = `# text2llm Completion\n${sourceLine}`;
   const next = trimmed ? `${trimmed}\n\n${block}\n` : `${block}\n`;
   return { next, changed: next !== content, hadExisting };
 }
@@ -176,7 +204,7 @@ function getShellProfilePath(shell: CompletionShell): string {
 
 export async function isCompletionInstalled(
   shell: CompletionShell,
-  binName = "openclaw",
+  binName = "text2llm",
 ): Promise<boolean> {
   const profilePath = getShellProfilePath(shell);
 
@@ -194,11 +222,11 @@ export async function isCompletionInstalled(
 
 /**
  * Check if the profile uses the slow dynamic completion pattern.
- * Returns true if profile has `source <(openclaw completion ...)` instead of cached file.
+ * Returns true if profile has `source <(text2llm completion ...)` instead of cached file.
  */
 export async function usesSlowDynamicCompletion(
   shell: CompletionShell,
-  binName = "openclaw",
+  binName = "text2llm",
 ): Promise<boolean> {
   const profilePath = getShellProfilePath(shell);
 
@@ -231,7 +259,7 @@ export function registerCompletionCli(program: Command) {
     .option("-i, --install", "Install completion script to shell profile")
     .option(
       "--write-state",
-      "Write completion scripts to $OPENCLAW_STATE_DIR/completions (no stdout)",
+      "Write completion scripts to $TEXT2LLM_STATE_DIR/completions (no stdout)",
     )
     .option("-y, --yes", "Skip confirmation (non-interactive)", false)
     .action(async (options) => {
@@ -273,7 +301,7 @@ export function registerCompletionCli(program: Command) {
     });
 }
 
-export async function installCompletion(shell: string, yes: boolean, binName = "openclaw") {
+export async function installCompletion(shell: string, yes: boolean, binName = "text2llm") {
   const home = process.env.HOME || os.homedir();
   let profilePath = "";
   let sourceLine = "";
@@ -576,7 +604,7 @@ function generateFishCompletion(program: Command): string {
     } // Only push if not root, or consistent root handling
 
     // Fish uses 'seen_subcommand_from' to determine context.
-    // For root: complete -c openclaw -n "__fish_use_subcommand" -a "subcmd" -d "desc"
+    // For root: complete -c text2llm -n "__fish_use_subcommand" -a "subcmd" -d "desc"
 
     // Root logic
     if (parents.length === 0) {
@@ -610,7 +638,7 @@ function generateFishCompletion(program: Command): string {
       // Actually, a robust fish completion often requires defining a function to check current line.
       // For simplicity, we'll assume standard fish helper __fish_seen_subcommand_from.
 
-      // To properly scope to 'openclaw gateway' and not 'openclaw other gateway', we need to check the sequence.
+      // To properly scope to 'text2llm gateway' and not 'text2llm other gateway', we need to check the sequence.
       // A simplified approach:
 
       // Subcommands

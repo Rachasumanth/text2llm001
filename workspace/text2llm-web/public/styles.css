@@ -135,6 +135,13 @@ body {
   color: var(--text);
 }
 
+.app-logo {
+  height: 32px;
+  width: auto;
+  object-fit: contain;
+  border-radius: var(--radius-xs);
+}
+
 .new-chat-btn {
   width: 100%;
   display: flex;
@@ -608,15 +615,7 @@ body {
 }
 
 .message-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.8rem;
-  font-weight: 600;
-  flex-shrink: 0;
+  display: none;
 }
 
 .message.user .message-avatar {
@@ -728,11 +727,103 @@ body {
   background: var(--chip-bg);
 }
 
-/* ── Thinking Indicator ── */
+/* ── Thinking Indicator (Replit-style Action Feed) ── */
 .thinking-status {
   color: var(--text-secondary);
-  font-size: 0.92rem;
-  margin-bottom: 4px;
+  font-size: 0.88rem;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.thinking-elapsed {
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  margin-top: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.thinking-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.thinking-actions::-webkit-scrollbar {
+  width: 4px;
+}
+
+.thinking-actions::-webkit-scrollbar-thumb {
+  background: var(--glass-border);
+  border-radius: 999px;
+}
+
+.thinking-action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  animation: actionSlideIn 0.25s ease-out;
+  min-height: 28px;
+}
+
+@keyframes actionSlideIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.thinking-action-icon {
+  font-size: 0.9rem;
+  width: 20px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.thinking-action-label {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.thinking-action-status {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.thinking-action.running .thinking-action-status {
+  animation: spinnerRotate 0.8s linear infinite;
+  color: var(--primary);
+}
+
+.thinking-action.done {
+  color: var(--text-dim);
+}
+
+.thinking-action.done .thinking-action-status {
+  color: var(--primary);
+}
+
+.thinking-action.error .thinking-action-status {
+  color: #ff6b6b;
+}
+
+@keyframes spinnerRotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .thinking-dots {
@@ -741,15 +832,9 @@ body {
   padding: 4px 0;
 }
 
-.thinking-elapsed {
-  color: var(--text-dim);
-  font-size: 0.8rem;
-  margin-top: 2px;
-}
-
 .thinking-dots span {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: var(--text-dim);
   animation: dotPulse 1.4s infinite ease-in-out both;

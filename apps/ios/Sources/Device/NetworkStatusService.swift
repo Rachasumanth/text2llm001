@@ -1,9 +1,9 @@
 import Foundation
 import Network
-import OpenClawKit
+import Text2llmKit
 
 final class NetworkStatusService: @unchecked Sendable {
-    func currentStatus(timeoutMs: Int = 1500) async -> OpenClawNetworkStatusPayload {
+    func currentStatus(timeoutMs: Int = 1500) async -> Text2llmNetworkStatusPayload {
         await withCheckedContinuation { cont in
             let monitor = NWPathMonitor()
             let queue = DispatchQueue(label: "bot.molt.ios.network-status")
@@ -25,29 +25,29 @@ final class NetworkStatusService: @unchecked Sendable {
         }
     }
 
-    private static func payload(from path: NWPath) -> OpenClawNetworkStatusPayload {
-        let status: OpenClawNetworkPathStatus = switch path.status {
+    private static func payload(from path: NWPath) -> Text2llmNetworkStatusPayload {
+        let status: Text2llmNetworkPathStatus = switch path.status {
         case .satisfied: .satisfied
         case .requiresConnection: .requiresConnection
         case .unsatisfied: .unsatisfied
         @unknown default: .unsatisfied
         }
 
-        var interfaces: [OpenClawNetworkInterfaceType] = []
+        var interfaces: [Text2llmNetworkInterfaceType] = []
         if path.usesInterfaceType(.wifi) { interfaces.append(.wifi) }
         if path.usesInterfaceType(.cellular) { interfaces.append(.cellular) }
         if path.usesInterfaceType(.wiredEthernet) { interfaces.append(.wired) }
         if interfaces.isEmpty { interfaces.append(.other) }
 
-        return OpenClawNetworkStatusPayload(
+        return Text2llmNetworkStatusPayload(
             status: status,
             isExpensive: path.isExpensive,
             isConstrained: path.isConstrained,
             interfaces: interfaces)
     }
 
-    private static func fallbackPayload() -> OpenClawNetworkStatusPayload {
-        OpenClawNetworkStatusPayload(
+    private static func fallbackPayload() -> Text2llmNetworkStatusPayload {
+        Text2llmNetworkStatusPayload(
             status: .unsatisfied,
             isExpensive: false,
             isConstrained: false,

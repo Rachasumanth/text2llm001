@@ -4,8 +4,8 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { UpdateCheckResult } from "./update-check.js";
 
-vi.mock("./openclaw-root.js", () => ({
-  resolveOpenClawPackageRoot: vi.fn(),
+vi.mock("./text2llm-root.js", () => ({
+  resolveTEXT2LLMPackageRoot: vi.fn(),
 }));
 
 vi.mock("./update-check.js", async () => {
@@ -29,8 +29,8 @@ describe("update-startup", () => {
   beforeEach(async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-17T10:00:00Z"));
-    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-update-check-"));
-    process.env.OPENCLAW_STATE_DIR = tempDir;
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "text2llm-update-check-"));
+    process.env.TEXT2LLM_STATE_DIR = tempDir;
     delete process.env.VITEST;
     process.env.NODE_ENV = "test";
   });
@@ -42,13 +42,13 @@ describe("update-startup", () => {
   });
 
   it("logs update hint for npm installs when newer tag exists", async () => {
-    const { resolveOpenClawPackageRoot } = await import("./openclaw-root.js");
+    const { resolveTEXT2LLMPackageRoot } = await import("./text2llm-root.js");
     const { checkUpdateStatus, resolveNpmChannelTag } = await import("./update-check.js");
     const { runGatewayUpdateCheck } = await import("./update-startup.js");
 
-    vi.mocked(resolveOpenClawPackageRoot).mockResolvedValue("/opt/openclaw");
+    vi.mocked(resolveTEXT2LLMPackageRoot).mockResolvedValue("/opt/text2llm");
     vi.mocked(checkUpdateStatus).mockResolvedValue({
-      root: "/opt/openclaw",
+      root: "/opt/text2llm",
       installKind: "package",
       packageManager: "npm",
     } satisfies UpdateCheckResult);
@@ -76,13 +76,13 @@ describe("update-startup", () => {
   });
 
   it("uses latest when beta tag is older than release", async () => {
-    const { resolveOpenClawPackageRoot } = await import("./openclaw-root.js");
+    const { resolveTEXT2LLMPackageRoot } = await import("./text2llm-root.js");
     const { checkUpdateStatus, resolveNpmChannelTag } = await import("./update-check.js");
     const { runGatewayUpdateCheck } = await import("./update-startup.js");
 
-    vi.mocked(resolveOpenClawPackageRoot).mockResolvedValue("/opt/openclaw");
+    vi.mocked(resolveTEXT2LLMPackageRoot).mockResolvedValue("/opt/text2llm");
     vi.mocked(checkUpdateStatus).mockResolvedValue({
-      root: "/opt/openclaw",
+      root: "/opt/text2llm",
       installKind: "package",
       packageManager: "npm",
     } satisfies UpdateCheckResult);

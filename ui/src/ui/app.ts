@@ -28,6 +28,36 @@ import type {
   StatusSummary,
   NostrProfile,
 } from "./types.ts";
+import { LitElement } from "lit";
+import { customElement, state } from "lit/decorators.js";
+import type { EventLogEntry } from "./app-events.ts";
+import type { AppViewState } from "./app-view-state.ts";
+import type { DevicePairingList } from "./controllers/devices.ts";
+import type { ExecApprovalRequest } from "./controllers/exec-approval.ts";
+import type { ExecApprovalsFile, ExecApprovalsSnapshot } from "./controllers/exec-approvals.ts";
+import type { SkillMessage } from "./controllers/skills.ts";
+import type { GatewayBrowserClient, GatewayHelloOk } from "./gateway.ts";
+import type { Tab } from "./navigation.ts";
+import type { ResolvedTheme, ThemeMode } from "./theme.ts";
+import type {
+  AgentsListResult,
+  AgentsFilesListResult,
+  AgentIdentityResult,
+  ConfigSnapshot,
+  ConfigUiHints,
+  CronJob,
+  CronRunLogEntry,
+  CronStatus,
+  HealthSnapshot,
+  LogEntry,
+  LogLevel,
+  PresenceEntry,
+  ChannelsStatusSnapshot,
+  SessionsListResult,
+  SkillStatusReport,
+  StatusSummary,
+  NostrProfile,
+} from "./types.ts";
 import type { NostrProfileFormState } from "./views/channels.nostr-profile-form.ts";
 import {
   handleChannelConfigReload as handleChannelConfigReloadInternal,
@@ -83,7 +113,7 @@ import { type ChatAttachment, type ChatQueueItem, type CronFormState } from "./u
 
 declare global {
   interface Window {
-    __OPENCLAW_CONTROL_UI_BASE_PATH__?: string;
+    __TEXT2LLM_CONTROL_UI_BASE_PATH__?: string;
   }
 }
 
@@ -102,8 +132,8 @@ function resolveOnboardingMode(): boolean {
   return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
 }
 
-@customElement("openclaw-app")
-export class OpenClawApp extends LitElement {
+@customElement("text2llm-app")
+export class TEXT2LLMApp extends LitElement {
   @state() settings: UiSettings = loadSettings();
   @state() password = "";
   @state() tab: Tab = "chat";

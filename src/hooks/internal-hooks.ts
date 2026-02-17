@@ -1,19 +1,19 @@
 /**
- * Hook system for OpenClaw agent events
+ * Hook system for text2llm agent events
  *
  * Provides an extensible event-driven hook system for agent events
  * like command processing, session lifecycle, etc.
  */
 
 import type { WorkspaceBootstrapFile } from "../agents/workspace.js";
-import type { OpenClawConfig } from "../config/config.js";
+import type { TEXT2LLMConfig } from "../config/config.js";
 
 export type InternalHookEventType = "command" | "session" | "agent" | "gateway";
 
 export type AgentBootstrapHookContext = {
   workspaceDir: string;
   bootstrapFiles: WorkspaceBootstrapFile[];
-  cfg?: OpenClawConfig;
+  cfg?: TEXT2LLMConfig;
   sessionKey?: string;
   sessionId?: string;
   agentId?: string;

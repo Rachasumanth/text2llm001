@@ -1,4 +1,4 @@
-import type { OpenClawConfig } from "openclaw/plugin-sdk";
+import type { Text2llmConfig } from "text2llm/plugin-sdk";
 import type { ZaloFetch } from "./api.js";
 import { resolveZaloAccount } from "./accounts.js";
 import { sendMessage, sendPhoto } from "./api.js";
@@ -8,7 +8,7 @@ import { resolveZaloToken } from "./token.js";
 export type ZaloSendOptions = {
   token?: string;
   accountId?: string;
-  cfg?: OpenClawConfig;
+  cfg?: Text2llmConfig;
   mediaUrl?: string;
   caption?: string;
   verbose?: boolean;

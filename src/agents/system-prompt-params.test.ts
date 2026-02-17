@@ -2,18 +2,50 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import type { OpenClawConfig } from "../config/config.js";
+import type { TEXT2LLMConfig } from "../config/config.js";
 import { buildSystemPromptParams } from "./system-prompt-params.js";
 
 async function makeTempDir(label: string): Promise<string> {
-  return fs.mkdtemp(path.join(os.tmpdir(), `openclaw-${label}-`));
+  return fs.mkdtemp(path.join(os.tmpdir(), `text2llm-${label}-`));
 }
 
 async function makeRepoRoot(root: string): Promise<void> {
   await fs.mkdir(path.join(root, ".git"), { recursive: true });
 }
 
-function buildParams(params: { config?: OpenClawConfig; workspaceDir?: string; cwd?: string }) {
+function buildParams(params: { config?: TEXT2LLMConfig; workspaceDir?: string; cwd?: string }) {
+  return buildSystemPromptParams({
+    config: params.config,
+    workspaceDir: params.workspaceDir,
+    cwd: params.cwd,
+    runtime: {
+      host: "host",
+      os: "os",
+      arch: "arch",
+      node: "node",
+      model: "model",
+    },
+  });
+}
+
+describe("buildSystemPromptParams repo root", () => {
+  it("detects repo root from workspaceDir", async () => {
+    const temp = await makeTempDir("workimport fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { describe, expect, it } from "vitest";
+import type { TEXT2LLMConfig } from "../config/config.js";
+import { buildSystemPromptParams } from "./system-prompt-params.js";
+
+async function makeTempDir(label: string): Promise<string> {
+  return fs.mkdtemp(path.join(os.tmpdir(), `text2llm-${label}-`));
+}
+
+async function makeRepoRoot(root: string): Promise<void> {
+  await fs.mkdir(path.join(root, ".git"), { recursive: true });
+}
+
+function buildParams(params: { config?: TEXT2LLMConfig; workspaceDir?: string; cwd?: string }) {
   return buildSystemPromptParams({
     config: params.config,
     workspaceDir: params.workspaceDir,
@@ -61,7 +93,7 @@ describe("buildSystemPromptParams repo root", () => {
     await fs.mkdir(workspaceDir, { recursive: true });
     await makeRepoRoot(workspaceDir);
 
-    const config: OpenClawConfig = {
+    const config: TEXT2LLMConfig = {
       agents: {
         defaults: {
           repoRoot,
@@ -81,7 +113,7 @@ describe("buildSystemPromptParams repo root", () => {
     await fs.mkdir(workspaceDir, { recursive: true });
     await makeRepoRoot(repoRoot);
 
-    const config: OpenClawConfig = {
+    const config: TEXT2LLMConfig = {
       agents: {
         defaults: {
           repoRoot: path.join(temp, "missing"),

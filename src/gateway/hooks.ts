@@ -1,7 +1,35 @@
 import type { IncomingMessage } from "node:http";
 import { randomUUID } from "node:crypto";
 import type { ChannelId } from "../channels/plugins/types.js";
-import type { OpenClawConfig } from "../config/config.js";
+import type { TEXT2LLMConfig } from "../config/config.js";
+import { listAgentIds, resolveDefaultAgentId } from "../agents/agent-scope.js";
+import { listChannelPlugins } from "../channels/plugins/index.js";
+import { normalizeAgentId } from "../routing/session-key.js";
+import { normalizeMessageChannel } from "../utils/message-channel.js";
+import { type HookMappingResolved, resolveHookMappings } from "./hooks-mapping.js";
+
+const DEFAULT_HOOKS_PATH = "/hooks";
+const DEFAULT_HOOKS_MAX_BODY_BYTES = 256 * 1024;
+
+export type HooksConfigResolved = {
+  basePath: string;
+  token: string;
+  maxBodyBytes: number;
+  mappings: HookMappingResolved[];
+  agentPolicy: HookAgentPolicyResolved;
+  sessionPolicy: HookSessionPolicyResolved;
+};
+
+export type HookAgentPolicyResolved = {
+  defaultAgentId: string;
+  knownAgentIds: Set<string>;
+  allowedAgentIds?: Set<string>;
+};
+
+exporimport type { IncomingMessage } from "node:http";
+import { randomUUID } from "node:crypto";
+import type { ChannelId } from "../channels/plugins/types.js";
+import type { TEXT2LLMConfig } from "../config/config.js";
 import { listAgentIds, resolveDefaultAgentId } from "../agents/agent-scope.js";
 import { listChannelPlugins } from "../channels/plugins/index.js";
 import { normalizeAgentId } from "../routing/session-key.js";
@@ -32,7 +60,7 @@ export type HookSessionPolicyResolved = {
   allowedSessionKeyPrefixes?: string[];
 };
 
-export function resolveHooksConfig(cfg: OpenClawConfig): HooksConfigResolved | null {
+export function resolveHooksConfig(cfg: TEXT2LLMConfig): HooksConfigResolved | null {
   if (cfg.hooks?.enabled !== true) {
     return null;
   }
@@ -92,7 +120,7 @@ export function resolveHooksConfig(cfg: OpenClawConfig): HooksConfigResolved | n
   };
 }
 
-function resolveKnownAgentIds(cfg: OpenClawConfig, defaultAgentId: string): Set<string> {
+function resolveKnownAgentIds(cfg: TEXT2LLMConfig, defaultAgentId: string): Set<string> {
   const known = new Set(listAgentIds(cfg));
   known.add(defaultAgentId);
   return known;
@@ -164,8 +192,8 @@ export function extractHookToken(req: IncomingMessage): string | undefined {
     }
   }
   const headerToken =
-    typeof req.headers["x-openclaw-token"] === "string"
-      ? req.headers["x-openclaw-token"].trim()
+    typeof req.headers["x-text2llm-token"] === "string"
+      ? req.headers["x-text2llm-token"].trim()
       : "";
   if (headerToken) {
     return headerToken;

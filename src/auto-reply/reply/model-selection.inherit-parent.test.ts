@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { OpenClawConfig } from "../../config/config.js";
+import type { TEXT2LLMConfig } from "../../config/config.js";
 import { createModelSelectionState } from "./model-selection.js";
 
 vi.mock("../../agents/model-catalog.js", () => ({
@@ -20,7 +20,38 @@ const makeEntry = (overrides: Record<string, unknown> = {}) => ({
 });
 
 async function resolveState(params: {
-  cfg: OpenClawConfig;
+  cfg: TEXT2LLMConfig;
+  sessionEntry: ReturnType<typeof makeEntry>;
+  sessionStore: Record<string, ReturnType<typeof makeEntry>>;
+  sessionKey: string;
+  parentSessionKey?: string;
+}) {
+  return createModelSelectionState({
+    cfg: params.cfg,
+    agentCfg: params.cfg.agents?.defaults,
+ import { describe, expect, it, vi } from "vitest";
+import type { TEXT2LLMConfig } from "../../config/config.js";
+import { createModelSelectionState } from "./model-selection.js";
+
+vi.mock("../../agents/model-catalog.js", () => ({
+  loadModelCatalog: vi.fn(async () => [
+    { provider: "openai", id: "gpt-4o-mini", name: "GPT-4o mini" },
+    { provider: "openai", id: "gpt-4o", name: "GPT-4o" },
+    { provider: "anthropic", id: "claude-opus-4-5", name: "Claude Opus 4.5" },
+  ]),
+}));
+
+const defaultProvider = "openai";
+const defaultModel = "gpt-4o-mini";
+
+const makeEntry = (overrides: Record<string, unknown> = {}) => ({
+  sessionId: "session-id",
+  updatedAt: Date.now(),
+  ...overrides,
+});
+
+async function resolveState(params: {
+  cfg: TEXT2LLMConfig;
   sessionEntry: ReturnType<typeof makeEntry>;
   sessionStore: Record<string, ReturnType<typeof makeEntry>>;
   sessionKey: string;
@@ -43,7 +74,7 @@ async function resolveState(params: {
 
 describe("createModelSelectionState parent inheritance", () => {
   it("inherits parent override from explicit parentSessionKey", async () => {
-    const cfg = {} as OpenClawConfig;
+    const cfg = {} as TEXT2LLMConfig;
     const parentKey = "agent:main:discord:channel:c1";
     const sessionKey = "agent:main:discord:channel:c1:thread:123";
     const parentEntry = makeEntry({
@@ -69,7 +100,7 @@ describe("createModelSelectionState parent inheritance", () => {
   });
 
   it("derives parent key from topic session suffix", async () => {
-    const cfg = {} as OpenClawConfig;
+    const cfg = {} as TEXT2LLMConfig;
     const parentKey = "agent:main:telegram:group:123";
     const sessionKey = "agent:main:telegram:group:123:topic:99";
     const parentEntry = makeEntry({
@@ -94,7 +125,7 @@ describe("createModelSelectionState parent inheritance", () => {
   });
 
   it("prefers child override over parent", async () => {
-    const cfg = {} as OpenClawConfig;
+    const cfg = {} as TEXT2LLMConfig;
     const parentKey = "agent:main:telegram:group:123";
     const sessionKey = "agent:main:telegram:group:123:topic:99";
     const parentEntry = makeEntry({
@@ -130,7 +161,7 @@ describe("createModelSelectionState parent inheritance", () => {
           },
         },
       },
-    } as OpenClawConfig;
+    } as TEXT2LLMConfig;
     const parentKey = "agent:main:slack:channel:c1";
     const sessionKey = "agent:main:slack:channel:c1:thread:123";
     const parentEntry = makeEntry({
@@ -155,7 +186,7 @@ describe("createModelSelectionState parent inheritance", () => {
   });
 
   it("applies stored override when heartbeat override was not resolved", async () => {
-    const cfg = {} as OpenClawConfig;
+    const cfg = {} as TEXT2LLMConfig;
     const sessionKey = "agent:main:discord:channel:c1";
     const sessionEntry = makeEntry({
       providerOverride: "openai",
@@ -184,7 +215,7 @@ describe("createModelSelectionState parent inheritance", () => {
   });
 
   it("skips stored override when heartbeat override was resolved", async () => {
-    const cfg = {} as OpenClawConfig;
+    const cfg = {} as TEXT2LLMConfig;
     const sessionKey = "agent:main:discord:channel:c1";
     const sessionEntry = makeEntry({
       providerOverride: "openai",

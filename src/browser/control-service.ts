@@ -82,7 +82,7 @@ export async function stopBrowserControlService(): Promise<void> {
       }
     }
   } catch (err) {
-    logService.warn(`openclaw browser stop failed: ${String(err)}`);
+    logService.warn(`text2llm browser stop failed: ${String(err)}`);
   }
 
   state = null;

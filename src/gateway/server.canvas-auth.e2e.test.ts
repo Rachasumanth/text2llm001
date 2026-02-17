@@ -10,28 +10,47 @@ import { A2UI_PATH, CANVAS_HOST_PATH, CANVAS_WS_PATH } from "../canvas-host/a2ui
 import { attachGatewayUpgradeHandler, createGatewayHttpServer } from "./server-http.js";
 
 async function withTempConfig(params: { cfg: unknown; run: () => Promise<void> }): Promise<void> {
-  const prevConfigPath = process.env.OPENCLAW_CONFIG_PATH;
-  const prevDisableCache = process.env.OPENCLAW_DISABLE_CONFIG_CACHE;
+  const prevConfigPath = process.env.TEXT2LLM_CONFIG_PATH;
+  const prevDisableCache = process.env.TEXT2LLM_DISABLE_CONFIG_CACHE;
 
-  const dir = await mkdtemp(path.join(os.tmpdir(), "openclaw-canvas-auth-test-"));
-  const configPath = path.join(dir, "openclaw.json");
+  const dir = await mkdtemp(path.join(os.tmpdir(), "text2llm-canvas-auth-test-"));
+  const configPath = path.join(dir, "text2llm.json");
 
-  process.env.OPENCLAW_CONFIG_PATH = configPath;
-  process.env.OPENCLAW_DISABLE_CONFIG_CACHE = "1";
+  process.env.TEXT2LLM_CONFIG_PATH = configPath;
+  process.env.TEXT2LLM_DISABLE_CONFIGimport { mkdtemp, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { describe, expect, test } from "vitest";
+import { WebSocket, WebSocketServer } from "ws";
+import type { CanvasHostHandler } from "../canvas-host/server.js";
+import type { ResolvedGatewayAuth } from "./auth.js";
+import type { GatewayWsClient } from "./server/ws-types.js";
+import { A2UI_PATH, CANVAS_HOST_PATH, CANVAS_WS_PATH } from "../canvas-host/a2ui.js";
+import { attachGatewayUpgradeHandler, createGatewayHttpServer } from "./server-http.js";
+
+async function withTempConfig(params: { cfg: unknown; run: () => Promise<void> }): Promise<void> {
+  const prevConfigPath = process.env.TEXT2LLM_CONFIG_PATH;
+  const prevDisableCache = process.env.TEXT2LLM_DISABLE_CONFIG_CACHE;
+
+  const dir = await mkdtemp(path.join(os.tmpdir(), "text2llm-canvas-auth-test-"));
+  const configPath = path.join(dir, "text2llm.json");
+
+  process.env.TEXT2LLM_CONFIG_PATH = configPath;
+  process.env.TEXT2LLM_DISABLE_CONFIG_CACHE = "1";
 
   try {
     await writeFile(configPath, JSON.stringify(params.cfg, null, 2), "utf-8");
     await params.run();
   } finally {
     if (prevConfigPath === undefined) {
-      delete process.env.OPENCLAW_CONFIG_PATH;
+      delete process.env.TEXT2LLM_CONFIG_PATH;
     } else {
-      process.env.OPENCLAW_CONFIG_PATH = prevConfigPath;
+      process.env.TEXT2LLM_CONFIG_PATH = prevConfigPath;
     }
     if (prevDisableCache === undefined) {
-      delete process.env.OPENCLAW_DISABLE_CONFIG_CACHE;
+      delete process.env.TEXT2LLM_DISABLE_CONFIG_CACHE;
     } else {
-      process.env.OPENCLAW_DISABLE_CONFIG_CACHE = prevDisableCache;
+      process.env.TEXT2LLM_DISABLE_CONFIG_CACHE = prevDisableCache;
     }
     await rm(dir, { recursive: true, force: true });
   }

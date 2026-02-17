@@ -37,6 +37,45 @@ type TailscaleUser = {
 
 type TailscaleWhoisLookup = (ip: string) => Promise<TailscaleWhoisIdentity | null>;
 
+function normaliimport type { IncomingMessage } from "node:http";
+import type { GatewayAuthConfig, GatewayTailscaleMode } from "../config/config.js";
+import { readTailscaleWhoisIdentity, type TailscaleWhoisIdentity } from "../infra/tailscale.js";
+import { safeEqualSecret } from "../security/secret-equal.js";
+import {
+  isLoopbackAddress,
+  isTrustedProxyAddress,
+  parseForwardedForClientIp,
+  resolveGatewayClientIp,
+} from "./net.js";
+export type ResolvedGatewayAuthMode = "token" | "password";
+
+export type ResolvedGatewayAuth = {
+  mode: ResolvedGatewayAuthMode;
+  token?: string;
+  password?: string;
+  allowTailscale: boolean;
+};
+
+export type GatewayAuthResult = {
+  ok: boolean;
+  method?: "token" | "password" | "tailscale" | "device-token";
+  user?: string;
+  reason?: string;
+};
+
+type ConnectAuth = {
+  token?: string;
+  password?: string;
+};
+
+type TailscaleUser = {
+  login: string;
+  name: string;
+  profilePic?: string;
+};
+
+type TailscaleWhoisLookup = (ip: string) => Promise<TailscaleWhoisIdentity | null>;
+
 function normalizeLogin(login: string): string {
   return login.trim().toLowerCase();
 }
@@ -183,10 +222,10 @@ export function resolveGatewayAuth(params: {
   const authConfig = params.authConfig ?? {};
   const env = params.env ?? process.env;
   const token =
-    authConfig.token ?? env.OPENCLAW_GATEWAY_TOKEN ?? env.CLAWDBOT_GATEWAY_TOKEN ?? undefined;
+    authConfig.token ?? env.TEXT2LLM_GATEWAY_TOKEN ?? env.CLAWDBOT_GATEWAY_TOKEN ?? undefined;
   const password =
     authConfig.password ??
-    env.OPENCLAW_GATEWAY_PASSWORD ??
+    env.TEXT2LLM_GATEWAY_PASSWORD ??
     env.CLAWDBOT_GATEWAY_PASSWORD ??
     undefined;
   const mode: ResolvedGatewayAuth["mode"] = authConfig.mode ?? (password ? "password" : "token");
@@ -206,7 +245,7 @@ export function assertGatewayAuthConfigured(auth: ResolvedGatewayAuth): void {
       return;
     }
     throw new Error(
-      "gateway auth mode is token, but no token was configured (set gateway.auth.token or OPENCLAW_GATEWAY_TOKEN)",
+      "gateway auth mode is token, but no token was configured (set gateway.auth.token or TEXT2LLM_GATEWAY_TOKEN)",
     );
   }
   if (auth.mode === "password" && !auth.password) {

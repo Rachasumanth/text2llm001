@@ -1,4 +1,22 @@
-import type { OpenClawConfig } from "../../config/config.js";
+import type { TEXT2LLMConfig } from "../../config/config.js";
+import type { FinalizedMsgContext } from "../templating.js";
+import type { GetReplyOptions, ReplyPayload } from "../types.js";
+import type { ReplyDispatcher, ReplyDispatchKind } from "./reply-dispatcher.js";
+import { resolveSessionAgentId } from "../../agents/agent-scope.js";
+import { loadSessionStore, resolveStorePath } from "../../config/sessions.js";
+import { logVerbose } from "../../globals.js";
+import { isDiagnosticsEnabled } from "../../infra/diagnostic-events.js";
+import {
+  logMessageProcessed,
+  logMessageQueued,
+  logSessionStateChange,
+} from "../../logging/diagnostic.js";
+import { getGlobalHookRunner } from "../../plugins/hook-runner-global.js";
+import { maybeApplyTtsToPayload, normalizeTtsAutoMode, resolveTtsConfig } from "../../tts/tts.js";
+import { getReplyFromConfig } from "../reply.js";
+import { formatAbortReplyText, tryFastAbortFromMessage } from "./abort.js";
+import { shouldSkipDuplicateInbound } from "./inbound-dedupe.js";
+imporimport type { TEXT2LLMConfig } from "../../config/config.js";
 import type { FinalizedMsgContext } from "../templating.js";
 import type { GetReplyOptions, ReplyPayload } from "../types.js";
 import type { ReplyDispatcher, ReplyDispatchKind } from "./reply-dispatcher.js";
@@ -55,7 +73,7 @@ const isInboundAudioContext = (ctx: FinalizedMsgContext): boolean => {
 
 const resolveSessionTtsAuto = (
   ctx: FinalizedMsgContext,
-  cfg: OpenClawConfig,
+  cfg: TEXT2LLMConfig,
 ): string | undefined => {
   const targetSessionKey =
     ctx.CommandSource === "native" ? ctx.CommandTargetSessionKey?.trim() : undefined;
@@ -81,7 +99,7 @@ export type DispatchFromConfigResult = {
 
 export async function dispatchReplyFromConfig(params: {
   ctx: FinalizedMsgContext;
-  cfg: OpenClawConfig;
+  cfg: TEXT2LLMConfig;
   dispatcher: ReplyDispatcher;
   replyOptions?: Omit<GetReplyOptions, "onToolResult" | "onBlockReply">;
   replyResolver?: typeof getReplyFromConfig;

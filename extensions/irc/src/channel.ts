@@ -7,7 +7,7 @@ import {
   setAccountEnabledInConfigSection,
   deleteAccountFromConfigSection,
   type ChannelPlugin,
-} from "openclaw/plugin-sdk";
+} from "text2llm/plugin-sdk";
 import type { CoreConfig, IrcProbe } from "./types.js";
 import {
   listIrcAccountIds,

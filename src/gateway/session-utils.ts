@@ -13,7 +13,39 @@ import {
   resolveConfiguredModelRef,
   resolveDefaultModelForAgent,
 } from "../agents/model-selection.js";
-import { type OpenClawConfig, loadConfig } from "../config/config.js";
+import { type TEXT2LLMConfig, loadConfig } from "../config/config.js";
+import { resolveStateDir } from "../config/paths.js";
+import {
+  buildGroupDisplayName,
+  canonicalizeMainSessionAlias,
+  loadSessionStore,
+  resolveFreshSessionTotalTokens,
+  resolveMainSessionKey,
+  resolveStorePath,
+  type SessionEntry,
+  type SessionScope,
+} from "../config/sessions.js";
+import {
+  normalizeAgentId,
+  normalizeMainKey,
+  parseAgentSessionKey,
+} from "../routing/session-key.js";
+import fs from "node:fs";
+import path from "node:path";
+import type {
+  GatewayAgentRow,
+  GatewaySessionRow,
+  GatewaySessionsDefaults,
+  SessionsListResult,
+} from "./session-utils.types.js";
+import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../agents/agent-scope.js";
+import { lookupContextTokens } from "../agents/context.js";
+import { DEFAULT_CONTEXT_TOKENS, DEFAULT_MODEL, DEFAULT_PROVIDER } from "../agents/defaults.js";
+import {
+  resolveConfiguredModelRef,
+  resolveDefaultModelForAgent,
+} from "../agents/model-selection.js";
+import { type TEXT2LLMConfig, loadConfig } from "../config/config.js";
 import { resolveStateDir } from "../config/paths.js";
 import {
   buildGroupDisplayName,
@@ -95,7 +127,7 @@ function isWorkspaceRelativePath(value: string): boolean {
 }
 
 function resolveIdentityAvatarUrl(
-  cfg: OpenClawConfig,
+  cfg: TEXT2LLMConfig,
   agentId: string,
   avatar: string | undefined,
 ): string | undefined {
@@ -243,7 +275,7 @@ function listExistingAgentIdsFromDisk(): string[] {
   }
 }
 
-function listConfiguredAgentIds(cfg: OpenClawConfig): string[] {
+function listConfiguredAgentIds(cfg: TEXT2LLMConfig): string[] {
   const agents = cfg.agents?.list ?? [];
   if (agents.length > 0) {
     const ids = new Set<string>();
@@ -275,7 +307,7 @@ function listConfiguredAgentIds(cfg: OpenClawConfig): string[] {
   return sorted;
 }
 
-export function listAgentsForGateway(cfg: OpenClawConfig): {
+export function listAgentsForGateway(cfg: TEXT2LLMConfig): {
   defaultId: string;
   mainKey: string;
   scope: SessionScope;
@@ -343,12 +375,12 @@ function canonicalizeSessionKeyForAgent(agentId: string, key: string): string {
   return `agent:${normalizeAgentId(agentId)}:${key}`;
 }
 
-function resolveDefaultStoreAgentId(cfg: OpenClawConfig): string {
+function resolveDefaultStoreAgentId(cfg: TEXT2LLMConfig): string {
   return normalizeAgentId(resolveDefaultAgentId(cfg));
 }
 
 export function resolveSessionStoreKey(params: {
-  cfg: OpenClawConfig;
+  cfg: TEXT2LLMConfig;
   sessionKey: string;
 }): string {
   const raw = params.sessionKey.trim();
@@ -381,7 +413,7 @@ export function resolveSessionStoreKey(params: {
   return canonicalizeSessionKeyForAgent(agentId, raw);
 }
 
-function resolveSessionStoreAgentId(cfg: OpenClawConfig, canonicalKey: string): string {
+function resolveSessionStoreAgentId(cfg: TEXT2LLMConfig, canonicalKey: string): string {
   if (canonicalKey === "global" || canonicalKey === "unknown") {
     return resolveDefaultStoreAgentId(cfg);
   }
@@ -406,7 +438,7 @@ function canonicalizeSpawnedByForAgent(agentId: string, spawnedBy?: string): str
   return `agent:${normalizeAgentId(agentId)}:${raw}`;
 }
 
-export function resolveGatewaySessionStoreTarget(params: { cfg: OpenClawConfig; key: string }): {
+export function resolveGatewaySessionStoreTarget(params: { cfg: TEXT2LLMConfig; key: string }): {
   agentId: string;
   storePath: string;
   canonicalKey: string;
@@ -464,7 +496,7 @@ function mergeSessionEntryIntoCombined(params: {
   }
 }
 
-export function loadCombinedSessionStoreForGateway(cfg: OpenClawConfig): {
+export function loadCombinedSessionStoreForGateway(cfg: TEXT2LLMConfig): {
   storePath: string;
   store: Record<string, SessionEntry>;
 } {
@@ -507,7 +539,7 @@ export function loadCombinedSessionStoreForGateway(cfg: OpenClawConfig): {
   return { storePath, store: combined };
 }
 
-export function getSessionDefaults(cfg: OpenClawConfig): GatewaySessionsDefaults {
+export function getSessionDefaults(cfg: TEXT2LLMConfig): GatewaySessionsDefaults {
   const resolved = resolveConfiguredModelRef({
     cfg,
     defaultProvider: DEFAULT_PROVIDER,
@@ -525,7 +557,7 @@ export function getSessionDefaults(cfg: OpenClawConfig): GatewaySessionsDefaults
 }
 
 export function resolveSessionModelRef(
-  cfg: OpenClawConfig,
+  cfg: TEXT2LLMConfig,
   entry?: SessionEntry,
   agentId?: string,
 ): { provider: string; model: string } {
@@ -547,7 +579,7 @@ export function resolveSessionModelRef(
 }
 
 export function listSessionsFromStore(params: {
-  cfg: OpenClawConfig;
+  cfg: TEXT2LLMConfig;
   storePath: string;
   store: Record<string, SessionEntry>;
   opts: import("./protocol/index.js").SessionsListParams;

@@ -6,8 +6,8 @@ import type {
   GroupToolPolicyBySenderConfig,
   GroupToolPolicyConfig,
   MarkdownConfig,
-  OpenClawConfig,
-} from "openclaw/plugin-sdk";
+  Text2llmConfig,
+} from "text2llm/plugin-sdk";
 
 export type IrcChannelConfig = {
   requireMention?: boolean;
@@ -63,8 +63,8 @@ export type IrcConfig = IrcAccountConfig & {
   accounts?: Record<string, IrcAccountConfig>;
 };
 
-export type CoreConfig = OpenClawConfig & {
-  channels?: OpenClawConfig["channels"] & {
+export type CoreConfig = Text2llmConfig & {
+  channels?: Text2llmConfig["channels"] & {
     irc?: IrcConfig;
   };
 };

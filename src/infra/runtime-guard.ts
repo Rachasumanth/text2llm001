@@ -88,11 +88,11 @@ export function assertSupportedRuntime(
 
   runtime.error(
     [
-      "openclaw requires Node >=22.12.0.",
+      "text2llm requires Node >=22.12.0.",
       `Detected: ${runtimeLabel} (exec: ${execLabel}).`,
       `PATH searched: ${details.pathEnv}`,
       "Install Node: https://nodejs.org/en/download",
-      "Upgrade Node and re-run openclaw.",
+      "Upgrade Node and re-run text2llm.",
     ].join("\n"),
   );
   runtime.exit(1);

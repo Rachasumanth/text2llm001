@@ -1,17 +1,17 @@
-import OpenClawChatUI
-import OpenClawKit
+import Text2llmChatUI
+import Text2llmKit
 import SwiftUI
 
 struct ChatSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @State private var viewModel: OpenClawChatViewModel
+    @State private var viewModel: Text2llmChatViewModel
     private let userAccent: Color?
     private let agentName: String?
 
     init(gateway: GatewayNodeSession, sessionKey: String, agentName: String? = nil, userAccent: Color? = nil) {
         let transport = IOSGatewayChatTransport(gateway: gateway)
         self._viewModel = State(
-            initialValue: OpenClawChatViewModel(
+            initialValue: Text2llmChatViewModel(
                 sessionKey: sessionKey,
                 transport: transport))
         self.userAccent = userAccent
@@ -20,7 +20,7 @@ struct ChatSheet: View {
 
     var body: some View {
         NavigationStack {
-            OpenClawChatView(
+            Text2llmChatView(
                 viewModel: self.viewModel,
                 showsSessionSwitcher: true,
                 userAccent: self.userAccent)

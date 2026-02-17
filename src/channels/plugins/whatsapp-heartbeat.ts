@@ -1,4 +1,4 @@
-import type { OpenClawConfig } from "../../config/config.js";
+import type { TEXT2LLMConfig } from "../../config/config.js";
 import { loadSessionStore, resolveStorePath } from "../../config/sessions.js";
 import { normalizeE164 } from "../../utils.js";
 import { normalizeChatChannelId } from "../registry.js";
@@ -6,7 +6,30 @@ import { normalizeChatChannelId } from "../registry.js";
 type HeartbeatRecipientsResult = { recipients: string[]; source: string };
 type HeartbeatRecipientsOpts = { to?: string; all?: boolean };
 
-function getSessionRecipients(cfg: OpenClawConfig) {
+function getSessionRecipients(cfg: TEXT2LLMConfig) {
+  const sessionCfg = cfg.session;
+  const scope = sessionCfg?.scope ?? "per-sender";
+  if (scope === "global") {
+    return [];
+  }
+  const storePath = resolveStorePath(cfg.session?.store);
+  const store = loadSessionStore(storePath);
+  const isGroupKey = (key: string) =>
+    key.includes(":group:") || key.includes(":channel:") || key.includes("@g.us");
+  const isCronKey = (key: string) => key.startsWith("cron:");
+
+  const recipients = Object.entries(store)
+    .filter(([key]) => key !== "global" && key !== "unknown")
+    .filter(([key]) => !isGroupKey(key) && !isCronKey(key))
+ import type { TEXT2LLMConfig } from "../../config/config.js";
+import { loadSessionStore, resolveStorePath } from "../../config/sessions.js";
+import { normalizeE164 } from "../../utils.js";
+import { normalizeChatChannelId } from "../registry.js";
+
+type HeartbeatRecipientsResult = { recipients: string[]; source: string };
+type HeartbeatRecipientsOpts = { to?: string; all?: boolean };
+
+function getSessionRecipients(cfg: TEXT2LLMConfig) {
   const sessionCfg = cfg.session;
   const scope = sessionCfg?.scope ?? "per-sender";
   if (scope === "global") {
@@ -43,7 +66,7 @@ function getSessionRecipients(cfg: OpenClawConfig) {
 }
 
 export function resolveWhatsAppHeartbeatRecipients(
-  cfg: OpenClawConfig,
+  cfg: TEXT2LLMConfig,
   opts: HeartbeatRecipientsOpts = {},
 ): HeartbeatRecipientsResult {
   if (opts.to) {

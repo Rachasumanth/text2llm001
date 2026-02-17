@@ -1,5 +1,36 @@
 import { Type } from "@sinclair/typebox";
-import type { OpenClawConfig } from "../../config/config.js";
+import type { TEXT2LLMConfig } from "../../config/config.js";
+import type { AnyAgentTool } from "./common.js";
+import { fetchWithSsrFGuard } from "../../infra/net/fetch-guard.js";
+import { SsrFBlockedError } from "../../infra/net/ssrf.js";
+import { wrapExternalContent, wrapWebContent } from "../../security/external-content.js";
+import { normalizeSecretInput } from "../../utils/normalize-secret-input.js";
+import { stringEnum } from "../schema/typebox.js";
+import { jsonResult, readNumberParam, readStringParam } from "./common.js";
+import {
+  extractReadableContent,
+  htmlToMarkdown,
+  markdownToText,
+  truncateText,
+  type ExtractMode,
+} from "./web-fetch-utils.js";
+import {
+  CacheEntry,
+  DEFAULT_CACHE_TTL_MINUTES,
+  DEFAULT_TIMEOUT_SECONDS,
+  normalizeCacheKey,
+  readCache,
+  readResponseText,
+  resolveCacheTtlMs,
+  resolveTimeoutSeconds,
+  withTimeout,
+  writeCache,
+} from "./web-shared.js";
+
+export { extractReadableContent } from "./web-fetch-utils.js";
+
+const EXTRimport { Type } from "@sinclair/typebox";
+import type { TEXT2LLMConfig } from "../../config/config.js";
 import type { AnyAgentTool } from "./common.js";
 import { fetchWithSsrFGuard } from "../../infra/net/fetch-guard.js";
 import { SsrFBlockedError } from "../../infra/net/ssrf.js";
@@ -57,7 +88,7 @@ const WebFetchSchema = Type.Object({
   ),
 });
 
-type WebFetchConfig = NonNullable<OpenClawConfig["tools"]>["web"] extends infer Web
+type WebFetchConfig = NonNullable<TEXT2LLMConfig["tools"]>["web"] extends infer Web
   ? Web extends { fetch?: infer Fetch }
     ? Fetch
     : undefined
@@ -74,7 +105,7 @@ type FirecrawlFetchConfig =
     }
   | undefined;
 
-function resolveFetchConfig(cfg?: OpenClawConfig): WebFetchConfig {
+function resolveFetchConfig(cfg?: TEXT2LLMConfig): WebFetchConfig {
   const fetch = cfg?.tools?.web?.fetch;
   if (!fetch || typeof fetch !== "object") {
     return undefined;
@@ -643,7 +674,7 @@ function resolveFirecrawlEndpoint(baseUrl: string): string {
 }
 
 export function createWebFetchTool(options?: {
-  config?: OpenClawConfig;
+  config?: TEXT2LLMConfig;
   sandboxed?: boolean;
 }): AnyAgentTool | null {
   const fetch = resolveFetchConfig(options?.config);

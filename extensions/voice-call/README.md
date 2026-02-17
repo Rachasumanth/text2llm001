@@ -1,6 +1,6 @@
-# @openclaw/voice-call
+# @text2llm/voice-call
 
-Official Voice Call plugin for **OpenClaw**.
+Official Voice Call plugin for **text2llm**.
 
 Providers:
 
@@ -9,15 +9,15 @@ Providers:
 - **Plivo** (Voice API + XML transfer + GetInput speech)
 - **Mock** (dev/no network)
 
-Docs: `https://docs.openclaw.ai/plugins/voice-call`
-Plugin system: `https://docs.openclaw.ai/plugin`
+Docs: `https://docs.text2llm.ai/plugins/voice-call`
+Plugin system: `https://docs.text2llm.ai/plugin`
 
 ## Install (local dev)
 
-### Option A: install via OpenClaw (recommended)
+### Option A: install via text2llm (recommended)
 
 ```bash
-openclaw plugins install @openclaw/voice-call
+text2llm plugins install @text2llm/voice-call
 ```
 
 Restart the Gateway afterwards.
@@ -25,9 +25,9 @@ Restart the Gateway afterwards.
 ### Option B: copy into your global extensions folder (dev)
 
 ```bash
-mkdir -p ~/.openclaw/extensions
-cp -R extensions/voice-call ~/.openclaw/extensions/voice-call
-cd ~/.openclaw/extensions/voice-call && pnpm install
+mkdir -p ~/.text2llm/extensions
+cp -R extensions/voice-call ~/.text2llm/extensions/voice-call
+cd ~/.text2llm/extensions/voice-call && pnpm install
 ```
 
 ## Config
@@ -103,13 +103,13 @@ Notes:
 ## CLI
 
 ```bash
-openclaw voicecall call --to "+15555550123" --message "Hello from OpenClaw"
-openclaw voicecall continue --call-id <id> --message "Any questions?"
-openclaw voicecall speak --call-id <id> --message "One moment"
-openclaw voicecall end --call-id <id>
-openclaw voicecall status --call-id <id>
-openclaw voicecall tail
-openclaw voicecall expose --mode funnel
+text2llm voicecall call --to "+15555550123" --message "Hello from text2llm"
+text2llm voicecall continue --call-id <id> --message "Any questions?"
+text2llm voicecall speak --call-id <id> --message "One moment"
+text2llm voicecall end --call-id <id>
+text2llm voicecall status --call-id <id>
+text2llm voicecall tail
+text2llm voicecall expose --mode funnel
 ```
 
 ## Tool

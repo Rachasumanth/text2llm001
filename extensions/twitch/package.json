@@ -1,8 +1,8 @@
 {
-  "name": "@openclaw/twitch",
+  "name": "@text2llm/twitch",
   "version": "2026.2.13",
   "private": true,
-  "description": "OpenClaw Twitch channel plugin",
+  "description": "text2llm Twitch channel plugin",
   "type": "module",
   "dependencies": {
     "@twurple/api": "^8.0.3",
@@ -11,9 +11,9 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "openclaw": "workspace:*"
+    "text2llm": "workspace:*"
   },
-  "openclaw": {
+  "text2llm": {
     "extensions": [
       "./index.ts"
     ]

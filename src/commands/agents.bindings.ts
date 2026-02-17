@@ -1,5 +1,32 @@
 import type { ChannelId } from "../channels/plugins/types.js";
-import type { OpenClawConfig } from "../config/config.js";
+import type { TEXT2LLMConfig } from "../config/config.js";
+import type { AgentBinding } from "../config/types.js";
+import type { ChannelChoice } from "./onboard-types.js";
+import { resolveChannelDefaultAccountId } from "../channels/plugins/helpers.js";
+import { getChannelPlugin, normalizeChannelId } from "../channels/plugins/index.js";
+import { DEFAULT_ACCOUNT_ID, normalizeAgentId } from "../routing/session-key.js";
+
+function bindingMatchKey(match: AgentBinding["match"]) {
+  const accountId = match.accountId?.trim() || DEFAULT_ACCOUNT_ID;
+  return [
+    match.channel,
+    accountId,
+    match.peer?.kind ?? "",
+    match.peer?.id ?? "",
+    match.guildId ?? "",
+    match.teamId ?? "",
+  ].join("|");
+}
+
+export function describeBinding(binding: AgentBinding) {
+  const match = binding.match;
+  const parts = [match.channel];
+  if (match.accountId) {
+    parts.push(`accountId=${match.accountId}`);
+  }
+  if (match.peer) {
+    parts.push(`peer=${match.peeimport type { ChannelId } from "../channels/plugins/types.js";
+import type { TEXT2LLMConfig } from "../config/config.js";
 import type { AgentBinding } from "../config/types.js";
 import type { ChannelChoice } from "./onboard-types.js";
 import { resolveChannelDefaultAccountId } from "../channels/plugins/helpers.js";
@@ -37,10 +64,10 @@ export function describeBinding(binding: AgentBinding) {
 }
 
 export function applyAgentBindings(
-  cfg: OpenClawConfig,
+  cfg: TEXT2LLMConfig,
   bindings: AgentBinding[],
 ): {
-  config: OpenClawConfig;
+  config: TEXT2LLMConfig;
   added: AgentBinding[];
   skipped: AgentBinding[];
   conflicts: Array<{ binding: AgentBinding; existingAgentId: string }>;
@@ -89,7 +116,7 @@ export function applyAgentBindings(
   };
 }
 
-function resolveDefaultAccountId(cfg: OpenClawConfig, provider: ChannelId): string {
+function resolveDefaultAccountId(cfg: TEXT2LLMConfig, provider: ChannelId): string {
   const plugin = getChannelPlugin(provider);
   if (!plugin) {
     return DEFAULT_ACCOUNT_ID;
@@ -100,7 +127,7 @@ function resolveDefaultAccountId(cfg: OpenClawConfig, provider: ChannelId): stri
 export function buildChannelBindings(params: {
   agentId: string;
   selection: ChannelChoice[];
-  config: OpenClawConfig;
+  config: TEXT2LLMConfig;
   accountIds?: Partial<Record<ChannelChoice, string>>;
 }): AgentBinding[] {
   const bindings: AgentBinding[] = [];
@@ -124,7 +151,7 @@ export function buildChannelBindings(params: {
 export function parseBindingSpecs(params: {
   agentId: string;
   specs?: string[];
-  config: OpenClawConfig;
+  config: TEXT2LLMConfig;
 }): { bindings: AgentBinding[]; errors: string[] } {
   const bindings: AgentBinding[] = [];
   const errors: string[] = [];

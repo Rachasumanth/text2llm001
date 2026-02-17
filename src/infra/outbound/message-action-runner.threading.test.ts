@@ -1,5 +1,33 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { OpenClawConfig } from "../../config/config.js";
+import type { TEXT2LLMConfig } from "../../config/config.js";
+import { slackPlugin } from "../../../extensions/slack/src/channel.js";
+import { telegramPlugin } from "../../../extensions/telegram/src/channel.js";
+import { setActivePluginRegistry } from "../../plugins/runtime.js";
+import { createTestRegistry } from "../../test-utils/channel-plugins.js";
+
+const mocks = vi.hoisted(() => ({
+  executeSendAction: vi.fn(),
+  recordSessionMetaFromInbound: vi.fn(async () => ({ ok: true })),
+}));
+
+vi.mock("./outbound-send-service.js", async () => {
+  const actual = await vi.importActual<typeof import("./outbound-send-service.js")>(
+    "./outbound-send-service.js",
+  );
+  return {
+    ...actual,
+    executeSendAction: mocks.executeSendAction,
+  };
+});
+
+vi.mock("../../config/sessions.js", async () => {
+  const actual = await vi.importActual<typeof import("../../config/sessions.js")>(
+    "../../config/sessions.js",
+  );
+  return {
+    ...actual,
+  import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { TEXT2LLMConfig } from "../../config/config.js";
 import { slackPlugin } from "../../../extensions/slack/src/channel.js";
 import { telegramPlugin } from "../../../extensions/telegram/src/channel.js";
 import { setActivePluginRegistry } from "../../plugins/runtime.js";
@@ -39,7 +67,7 @@ const slackConfig = {
       appToken: "xapp-test",
     },
   },
-} as OpenClawConfig;
+} as TEXT2LLMConfig;
 
 const telegramConfig = {
   channels: {
@@ -47,7 +75,7 @@ const telegramConfig = {
       botToken: "telegram-test",
     },
   },
-} as OpenClawConfig;
+} as TEXT2LLMConfig;
 
 describe("runMessageAction threading auto-injection", () => {
   beforeEach(async () => {

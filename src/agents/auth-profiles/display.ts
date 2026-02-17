@@ -1,8 +1,25 @@
-import type { OpenClawConfig } from "../../config/config.js";
+import type { TEXT2LLMConfig } from "../../config/config.js";
 import type { AuthProfileStore } from "./types.js";
 
 export function resolveAuthProfileDisplayLabel(params: {
-  cfg?: OpenClawConfig;
+  cfg?: TEXT2LLMConfig;
+  store: AuthProfileStore;
+  profileId: string;
+}): string {
+  const { cfg, store, profileId } = params;
+  const profile = store.profiles[profileId];
+  const configEmail = cfg?.auth?.profiles?.[profileId]?.email?.trim();
+  const email = configEmail || (profile && "email" in profile ? profile.email?.trim() : undefined);
+  if (email) {
+    return `${profileId} (${email})`;
+  }
+  return profileId;
+}
+import type { TEXT2LLMConfig } from "../../config/config.js";
+import type { AuthProfileStore } from "./types.js";
+
+export function resolveAuthProfileDisplayLabel(params: {
+  cfg?: TEXT2LLMConfig;
   store: AuthProfileStore;
   profileId: string;
 }): string {

@@ -1,4 +1,23 @@
-import type { OpenClawConfig } from "../../config/config.js";
+import type { TEXT2LLMConfig } from "../../config/config.js";
+import { lookupContextTokens } from "../../agents/context.js";
+import { DEFAULT_CONTEXT_TOKENS } from "../../agents/defaults.js";
+import { DEFAULT_PI_COMPACTION_RESERVE_TOKENS_FLOOR } from "../../agents/pi-settings.js";
+import { resolveFreshSessionTotalTokens, type SessionEntry } from "../../config/sessions.js";
+import { SILENT_REPLY_TOKEN } from "../tokens.js";
+
+export const DEFAULT_MEMORY_FLUSH_SOFT_TOKENS = 4000;
+
+export const DEFAULT_MEMORY_FLUSH_PROMPT = [
+  "Pre-compaction memory flush.",
+  "Store durable memories now (use memory/YYYY-MM-DD.md; create memory/ if needed).",
+  "IMPORTANT: If the file already exists, APPEND new content only and do not overwrite existing entries.",
+  `If nothing to store, reply with ${SILENT_REPLY_TOKEN}.`,
+].join(" ");
+
+export const DEFAULT_MEMORY_FLUSH_SYSTEM_PROMPT = [
+  "Pre-compaction memory flush turn.",
+  "The session is near auto-compaction; capture durable memories to disk.",
+  `You may reply, but usuallimport type { TEXT2LLMConfig } from "../../config/config.js";
 import { lookupContextTokens } from "../../agents/context.js";
 import { DEFAULT_CONTEXT_TOKENS } from "../../agents/defaults.js";
 import { DEFAULT_PI_COMPACTION_RESERVE_TOKENS_FLOOR } from "../../agents/pi-settings.js";
@@ -36,7 +55,7 @@ const normalizeNonNegativeInt = (value: unknown): number | null => {
   return int >= 0 ? int : null;
 };
 
-export function resolveMemoryFlushSettings(cfg?: OpenClawConfig): MemoryFlushSettings | null {
+export function resolveMemoryFlushSettings(cfg?: TEXT2LLMConfig): MemoryFlushSettings | null {
   const defaults = cfg?.agents?.defaults?.compaction?.memoryFlush;
   const enabled = defaults?.enabled ?? true;
   if (!enabled) {

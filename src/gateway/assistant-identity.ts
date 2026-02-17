@@ -1,4 +1,41 @@
-import type { OpenClawConfig } from "../config/config.js";
+import type { TEXT2LLMConfig } from "../config/config.js";
+import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../agents/agent-scope.js";
+import { resolveAgentIdentity } from "../agents/identity.js";
+import { loadAgentIdentity } from "../commands/agents.config.js";
+import { normalizeAgentId } from "../routing/session-key.js";
+
+const MAX_ASSISTANT_NAME = 50;
+const MAX_ASSISTANT_AVATAR = 200;
+const MAX_ASSISTANT_EMOJI = 16;
+
+export const DEFAULT_ASSISTANT_IDENTITY: AssistantIdentity = {
+  agentId: "main",
+  name: "Assistant",
+  avatar: "A",
+};
+
+export type AssistantIdentity = {
+  agentId: string;
+  name: string;
+  avatar: string;
+  emoji?: string;
+};
+
+function coerceIdentityValue(value: string | undefined, maxLength: number): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  if (trimmed.length <= maxLength) {
+    return trimmed;
+  }
+  return trimmed.slice(0, maxLength);
+}
+
+function isAvatarimport type { TEXT2LLMConfig } from "../config/config.js";
 import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../agents/agent-scope.js";
 import { resolveAgentIdentity } from "../agents/identity.js";
 import { loadAgentIdentity } from "../commands/agents.config.js";
@@ -94,7 +131,7 @@ function normalizeEmojiValue(value: string | undefined): string | undefined {
 }
 
 export function resolveAssistantIdentity(params: {
-  cfg: OpenClawConfig;
+  cfg: TEXT2LLMConfig;
   agentId?: string | null;
   workspaceDir?: string | null;
 }): AssistantIdentity {

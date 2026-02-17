@@ -1,13 +1,13 @@
 {
-  "name": "@openclaw/imessage",
+  "name": "@text2llm/imessage",
   "version": "2026.2.13",
   "private": true,
-  "description": "OpenClaw iMessage channel plugin",
+  "description": "text2llm iMessage channel plugin",
   "type": "module",
   "devDependencies": {
-    "openclaw": "workspace:*"
+    "text2llm": "workspace:*"
   },
-  "openclaw": {
+  "text2llm": {
     "extensions": [
       "./index.ts"
     ]

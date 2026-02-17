@@ -1,12 +1,12 @@
 ---
-summary: "CLI reference for `openclaw skills` (list/info/check) and skill eligibility"
+summary: "CLI reference for `text2llm skills` (list/info/check) and skill eligibility"
 read_when:
   - You want to see which skills are available and ready to run
   - You want to debug missing binaries/env/config for skills
 title: "skills"
 ---
 
-# `openclaw skills`
+# `text2llm skills`
 
 Inspect skills (bundled + workspace + managed overrides) and see what’s eligible vs missing requirements.
 
@@ -19,8 +19,8 @@ Related:
 ## Commands
 
 ```bash
-openclaw skills list
-openclaw skills list --eligible
-openclaw skills info <name>
-openclaw skills check
+text2llm skills list
+text2llm skills list --eligible
+text2llm skills info <name>
+text2llm skills check
 ```

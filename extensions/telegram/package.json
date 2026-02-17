@@ -1,13 +1,13 @@
 {
-  "name": "@openclaw/telegram",
+  "name": "@text2llm/telegram",
   "version": "2026.2.13",
   "private": true,
-  "description": "OpenClaw Telegram channel plugin",
+  "description": "text2llm Telegram channel plugin",
   "type": "module",
   "devDependencies": {
-    "openclaw": "workspace:*"
+    "text2llm": "workspace:*"
   },
-  "openclaw": {
+  "text2llm": {
     "extensions": [
       "./index.ts"
     ]

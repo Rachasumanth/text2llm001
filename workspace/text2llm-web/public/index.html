@@ -10,6 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
+    <link rel="icon" href="/applogo.jpeg" />
     <link rel="stylesheet" href="/styles.css" />
     <!-- xterm.js CDN -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
@@ -21,7 +22,7 @@
         <div class="sidebar-header">
           <div class="header-row" style="display: flex; align-items: center; justify-content: space-between; width: 100%; margin-bottom: 24px;">
             <div class="logo-area" style="margin-bottom: 0;">
-              <span class="logo-text">text2llm</span>
+              <img src="/applogo.jpeg" class="app-logo" alt="Text2LLM" />
             </div>
             <button id="sidebar-close-btn" class="icon-btn" aria-label="Toggle sidebar">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -616,7 +617,7 @@
             <div class="nb-header">
               <div class="nb-header-left">
                 <h2 class="nb-title">Notebook</h2>
-                <span class="nb-subtitle">Python cells managed by OpenClaw</span>
+                <span class="nb-subtitle">Python cells managed by text2llm</span>
               </div>
               <div class="nb-toolbar">
                 <button id="nb-run-all-btn" class="nb-toolbar-btn" type="button" title="Run all cells">

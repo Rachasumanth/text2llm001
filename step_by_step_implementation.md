@@ -1,6 +1,6 @@
 # Text2LLM — Step-by-Step Implementation (5 Parts)
 
-> Divided from [implementation_plan.md.resolved](file:///c:/Users/4HIN/source/openclaw/implementation_plan.md.resolved)
+> Divided from [implementation_plan.md.resolved](file:///c:/Users/4HIN/source/text2llm/implementation_plan.md.resolved)
 
 ---
 
@@ -22,7 +22,7 @@
   - [ ] `exec` vs `process` guidance (background for long runs)
   - [ ] Monitoring via `process:log` + loss curve parsing
   - [ ] `web_search` for latest training recipes
-- [ ] Create `workspace/openclaw.json` — Configuration
+- [ ] Create `workspace/text2llm.json` — Configuration
   - [ ] Set tool profile to `coding`
   - [ ] Enable `group:web`, `browser`, `group:fs`, `group:runtime`, `group:memory`
   - [ ] Deny `group:messaging`, `group:nodes`, `group:automation`, `canvas`, `cron`, `gateway`
@@ -126,10 +126,10 @@
   - [ ] Per-project provider selection (remembered across sessions)
   - [ ] Quota awareness (check space, warn if low)
 - [ ] **Verification — Automated**
-  - [ ] Run `pnpm install` in OpenClaw root
+  - [ ] Run `pnpm install` in text2llm root
   - [ ] Run `pnpm test -- --grep "skill"` — validate SKILL.md parsing
-  - [ ] Run `pnpm openclaw doctor` — validate config
+  - [ ] Run `pnpm text2llm doctor` — validate config
 - [ ] **Verification — Manual**
-  - [ ] Run `pnpm openclaw gateway --verbose` — confirm 9 skills loaded, 0 bundled
+  - [ ] Run `pnpm text2llm gateway --verbose` — confirm 9 skills loaded, 0 bundled
   - [ ] Send test prompt: "Build me a 100M parameter LLM for medical text" — verify agent uses AI lab skills
   - [ ] Verify `python3 --version` and `pip --version` are accessible

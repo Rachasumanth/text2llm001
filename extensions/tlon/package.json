@@ -1,17 +1,17 @@
 {
-  "name": "@openclaw/tlon",
+  "name": "@text2llm/tlon",
   "version": "2026.2.13",
   "private": true,
-  "description": "OpenClaw Tlon/Urbit channel plugin",
+  "description": "text2llm Tlon/Urbit channel plugin",
   "type": "module",
   "dependencies": {
     "@urbit/aura": "^3.0.0",
     "@urbit/http-api": "^3.0.0"
   },
   "devDependencies": {
-    "openclaw": "workspace:*"
+    "text2llm": "workspace:*"
   },
-  "openclaw": {
+  "text2llm": {
     "extensions": [
       "./index.ts"
     ],
@@ -26,7 +26,7 @@
       "quickstartAllowFrom": true
     },
     "install": {
-      "npmSpec": "@openclaw/tlon",
+      "npmSpec": "@text2llm/tlon",
       "localPath": "extensions/tlon",
       "defaultChoice": "npm"
     }

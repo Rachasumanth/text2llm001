@@ -3,7 +3,48 @@ import type {
   ChannelMessageActionName,
   ChannelThreadingToolContext,
 } from "../../channels/plugins/types.js";
-import type { OpenClawConfig } from "../../config/config.js";
+import type { TEXT2LLMConfig } from "../../config/config.js";
+import { getChannelMessageAdapter } from "./channel-adapters.js";
+import { normalizeTargetForProvider } from "./target-normalization.js";
+import { formatTargetDisplay, lookupDirectoryDisplay } from "./target-resolver.js";
+
+export type CrossContextDecoration = {
+  prefix: string;
+  suffix: string;
+  embeds?: unknown[];
+};
+
+const CONTEXT_GUARDED_ACTIONS = new Set<ChannelMessageActionName>([
+  "send",
+  "poll",
+  "reply",
+  "sendWithEffect",
+  "sendAttachment",
+  "thread-create",
+  "thread-reply",
+  "sticker",
+]);
+
+const CONTEXT_MARKER_ACTIONS = new Set<ChannelMessageActionName>([
+  "send",
+  "poll",
+  "reply",
+  "sendWithEffect",
+  "sendAttachment",
+  "thread-reply",
+  "sticker",
+]);
+
+function resolveContextGuardTarget(
+  action: ChannelMessageActionName,
+  params: Record<string, unknown>,
+): string | undefined {
+  if (!CONTimport type {
+  ChannelId,
+  ChannelMessageActionName,
+  ChannelThreadingToolContext,
+} from "../../channels/plugins/types.js";
+import type { TEXT2LLMConfig } from "../../config/config.js";
 import { getChannelMessageAdapter } from "./channel-adapters.js";
 import { normalizeTargetForProvider } from "./target-normalization.js";
 import { formatTargetDisplay, lookupDirectoryDisplay } from "./target-resolver.js";
@@ -88,7 +129,7 @@ export function enforceCrossContextPolicy(params: {
   action: ChannelMessageActionName;
   args: Record<string, unknown>;
   toolContext?: ChannelThreadingToolContext;
-  cfg: OpenClawConfig;
+  cfg: TEXT2LLMConfig;
 }): void {
   const currentTarget = params.toolContext?.currentChannelId?.trim();
   if (!currentTarget) {
@@ -136,7 +177,7 @@ export function enforceCrossContextPolicy(params: {
 }
 
 export async function buildCrossContextDecoration(params: {
-  cfg: OpenClawConfig;
+  cfg: TEXT2LLMConfig;
   channel: ChannelId;
   target: string;
   toolContext?: ChannelThreadingToolContext;

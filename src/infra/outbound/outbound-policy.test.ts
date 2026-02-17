@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { OpenClawConfig } from "../../config/config.js";
+import type { TEXT2LLMConfig } from "../../config/config.js";
 import {
   applyCrossContextDecoration,
   buildCrossContextDecoration,
@@ -13,13 +13,53 @@ const slackConfig = {
       appToken: "xapp-test",
     },
   },
-} as OpenClawConfig;
+} as TEXT2LLMConfig;
 
 const discordConfig = {
   channels: {
     discord: {},
   },
-} as OpenClawConfig;
+} as TEXT2LLMConfig;
+
+describe("outbound policy", () => {
+  it("blocks cross-provider sends by default", () => {
+    expect(() =>
+      enforceCrossContextPolicy({
+        cfg: slackConfig,
+        channel: "telegram",
+        action: "send",
+        args: { to: "telegram:@ops" },
+        toolContext: { currentChannelId: "C12345678", currentChannelProvider: "slack" },
+      }),
+    ).toThrow(/Cross-context messaging denied/);
+  });
+
+  it("allows cross-provider sends when enabled", () => {
+    const cfg = {
+      ...slackConfig,
+      tools: {
+        message: { crossContext: import { describe, expect, it } from "vitest";
+import type { TEXT2LLMConfig } from "../../config/config.js";
+import {
+  applyCrossContextDecoration,
+  buildCrossContextDecoration,
+  enforceCrossContextPolicy,
+} from "./outbound-policy.js";
+
+const slackConfig = {
+  channels: {
+    slack: {
+      botToken: "xoxb-test",
+      appToken: "xapp-test",
+    },
+  },
+} as TEXT2LLMConfig;
+
+const discordConfig = {
+  channels: {
+    discord: {},
+  },
+} as TEXT2LLMConfig;
 
 describe("outbound policy", () => {
   it("blocks cross-provider sends by default", () => {
@@ -40,7 +80,7 @@ describe("outbound policy", () => {
       tools: {
         message: { crossContext: { allowAcrossProviders: true } },
       },
-    } as OpenClawConfig;
+    } as TEXT2LLMConfig;
 
     expect(() =>
       enforceCrossContextPolicy({
@@ -57,7 +97,7 @@ describe("outbound policy", () => {
     const cfg = {
       ...slackConfig,
       tools: { message: { crossContext: { allowWithinProvider: false } } },
-    } as OpenClawConfig;
+    } as TEXT2LLMConfig;
 
     expect(() =>
       enforceCrossContextPolicy({

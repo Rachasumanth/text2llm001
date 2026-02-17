@@ -73,13 +73,16 @@ test("Chat SSE streams progress before completion", async () => {
     const doneIndex = eventNames.indexOf("done");
     const statusIndex = eventNames.indexOf("status");
     const chunkIndex = eventNames.indexOf("chunk");
+    const progressIndex = eventNames.indexOf("progress");
 
     assert.ok(eventNames.includes("session"), "Expected session event");
     assert.ok(statusIndex >= 0, "Expected status event before completion");
     assert.ok(chunkIndex >= 0, "Expected chunk event before completion");
+    assert.ok(progressIndex >= 0, "Expected progress event before completion");
     assert.ok(doneIndex >= 0, "Expected done event");
     assert.ok(statusIndex < doneIndex, "Status must arrive before done");
     assert.ok(chunkIndex < doneIndex, "Chunk must arrive before done");
+    assert.ok(progressIndex < doneIndex, "Progress must arrive before done");
   } finally {
     await stopTestServer(ctx);
   }

@@ -1,5 +1,5 @@
-import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
-import { emptyPluginConfigSchema } from "openclaw/plugin-sdk";
+import type { Text2llmPluginApi } from "text2llm/plugin-sdk";
+import { emptyPluginConfigSchema } from "text2llm/plugin-sdk";
 import { zaloDock, zaloPlugin } from "./src/channel.js";
 import { handleZaloWebhookRequest } from "./src/monitor.js";
 import { setZaloRuntime } from "./src/runtime.js";
@@ -9,7 +9,7 @@ const plugin = {
   name: "Zalo",
   description: "Zalo channel plugin (Bot API)",
   configSchema: emptyPluginConfigSchema(),
-  register(api: OpenClawPluginApi) {
+  register(api: Text2llmPluginApi) {
     setZaloRuntime(api.runtime);
     api.registerChannel({ plugin: zaloPlugin, dock: zaloDock });
     api.registerHttpHandler(handleZaloWebhookRequest);

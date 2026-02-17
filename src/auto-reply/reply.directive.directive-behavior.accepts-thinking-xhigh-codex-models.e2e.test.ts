@@ -22,6 +22,30 @@ async function writeSkill(params: { workspaceDir: string; name: string; descript
 
 vi.mock("../agents/pi-embedded.js", () => ({
   abortEmbeddedPiRun: vi.fn().mockReturnValue(false),
+  runEmbimport fs from "node:fs/promises";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { withTempHome as withTempHomeBase } from "../../test/helpers/temp-home.js";
+import { loadModelCatalog } from "../agents/model-catalog.js";
+import { runEmbeddedPiAgent } from "../agents/pi-embedded.js";
+import { loadSessionStore } from "../config/sessions.js";
+import { getReplyFromConfig } from "./reply.js";
+
+const MAIN_SESSION_KEY = "agent:main:main";
+
+async function writeSkill(params: { workspaceDir: string; name: string; description: string }) {
+  const { workspaceDir, name, description } = params;
+  const skillDir = path.join(workspaceDir, "skills", name);
+  await fs.mkdir(skillDir, { recursive: true });
+  await fs.writeFile(
+    path.join(skillDir, "SKILL.md"),
+    `---\nname: ${name}\ndescription: ${description}\n---\n\n# ${name}\n`,
+    "utf-8",
+  );
+}
+
+vi.mock("../agents/pi-embedded.js", () => ({
+  abortEmbeddedPiRun: vi.fn().mockReturnValue(false),
   runEmbeddedPiAgent: vi.fn(),
   queueEmbeddedPiMessage: vi.fn().mockReturnValue(false),
   resolveEmbeddedSessionLane: (key: string) => `session:${key.trim() || "main"}`,
@@ -39,10 +63,10 @@ async function withTempHome<T>(fn: (home: string) => Promise<T>): Promise<T> {
     },
     {
       env: {
-        OPENCLAW_AGENT_DIR: (home) => path.join(home, ".openclaw", "agent"),
-        PI_CODING_AGENT_DIR: (home) => path.join(home, ".openclaw", "agent"),
+        TEXT2LLM_AGENT_DIR: (home) => path.join(home, ".text2llm", "agent"),
+        PI_CODING_AGENT_DIR: (home) => path.join(home, ".text2llm", "agent"),
       },
-      prefix: "openclaw-reply-",
+      prefix: "text2llm-reply-",
     },
   );
 }
@@ -88,7 +112,7 @@ describe("directive behavior", () => {
           agents: {
             defaults: {
               model: "openai-codex/gpt-5.2-codex",
-              workspace: path.join(home, "openclaw"),
+              workspace: path.join(home, "text2llm"),
             },
           },
           channels: { whatsapp: { allowFrom: ["*"] } },
@@ -116,7 +140,7 @@ describe("directive behavior", () => {
           agents: {
             defaults: {
               model: "openai/gpt-5.2",
-              workspace: path.join(home, "openclaw"),
+              workspace: path.join(home, "text2llm"),
             },
           },
           channels: { whatsapp: { allowFrom: ["*"] } },
@@ -144,7 +168,7 @@ describe("directive behavior", () => {
           agents: {
             defaults: {
               model: "openai/gpt-4.1-mini",
-              workspace: path.join(home, "openclaw"),
+              workspace: path.join(home, "text2llm"),
             },
           },
           channels: { whatsapp: { allowFrom: ["*"] } },
@@ -174,7 +198,7 @@ describe("directive behavior", () => {
           agents: {
             defaults: {
               model: "anthropic/claude-opus-4-5",
-              workspace: path.join(home, "openclaw"),
+              workspace: path.join(home, "text2llm"),
               models: {
                 "anthropic/claude-opus-4-5": { alias: " help " },
               },
@@ -193,7 +217,7 @@ describe("directive behavior", () => {
   it("treats skill commands as reserved for model aliases", async () => {
     await withTempHome(async (home) => {
       vi.mocked(runEmbeddedPiAgent).mockReset();
-      const workspace = path.join(home, "openclaw");
+      const workspace = path.join(home, "text2llm");
       await writeSkill({
         workspaceDir: workspace,
         name: "demo-skill",
@@ -244,7 +268,7 @@ describe("directive behavior", () => {
           agents: {
             defaults: {
               model: "anthropic/claude-opus-4-5",
-              workspace: path.join(home, "openclaw"),
+              workspace: path.join(home, "text2llm"),
             },
           },
           channels: { whatsapp: { allowFrom: ["*"] } },
@@ -276,7 +300,7 @@ describe("directive behavior", () => {
           agents: {
             defaults: {
               model: "anthropic/claude-opus-4-5",
-              workspace: path.join(home, "openclaw"),
+              workspace: path.join(home, "text2llm"),
             },
           },
           messages: {
@@ -313,7 +337,7 @@ describe("directive behavior", () => {
           agents: {
             defaults: {
               model: "anthropic/claude-opus-4-5",
-              workspace: path.join(home, "openclaw"),
+              workspace: path.join(home, "text2llm"),
               thinkingDefault: "high",
             },
           },

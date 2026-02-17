@@ -23,6 +23,31 @@ vi.mock("../../agents/identity.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../agents/identity.js")>();
   return {
     ...actual,
+    resolveEffectiveMessagesConfig: () => ({ responseimport { beforeEach, describe, expect, it, vi } from "vitest";
+import { registerSlackMonitorSlashCommands } from "./slash.js";
+
+const dispatchMock = vi.fn();
+const readAllowFromStoreMock = vi.fn();
+const upsertPairingRequestMock = vi.fn();
+const resolveAgentRouteMock = vi.fn();
+
+vi.mock("../../auto-reply/reply/provider-dispatcher.js", () => ({
+  dispatchReplyWithDispatcher: (...args: unknown[]) => dispatchMock(...args),
+}));
+
+vi.mock("../../pairing/pairing-store.js", () => ({
+  readChannelAllowFromStore: (...args: unknown[]) => readAllowFromStoreMock(...args),
+  upsertChannelPairingRequest: (...args: unknown[]) => upsertPairingRequestMock(...args),
+}));
+
+vi.mock("../../routing/resolve-route.js", () => ({
+  resolveAgentRoute: (...args: unknown[]) => resolveAgentRouteMock(...args),
+}));
+
+vi.mock("../../agents/identity.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../agents/identity.js")>();
+  return {
+    ...actual,
     resolveEffectiveMessagesConfig: () => ({ responsePrefix: "" }),
   };
 });
@@ -69,7 +94,7 @@ function createHarness() {
     channelsConfig: undefined,
     slashCommand: {
       enabled: true,
-      name: "openclaw",
+      name: "text2llm",
       ephemeral: true,
       sessionPrefix: "slack:slash",
     },
@@ -132,7 +157,7 @@ describe("Slack native command argument menus", () => {
     const { actions, ctx, account } = createHarness();
     registerSlackMonitorSlashCommands({ ctx: ctx as never, account: account as never });
 
-    const handler = actions.get("openclaw_cmdarg");
+    const handler = actions.get("TEXT2LLM_cmdarg");
     if (!handler) {
       throw new Error("Missing arg-menu action handler");
     }
@@ -160,7 +185,7 @@ describe("Slack native command argument menus", () => {
     const { actions, ctx, account } = createHarness();
     registerSlackMonitorSlashCommands({ ctx: ctx as never, account: account as never });
 
-    const handler = actions.get("openclaw_cmdarg");
+    const handler = actions.get("TEXT2LLM_cmdarg");
     if (!handler) {
       throw new Error("Missing arg-menu action handler");
     }
@@ -190,7 +215,7 @@ describe("Slack native command argument menus", () => {
     const { actions, postEphemeral, ctx, account } = createHarness();
     registerSlackMonitorSlashCommands({ ctx: ctx as never, account: account as never });
 
-    const handler = actions.get("openclaw_cmdarg");
+    const handler = actions.get("TEXT2LLM_cmdarg");
     if (!handler) {
       throw new Error("Missing arg-menu action handler");
     }
@@ -214,7 +239,7 @@ describe("Slack native command argument menus", () => {
     const { actions, postEphemeral, ctx, account } = createHarness();
     registerSlackMonitorSlashCommands({ ctx: ctx as never, account: account as never });
 
-    const handler = actions.get("openclaw_cmdarg");
+    const handler = actions.get("TEXT2LLM_cmdarg");
     if (!handler) {
       throw new Error("Missing arg-menu action handler");
     }

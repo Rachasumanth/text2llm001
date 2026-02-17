@@ -34,7 +34,7 @@
   - instance list with start/stop/terminate actions
   - inference test panel against running instance
 - Implemented Phase 1 UI styling in `workspace/text2llm-web/public/styles.css`.
-- Persisted provider credentials and instance records under workspace config (`openclaw.json`) in `gpu.providers` and `gpu.instances`.
+- Persisted provider credentials and instance records under workspace config (`text2llm.json`) in `gpu.providers` and `gpu.instances`.
 - Current inference call is a Phase 1 compatibility response path (simulated output) to validate provider->instance->inference UX flow end-to-end.
 
 **Phase 2: Core Architecture**

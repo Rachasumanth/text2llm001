@@ -22,7 +22,43 @@ vi.mock("../config/config.js", async (importOriginal) => {
 });
 
 import "./test-helpers/fast-core-tools.js";
-import { createOpenClawTools } from "./openclaw-tools.js";
+import { createTEXT2LLMTools } from "./text2llm-tools.js";
+import {
+  listSubagentRunsForRequester,
+  resetSubagentRegistryForTests,
+} from "./subagent-registry.js";
+
+describe("sessions_spawn requesterOrigin threading", () => {
+  beforeEach(() => {
+    resetSubagentRegistryForTests();
+    callGatewayMock.mockReset();
+    configOverride = {
+      session: {
+        mainKey:import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const callGatewayMock = vi.fn();
+vi.mock("../gateway/call.js", () => ({
+  callGateway: (opts: unknown) => callGatewayMock(opts),
+}));
+
+let configOverride: ReturnType<(typeof import("../config/config.js"))["loadConfig"]> = {
+  session: {
+    mainKey: "main",
+    scope: "per-sender",
+  },
+};
+
+vi.mock("../config/config.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../config/config.js")>();
+  return {
+    ...actual,
+    loadConfig: () => configOverride,
+    resolveGatewayPort: () => 18789,
+  };
+});
+
+import "./test-helpers/fast-core-tools.js";
+import { createTEXT2LLMTools } from "./text2llm-tools.js";
 import {
   listSubagentRunsForRequester,
   resetSubagentRegistryForTests,
@@ -53,7 +89,7 @@ describe("sessions_spawn requesterOrigin threading", () => {
   });
 
   it("captures threadId in requesterOrigin", async () => {
-    const tool = createOpenClawTools({
+    const tool = createTEXT2LLMTools({
       agentSessionKey: "main",
       agentChannel: "telegram",
       agentTo: "telegram:123",
@@ -78,7 +114,7 @@ describe("sessions_spawn requesterOrigin threading", () => {
   });
 
   it("stores requesterOrigin without threadId when none is provided", async () => {
-    const tool = createOpenClawTools({
+    const tool = createTEXT2LLMTools({
       agentSessionKey: "main",
       agentChannel: "telegram",
       agentTo: "telegram:123",

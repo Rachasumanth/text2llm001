@@ -1,5 +1,29 @@
 import { createRequire } from "node:module";
-import type { OpenClawConfig } from "../config/config.js";
+import type { TEXT2LLMConfig } from "../config/config.js";
+
+const requireConfig = createRequire(import.meta.url);
+
+export type RedactSensitiveMode = "off" | "tools";
+
+const DEFAULT_REDACT_MODE: RedactSensitiveMode = "tools";
+const DEFAULT_REDACT_MIN_LENGTH = 18;
+const DEFAULT_REDACT_KEEP_START = 6;
+const DEFAULT_REDACT_KEEP_END = 4;
+
+const DEFAULT_REDACT_PATTERNS: string[] = [
+  // ENV-style assignments.
+  String.raw`\b[A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD)\b\s*[=:]\s*(["']?)([^\s"'\\]+)\1`,
+  // JSON fields.
+  String.raw`"(?:apiKey|token|secret|password|passwd|accessToken|refreshToken)"\s*:\s*"([^"]+)"`,
+  // CLI flags.
+  String.raw`--(?:api[-_]?key|token|secret|password|passwd)\s+(["']?)([^\s"']+)\1`,
+  // Authorization headers.
+  String.raw`Authorization\s*[:=]\s*Bearer\s+([A-Za-z0-9._\-+=]+)`,
+  String.raw`\bBearer\s+([A-Za-z0-9._\-+=]{18,})\b`,
+  // PEM blocks.
+  String.raw`-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]+?-----END [A-Z ]*PRIVATE KEY-----`,
+  import { createRequire } from "node:module";
+import type { TEXT2LLMConfig } from "../config/config.js";
 
 const requireConfig = createRequire(import.meta.url);
 
@@ -106,10 +130,10 @@ function redactText(text: string, patterns: RegExp[]): string {
 }
 
 function resolveConfigRedaction(): RedactOptions {
-  let cfg: OpenClawConfig["logging"] | undefined;
+  let cfg: TEXT2LLMConfig["logging"] | undefined;
   try {
     const loaded = requireConfig("../config/config.js") as {
-      loadConfig?: () => OpenClawConfig;
+      loadConfig?: () => TEXT2LLMConfig;
     };
     cfg = loaded.loadConfig?.().logging;
   } catch {

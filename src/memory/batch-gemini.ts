@@ -34,7 +34,44 @@ export type GeminiBatchOutputLine = {
 };
 
 const GEMINI_BATCH_MAX_REQUESTS = 50000;
-const debugEmbeddings = isTruthyEnvValue(process.env.OPENCLAW_DEBUG_MEMORY_EMBEDDINGS);
+const debugEmbeddings = isTruthyEnvValue(process.env.TEXT2LLM_DEBUG_MEMORY_EMBEDDINGS);
+const log import type { GeminiEmbeddingClient } from "./embeddings-gemini.js";
+import { isTruthyEnvValue } from "../infra/env.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
+import { hashText } from "./internal.js";
+
+export type GeminiBatchRequest = {
+  custom_id: string;
+  content: { parts: Array<{ text: string }> };
+  taskType: "RETRIEVAL_DOCUMENT" | "RETRIEVAL_QUERY";
+};
+
+export type GeminiBatchStatus = {
+  name?: string;
+  state?: string;
+  outputConfig?: { file?: string; fileId?: string };
+  metadata?: {
+    output?: {
+      responsesFile?: string;
+    };
+  };
+  error?: { message?: string };
+};
+
+export type GeminiBatchOutputLine = {
+  key?: string;
+  custom_id?: string;
+  request_id?: string;
+  embedding?: { values?: number[] };
+  response?: {
+    embedding?: { values?: number[] };
+    error?: { message?: string };
+  };
+  error?: { message?: string };
+};
+
+const GEMINI_BATCH_MAX_REQUESTS = 50000;
+const debugEmbeddings = isTruthyEnvValue(process.env.TEXT2LLM_DEBUG_MEMORY_EMBEDDINGS);
 const log = createSubsystemLogger("memory/embeddings");
 
 const debugLog = (message: string, meta?: Record<string, unknown>) => {
@@ -87,7 +124,7 @@ function buildGeminiUploadBody(params: { jsonl: string; displayName: string }): 
   body: Blob;
   contentType: string;
 } {
-  const boundary = `openclaw-${hashText(params.displayName)}`;
+  const boundary = `text2llm-${hashText(params.displayName)}`;
   const jsonPart = JSON.stringify({
     file: {
       displayName: params.displayName,

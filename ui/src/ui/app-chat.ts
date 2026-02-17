@@ -1,4 +1,30 @@
-import type { OpenClawApp } from "./app.ts";
+import type { TEXT2LLMApp } from "./app.ts";
+import type { GatewayHelloOk } from "./gateway.ts";
+import type { ChatAttachment, ChatQueueItem } from "./ui-types.ts";
+import { parseAgentSessionKey } from "../../../src/sessions/session-key-utils.js";
+import { scheduleChatScroll } from "./app-scroll.ts";
+import { setLastActiveSessionKey } from "./app-settings.ts";
+import { resetToolStream } from "./app-tool-stream.ts";
+import { abortChatRun, loadChatHistory, sendChatMessage } from "./controllers/chat.ts";
+import { loadSessions } from "./controllers/sessions.ts";
+import { normalizeBasePath } from "./navigation.ts";
+import { generateUUID } from "./uuid.ts";
+
+export type ChatHost = {
+  connected: boolean;
+  chatMessage: string;
+  chatAttachments: ChatAttachment[];
+  chatQueue: ChatQueueItem[];
+  chatRunId: string | null;
+  chatSending: boolean;
+  sessionKey: string;
+  basePath: string;
+  hello: GatewayHelloOk | null;
+  chatAvatarUrl: string | null;
+  refreshSessionsAfterChat: Set<string>;
+};
+
+export const CHAT_SESSIimport type { TEXT2LLMApp } from "./app.ts";
 import type { GatewayHelloOk } from "./gateway.ts";
 import type { ChatAttachment, ChatQueueItem } from "./ui-types.ts";
 import { parseAgentSessionKey } from "../../../src/sessions/session-key-utils.js";
@@ -65,7 +91,7 @@ export async function handleAbortChat(host: ChatHost) {
     return;
   }
   host.chatMessage = "";
-  await abortChatRun(host as unknown as OpenClawApp);
+  await abortChatRun(host as unknown as TEXT2LLMApp);
 }
 
 function enqueueChatMessage(
@@ -104,7 +130,7 @@ async function sendChatMessageNow(
   },
 ) {
   resetToolStream(host as unknown as Parameters<typeof resetToolStream>[0]);
-  const runId = await sendChatMessage(host as unknown as OpenClawApp, message, opts?.attachments);
+  const runId = await sendChatMessage(host as unknown as TEXT2LLMApp, message, opts?.attachments);
   const ok = Boolean(runId);
   if (!ok && opts?.previousDraft != null) {
     host.chatMessage = opts.previousDraft;
@@ -204,8 +230,8 @@ export async function handleSendChat(
 
 export async function refreshChat(host: ChatHost, opts?: { scheduleScroll?: boolean }) {
   await Promise.all([
-    loadChatHistory(host as unknown as OpenClawApp),
-    loadSessions(host as unknown as OpenClawApp, {
+    loadChatHistory(host as unknown as TEXT2LLMApp),
+    loadSessions(host as unknown as TEXT2LLMApp, {
       activeMinutes: CHAT_SESSIONS_ACTIVE_MINUTES,
     }),
     refreshChatAvatar(host),

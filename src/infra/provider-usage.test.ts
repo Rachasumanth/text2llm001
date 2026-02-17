@@ -30,6 +30,38 @@ describe("provider usage formatting", () => {
         },
       ],
     };
+    const line = forimport fs from "node:fs";
+import path from "node:path";
+import { describe, expect, it, vi } from "vitest";
+import { withTempHome } from "../../test/helpers/temp-home.js";
+import { ensureAuthProfileStore, listProfilesForProvider } from "../agents/auth-profiles.js";
+import {
+  formatUsageReportLines,
+  formatUsageSummaryLine,
+  loadProviderUsageSummary,
+  type UsageSummary,
+} from "./provider-usage.js";
+
+describe("provider usage formatting", () => {
+  it("returns null when no usage is available", () => {
+    const summary: UsageSummary = { updatedAt: 0, providers: [] };
+    expect(formatUsageSummaryLine(summary)).toBeNull();
+  });
+
+  it("picks the most-used window for summary line", () => {
+    const summary: UsageSummary = {
+      updatedAt: 0,
+      providers: [
+        {
+          provider: "anthropic",
+          displayName: "Claude",
+          windows: [
+            { label: "5h", usedPercent: 10 },
+            { label: "Week", usedPercent: 60 },
+          ],
+        },
+      ],
+    };
     const line = formatUsageSummaryLine(summary, { now: 0 });
     expect(line).toContain("Claude");
     expect(line).toContain("40% left");
@@ -253,7 +285,7 @@ describe("provider usage loading", () => {
     await withTempHome(
       async (tempHome) => {
         const agentDir = path.join(
-          process.env.OPENCLAW_STATE_DIR ?? path.join(tempHome, ".openclaw"),
+          process.env.TEXT2LLM_STATE_DIR ?? path.join(tempHome, ".text2llm"),
           "agents",
           "main",
           "agent",
@@ -328,9 +360,9 @@ describe("provider usage loading", () => {
       },
       {
         env: {
-          OPENCLAW_STATE_DIR: (home) => path.join(home, ".openclaw"),
+          TEXT2LLM_STATE_DIR: (home) => path.join(home, ".text2llm"),
         },
-        prefix: "openclaw-provider-usage-",
+        prefix: "text2llm-provider-usage-",
       },
     );
   });

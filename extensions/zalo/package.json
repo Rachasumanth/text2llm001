@@ -1,15 +1,15 @@
 {
-  "name": "@openclaw/zalo",
+  "name": "@text2llm/zalo",
   "version": "2026.2.13",
-  "description": "OpenClaw Zalo channel plugin",
+  "description": "text2llm Zalo channel plugin",
   "type": "module",
   "dependencies": {
     "undici": "7.21.0"
   },
   "devDependencies": {
-    "openclaw": "workspace:*"
+    "text2llm": "workspace:*"
   },
-  "openclaw": {
+  "text2llm": {
     "extensions": [
       "./index.ts"
     ],
@@ -27,7 +27,7 @@
       "quickstartAllowFrom": true
     },
     "install": {
-      "npmSpec": "@openclaw/zalo",
+      "npmSpec": "@text2llm/zalo",
       "localPath": "extensions/zalo",
       "defaultChoice": "npm"
     }

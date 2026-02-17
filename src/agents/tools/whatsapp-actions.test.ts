@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { OpenClawConfig } from "../../config/config.js";
+import type { TEXT2LLMConfig } from "../../config/config.js";
 import { handleWhatsAppAction } from "./whatsapp-actions.js";
 
 const sendReactionWhatsApp = vi.fn(async () => undefined);
@@ -12,7 +12,36 @@ vi.mock("../../web/outbound.js", () => ({
 
 const enabledConfig = {
   channels: { whatsapp: { actions: { reactions: true } } },
-} as OpenClawConfig;
+} as TEXT2LLMConfig;
+
+describe("handleWhatsAppAction", () => {
+  it("adds reactions", async () => {
+    await handleWhatsAppAction(
+      {
+        action: "react",
+        chatJid: "123@s.whatsapp.net",
+        messageId: "msg1",
+        emoji: "✅",
+      },
+      enabledConfig,
+    );
+    expect(sendReactionWhatsApp).toHaveBeenCalledWith("123@s.whatsapp.net", "msg1", "✅", {
+      verbose: false,
+      fromMe: import { describe, expect, it, vi } from "vitest";
+import type { TEXT2LLMConfig } from "../../config/config.js";
+import { handleWhatsAppAction } from "./whatsapp-actions.js";
+
+const sendReactionWhatsApp = vi.fn(async () => undefined);
+const sendPollWhatsApp = vi.fn(async () => ({ messageId: "poll-1", toJid: "jid-1" }));
+
+vi.mock("../../web/outbound.js", () => ({
+  sendReactionWhatsApp: (...args: unknown[]) => sendReactionWhatsApp(...args),
+  sendPollWhatsApp: (...args: unknown[]) => sendPollWhatsApp(...args),
+}));
+
+const enabledConfig = {
+  channels: { whatsapp: { actions: { reactions: true } } },
+} as TEXT2LLMConfig;
 
 describe("handleWhatsAppAction", () => {
   it("adds reactions", async () => {
@@ -94,7 +123,7 @@ describe("handleWhatsAppAction", () => {
   it("respects reaction gating", async () => {
     const cfg = {
       channels: { whatsapp: { actions: { reactions: false } } },
-    } as OpenClawConfig;
+    } as TEXT2LLMConfig;
     await expect(
       handleWhatsAppAction(
         {

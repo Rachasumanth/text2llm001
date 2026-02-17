@@ -1,16 +1,16 @@
 {
-  "name": "@openclaw/memory-core",
+  "name": "@text2llm/memory-core",
   "version": "2026.2.13",
   "private": true,
-  "description": "OpenClaw core memory search plugin",
+  "description": "text2llm core memory search plugin",
   "type": "module",
   "devDependencies": {
-    "openclaw": "workspace:*"
+    "text2llm": "workspace:*"
   },
   "peerDependencies": {
-    "openclaw": ">=2026.1.26"
+    "text2llm": ">=2026.1.26"
   },
-  "openclaw": {
+  "text2llm": {
     "extensions": [
       "./index.ts"
     ]

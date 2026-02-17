@@ -1,10 +1,46 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { OpenClawPackageManifest } from "../../plugins/manifest.js";
+import type { TEXT2LLMPackageManifest } from "../../plugins/manifest.js";
 import type { PluginOrigin } from "../../plugins/types.js";
 import type { ChannelMeta } from "./types.js";
 import { MANIFEST_KEY } from "../../compat/legacy-names.js";
-import { discoverOpenClawPlugins } from "../../plugins/discovery.js";
+import { discoverTEXT2LLMPlugins } from "../../plugins/discovery.js";
+import { CONFIG_DIR, isRecord, resolveUserPath } from "../../utils.js";
+
+export type ChannelUiMetaEntry = {
+  id: string;
+  label: string;
+  detailLabel: string;
+  systemImage?: string;
+};
+
+export type ChannelUiCatalog = {
+  entries: ChannelUiMetaEntry[];
+  order: string[];
+  labels: Record<string, string>;
+  detailLabels: Record<string, string>;
+  systemImages: Record<string, string>;
+  byId: Record<string, ChannelUiMetaEntry>;
+};
+
+export type ChannelPluginCatalogEntry = {
+  id: string;
+  meta: ChannelMeta;
+  install: {
+    npmSpec: string;
+    localPath?: string;
+    defaultChoice?: "npm" | "local";
+  };
+};
+
+type CatalogOptions = {
+  workspaceDirimport fs from "node:fs";
+import path from "node:path";
+import type { TEXT2LLMPackageManifest } from "../../plugins/manifest.js";
+import type { PluginOrigin } from "../../plugins/types.js";
+import type { ChannelMeta } from "./types.js";
+import { MANIFEST_KEY } from "../../compat/legacy-names.js";
+import { discoverTEXT2LLMPlugins } from "../../plugins/discovery.js";
 import { CONFIG_DIR, isRecord, resolveUserPath } from "../../utils.js";
 
 export type ChannelUiMetaEntry = {
@@ -49,7 +85,7 @@ type ExternalCatalogEntry = {
   name?: string;
   version?: string;
   description?: string;
-} & Partial<Record<ManifestKey, OpenClawPackageManifest>>;
+} & Partial<Record<ManifestKey, TEXT2LLMPackageManifest>>;
 
 const DEFAULT_CATALOG_PATHS = [
   path.join(CONFIG_DIR, "mpm", "plugins.json"),
@@ -57,7 +93,7 @@ const DEFAULT_CATALOG_PATHS = [
   path.join(CONFIG_DIR, "plugins", "catalog.json"),
 ];
 
-const ENV_CATALOG_PATHS = ["OPENCLAW_PLUGIN_CATALOG_PATHS", "OPENCLAW_MPM_CATALOG_PATHS"];
+const ENV_CATALOG_PATHS = ["TEXT2LLM_PLUGIN_CATALOG_PATHS", "TEXT2LLM_MPM_CATALOG_PATHS"];
 
 type ManifestKey = typeof MANIFEST_KEY;
 
@@ -119,7 +155,7 @@ function loadExternalCatalogEntries(options: CatalogOptions): ExternalCatalogEnt
 }
 
 function toChannelMeta(params: {
-  channel: NonNullable<OpenClawPackageManifest["channel"]>;
+  channel: NonNullable<TEXT2LLMPackageManifest["channel"]>;
   id: string;
 }): ChannelMeta | null {
   const label = params.channel.label?.trim();
@@ -169,7 +205,7 @@ function toChannelMeta(params: {
 }
 
 function resolveInstallInfo(params: {
-  manifest: OpenClawPackageManifest;
+  manifest: TEXT2LLMPackageManifest;
   packageName?: string;
   packageDir?: string;
   workspaceDir?: string;
@@ -194,7 +230,7 @@ function buildCatalogEntry(candidate: {
   packageName?: string;
   packageDir?: string;
   workspaceDir?: string;
-  packageManifest?: OpenClawPackageManifest;
+  packageManifest?: TEXT2LLMPackageManifest;
 }): ChannelPluginCatalogEntry | null {
   const manifest = candidate.packageManifest;
   if (!manifest?.channel) {
@@ -259,7 +295,7 @@ export function buildChannelUiCatalog(
 export function listChannelPluginCatalogEntries(
   options: CatalogOptions = {},
 ): ChannelPluginCatalogEntry[] {
-  const discovery = discoverOpenClawPlugins({ workspaceDir: options.workspaceDir });
+  const discovery = discoverTEXT2LLMPlugins({ workspaceDir: options.workspaceDir });
   const resolved = new Map<string, { entry: ChannelPluginCatalogEntry; priority: number }>();
 
   for (const candidate of discovery.candidates) {

@@ -1,4 +1,34 @@
-import type { OpenClawConfig } from "../../config/config.js";
+import type { TEXT2LLMConfig } from "../../config/config.js";
+import { updateSessionStore, type SessionEntry } from "../../config/sessions.js";
+import {
+  ensureAuthProfileStore,
+  isProfileInCooldown,
+  resolveAuthProfileOrder,
+} from "../auth-profiles.js";
+import { normalizeProviderId } from "../model-selection.js";
+
+function isProfileForProvider(params: {
+  provider: string;
+  profileId: string;
+  store: ReturnType<typeof ensureAuthProfileStore>;
+}): boolean {
+  const entry = params.store.profiles[params.profileId];
+  if (!entry?.provider) {
+    return false;
+  }
+  return normalizeProviderId(entry.provider) === normalizeProviderId(params.provider);
+}
+
+export async function clearSessionAuthProfileOverride(params: {
+  sessionEntry: SessionEntry;
+  sessionStore: Record<string, SessionEntry>;
+  sessionKey: string;
+  storePath?: string;
+}) {
+  const { sessionEntry, sessionStore, sessionKey, storePath } = params;
+  delete sessionEntry.authProfileOverride;
+  delete sessionEntry.authProfileOverrideSource;
+  deleteimport type { TEXT2LLMConfig } from "../../config/config.js";
 import { updateSessionStore, type SessionEntry } from "../../config/sessions.js";
 import {
   ensureAuthProfileStore,
@@ -39,7 +69,7 @@ export async function clearSessionAuthProfileOverride(params: {
 }
 
 export async function resolveSessionAuthProfileOverride(params: {
-  cfg: OpenClawConfig;
+  cfg: TEXT2LLMConfig;
   provider: string;
   agentDir: string;
   sessionEntry?: SessionEntry;

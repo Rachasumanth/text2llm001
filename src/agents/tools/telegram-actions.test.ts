@@ -1,5 +1,30 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { OpenClawConfig } from "../../config/config.js";
+import type { TEXT2LLMConfig } from "../../config/config.js";
+import { handleTelegramAction, readTelegramButtons } from "./telegram-actions.js";
+
+const reactMessageTelegram = vi.fn(async () => ({ ok: true }));
+const sendMessageTelegram = vi.fn(async () => ({
+  messageId: "789",
+  chatId: "123",
+}));
+const sendStickerTelegram = vi.fn(async () => ({
+  messageId: "456",
+  chatId: "123",
+}));
+const deleteMessageTelegram = vi.fn(async () => ({ ok: true }));
+const originalToken = process.env.TELEGRAM_BOT_TOKEN;
+
+vi.mock("../../telegram/send.js", () => ({
+  reactMessageTelegram: (...args: unknown[]) => reactMessageTelegram(...args),
+  sendMessageTelegram: (...args: unknown[]) => sendMessageTelegram(...args),
+  sendStickerTelegram: (...args: unknown[]) => sendStickerTelegram(...args),
+  deleteMessageTelegram: (...args: unknown[]) => deleteMessageTelegram(...args),
+}));
+
+describe("handleTelegramAction", () => {
+  beforeEach(() => {
+    reactMessimport { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { TEXT2LLMConfig } from "../../config/config.js";
 import { handleTelegramAction, readTelegramButtons } from "./telegram-actions.js";
 
 const reactMessageTelegram = vi.fn(async () => ({ ok: true }));
@@ -41,7 +66,7 @@ describe("handleTelegramAction", () => {
   it("adds reactions when reactionLevel is minimal", async () => {
     const cfg = {
       channels: { telegram: { botToken: "tok", reactionLevel: "minimal" } },
-    } as OpenClawConfig;
+    } as TEXT2LLMConfig;
     await handleTelegramAction(
       {
         action: "react",
@@ -66,7 +91,7 @@ describe("handleTelegramAction", () => {
     });
     const cfg = {
       channels: { telegram: { botToken: "tok", reactionLevel: "minimal" } },
-    } as OpenClawConfig;
+    } as TEXT2LLMConfig;
     const result = await handleTelegramAction(
       {
         action: "react",
@@ -93,7 +118,7 @@ describe("handleTelegramAction", () => {
   it("adds reactions when reactionLevel is extensive", async () => {
     const cfg = {
       channels: { telegram: { botToken: "tok", reactionLevel: "extensive" } },
-    } as OpenClawConfig;
+    } as TEXT2LLMConfig;
     await handleTelegramAction(
       {
         action: "react",
@@ -114,7 +139,7 @@ describe("handleTelegramAction", () => {
   it("removes reactions on empty emoji", async () => {
     const cfg = {
       channels: { telegram: { botToken: "tok", reactionLevel: "minimal" } },
-    } as OpenClawConfig;
+    } as TEXT2LLMConfig;
     await handleTelegramAction(
       {
         action: "react",
@@ -133,7 +158,7 @@ describe("handleTelegramAction", () => {
   });
 
   it("rejects sticker actions when disabled by default", async () => {
-    const cfg = { channels: { telegram: { botToken: "tok" } } } as OpenClawConfig;
+    const cfg = { channels: { telegram: { botToken: "tok" } } } as TEXT2LLMConfig;
     await expect(
       handleTelegramAction(
         {
@@ -150,7 +175,7 @@ describe("handleTelegramAction", () => {
   it("sends stickers when enabled", async () => {
     const cfg = {
       channels: { telegram: { botToken: "tok", actions: { sticker: true } } },
-    } as OpenClawConfig;
+    } as TEXT2LLMConfig;
     await handleTelegramAction(
       {
         action: "sendSticker",
@@ -169,7 +194,7 @@ describe("handleTelegramAction", () => {
   it("removes reactions when remove flag set", async () => {
     const cfg = {
       channels: { telegram: { botToken: "tok", reactionLevel: "extensive" } },
-    } as OpenClawConfig;
+    } as TEXT2LLMConfig;
     await handleTelegramAction(
       {
         action: "react",
@@ -191,7 +216,7 @@ describe("handleTelegramAction", () => {
   it("blocks reactions when reactionLevel is off", async () => {
     const cfg = {
       channels: { telegram: { botToken: "tok", reactionLevel: "off" } },
-    } as OpenClawConfig;
+    } as TEXT2LLMConfig;
     await expect(
       handleTelegramAction(
         {
@@ -208,7 +233,7 @@ describe("handleTelegramAction", () => {
   it("blocks reactions when reactionLevel is ack", async () => {
     const cfg = {
       channels: { telegram: { botToken: "tok", reactionLevel: "ack" } },
-    } as OpenClawConfig;
+    } as TEXT2LLMConfig;
     await expect(
       handleTelegramAction(
         {
@@ -231,7 +256,7 @@ describe("handleTelegramAction", () => {
           actions: { reactions: false },
         },
       },
-    } as OpenClawConfig;
+    } as TEXT2LLMConfig;
     await expect(
       handleTelegramAction(
         {
@@ -248,7 +273,7 @@ describe("handleTelegramAction", () => {
   it("sends a text message", async () => {
     const cfg = {
       channels: { telegram: { botToken: "tok" } },
-    } as OpenClawConfig;
+    } as TEXT2LLMConfig;
     const result = await handleTelegramAction(
       {
         action: "sendMessage",
@@ -271,7 +296,7 @@ describe("handleTelegramAction", () => {
   it("sends a message with media", async () => {
     const cfg = {
       channels: { telegram: { botToken: "tok" } },
-    } as OpenClawConfig;
+    } as TEXT2LLMConfig;
     await handleTelegramAction(
       {
         action: "sendMessage",
@@ -294,7 +319,7 @@ describe("handleTelegramAction", () => {
   it("passes quoteText when provided", async () => {
     const cfg = {
       channels: { telegram: { botToken: "tok" } },
-    } as OpenClawConfig;
+    } as TEXT2LLMConfig;
     await handleTelegramAction(
       {
         action: "sendMessage",
@@ -319,7 +344,7 @@ describe("handleTelegramAction", () => {
   it("allows media-only messages without content", async () => {
     const cfg = {
       channels: { telegram: { botToken: "tok" } },
-    } as OpenClawConfig;
+    } as TEXT2LLMConfig;
     await handleTelegramAction(
       {
         action: "sendMessage",
@@ -341,7 +366,7 @@ describe("handleTelegramAction", () => {
   it("requires content when no mediaUrl is provided", async () => {
     const cfg = {
       channels: { telegram: { botToken: "tok" } },
-    } as OpenClawConfig;
+    } as TEXT2LLMConfig;
     await expect(
       handleTelegramAction(
         {
@@ -358,7 +383,7 @@ describe("handleTelegramAction", () => {
       channels: {
         telegram: { botToken: "tok", actions: { sendMessage: false } },
       },
-    } as OpenClawConfig;
+    } as TEXT2LLMConfig;
     await expect(
       handleTelegramAction(
         {
@@ -374,7 +399,7 @@ describe("handleTelegramAction", () => {
   it("deletes a message", async () => {
     const cfg = {
       channels: { telegram: { botToken: "tok" } },
-    } as OpenClawConfig;
+    } as TEXT2LLMConfig;
     await handleTelegramAction(
       {
         action: "deleteMessage",
@@ -395,7 +420,7 @@ describe("handleTelegramAction", () => {
       channels: {
         telegram: { botToken: "tok", actions: { deleteMessage: false } },
       },
-    } as OpenClawConfig;
+    } as TEXT2LLMConfig;
     await expect(
       handleTelegramAction(
         {
@@ -410,7 +435,7 @@ describe("handleTelegramAction", () => {
 
   it("throws on missing bot token for sendMessage", async () => {
     delete process.env.TELEGRAM_BOT_TOKEN;
-    const cfg = {} as OpenClawConfig;
+    const cfg = {} as TEXT2LLMConfig;
     await expect(
       handleTelegramAction(
         {
@@ -426,7 +451,7 @@ describe("handleTelegramAction", () => {
   it("allows inline buttons by default (allowlist)", async () => {
     const cfg = {
       channels: { telegram: { botToken: "tok" } },
-    } as OpenClawConfig;
+    } as TEXT2LLMConfig;
     await handleTelegramAction(
       {
         action: "sendMessage",
@@ -444,7 +469,7 @@ describe("handleTelegramAction", () => {
       channels: {
         telegram: { botToken: "tok", capabilities: { inlineButtons: "off" } },
       },
-    } as OpenClawConfig;
+    } as TEXT2LLMConfig;
     await expect(
       handleTelegramAction(
         {
@@ -463,7 +488,7 @@ describe("handleTelegramAction", () => {
       channels: {
         telegram: { botToken: "tok", capabilities: { inlineButtons: "dm" } },
       },
-    } as OpenClawConfig;
+    } as TEXT2LLMConfig;
     await expect(
       handleTelegramAction(
         {
@@ -482,7 +507,7 @@ describe("handleTelegramAction", () => {
       channels: {
         telegram: { botToken: "tok", capabilities: { inlineButtons: "dm" } },
       },
-    } as OpenClawConfig;
+    } as TEXT2LLMConfig;
     await handleTelegramAction(
       {
         action: "sendMessage",
@@ -500,7 +525,7 @@ describe("handleTelegramAction", () => {
       channels: {
         telegram: { botToken: "tok", capabilities: { inlineButtons: "group" } },
       },
-    } as OpenClawConfig;
+    } as TEXT2LLMConfig;
     await handleTelegramAction(
       {
         action: "sendMessage",
@@ -518,7 +543,7 @@ describe("handleTelegramAction", () => {
       channels: {
         telegram: { botToken: "tok", capabilities: { inlineButtons: "all" } },
       },
-    } as OpenClawConfig;
+    } as TEXT2LLMConfig;
     await handleTelegramAction(
       {
         action: "sendMessage",

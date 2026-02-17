@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { OpenClawConfig } from "../config/config.js";
+import type { TEXT2LLMConfig } from "../config/config.js";
 import { resolveDiscordToken } from "./token.js";
 
 describe("resolveDiscordToken", () => {
@@ -11,7 +11,7 @@ describe("resolveDiscordToken", () => {
     vi.stubEnv("DISCORD_BOT_TOKEN", "env-token");
     const cfg = {
       channels: { discord: { token: "cfg-token" } },
-    } as OpenClawConfig;
+    } as TEXT2LLMConfig;
     const res = resolveDiscordToken(cfg);
     expect(res.token).toBe("cfg-token");
     expect(res.source).toBe("config");
@@ -21,7 +21,39 @@ describe("resolveDiscordToken", () => {
     vi.stubEnv("DISCORD_BOT_TOKEN", "env-token");
     const cfg = {
       channels: { discord: {} },
-    } as OpenClawConfig;
+    } as TEXT2LLMConfig;
+    const res = resolveDiscordToken(cfg);
+    expect(res.token).toBe("env-token");
+    expect(res.source).toBe("env");
+  });
+
+  it("prefers account token for non-default accounts", () => {
+    vi.stubEnv("DISCORD_BOT_TOKEN", "env-token");
+    const cfg = {
+   import { afterEach, describe, expect, it, vi } from "vitest";
+import type { TEXT2LLMConfig } from "../config/config.js";
+import { resolveDiscordToken } from "./token.js";
+
+describe("resolveDiscordToken", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("prefers config token over env", () => {
+    vi.stubEnv("DISCORD_BOT_TOKEN", "env-token");
+    const cfg = {
+      channels: { discord: { token: "cfg-token" } },
+    } as TEXT2LLMConfig;
+    const res = resolveDiscordToken(cfg);
+    expect(res.token).toBe("cfg-token");
+    expect(res.source).toBe("config");
+  });
+
+  it("uses env token when config is missing", () => {
+    vi.stubEnv("DISCORD_BOT_TOKEN", "env-token");
+    const cfg = {
+      channels: { discord: {} },
+    } as TEXT2LLMConfig;
     const res = resolveDiscordToken(cfg);
     expect(res.token).toBe("env-token");
     expect(res.source).toBe("env");
@@ -38,7 +70,7 @@ describe("resolveDiscordToken", () => {
           },
         },
       },
-    } as OpenClawConfig;
+    } as TEXT2LLMConfig;
     const res = resolveDiscordToken(cfg, { accountId: "work" });
     expect(res.token).toBe("acct-token");
     expect(res.source).toBe("config");

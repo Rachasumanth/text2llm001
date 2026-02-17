@@ -36,8 +36,8 @@ export const TOOL_GROUPS: Record<string, string[]> = {
   "group:messaging": ["message"],
   // Nodes + device tools
   "group:nodes": ["nodes"],
-  // All OpenClaw native tools (excludes provider plugins).
-  "group:openclaw": [
+  // All text2llm native tools (excludes provider plugins).
+  "group:text2llm": [
     "browser",
     "canvas",
     "nodes",

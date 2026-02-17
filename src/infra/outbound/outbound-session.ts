@@ -1,7 +1,24 @@
 import type { MsgContext } from "../../auto-reply/templating.js";
 import type { ChatType } from "../../channels/chat-type.js";
 import type { ChannelId } from "../../channels/plugins/types.js";
-import type { OpenClawConfig } from "../../config/config.js";
+import type { TEXT2LLMConfig } from "../../config/config.js";
+import type { ResolvedMessagingTarget } from "./target-resolver.js";
+import { getChannelPlugin } from "../../channels/plugins/index.js";
+import { recordSessionMetaFromInbound, resolveStorePath } from "../../config/sessions.js";
+import { parseDiscordTarget } from "../../discord/targets.js";
+import { parseIMessageTarget, normalizeIMessageHandle } from "../../imessage/targets.js";
+import { buildAgentSessionKey, type RoutePeer } from "../../routing/resolve-route.js";
+import { resolveThreadSessionKeys } from "../../routing/session-key.js";
+import {
+  resolveSignalPeerId,
+  resolveSignalRecipient,
+  resolveSignalSender,
+} from "../../signal/identity.js";
+import { resolveSlackAccount } from "../../slack/accounts.js";
+import { createSlackWebClient } from "../../slackimport type { MsgContext } from "../../auto-reply/templating.js";
+import type { ChatType } from "../../channels/chat-type.js";
+import type { ChannelId } from "../../channels/plugins/types.js";
+import type { TEXT2LLMConfig } from "../../config/config.js";
 import type { ResolvedMessagingTarget } from "./target-resolver.js";
 import { getChannelPlugin } from "../../channels/plugins/index.js";
 import { recordSessionMetaFromInbound, resolveStorePath } from "../../config/sessions.js";
@@ -34,7 +51,7 @@ export type OutboundSessionRoute = {
 };
 
 export type ResolveOutboundSessionRouteParams = {
-  cfg: OpenClawConfig;
+  cfg: TEXT2LLMConfig;
   channel: ChannelId;
   agentId: string;
   accountId?: string | null;
@@ -113,7 +130,7 @@ function inferPeerKind(params: {
 }
 
 function buildBaseSessionKey(params: {
-  cfg: OpenClawConfig;
+  cfg: TEXT2LLMConfig;
   agentId: string;
   channel: ChannelId;
   accountId?: string | null;
@@ -131,7 +148,7 @@ function buildBaseSessionKey(params: {
 
 // Best-effort mpim detection: allowlist/config, then Slack API (if token available).
 async function resolveSlackChannelType(params: {
-  cfg: OpenClawConfig;
+  cfg: TEXT2LLMConfig;
   accountId?: string | null;
   channelId: string;
 }): Promise<"channel" | "group" | "dm" | "unknown"> {
@@ -952,7 +969,7 @@ export async function resolveOutboundSessionRoute(
 }
 
 export async function ensureOutboundSessionEntry(params: {
-  cfg: OpenClawConfig;
+  cfg: TEXT2LLMConfig;
   agentId: string;
   channel: ChannelId;
   accountId?: string | null;

@@ -34,7 +34,7 @@ Status: production-ready for DMs + channels via Slack app integrations. Default 
         - install app and copy **Bot Token** (`xoxb-...`)
       </Step>
 
-      <Step title="Configure OpenClaw">
+      <Step title="Configure text2llm">
 
 ```json5
 {
@@ -74,7 +74,7 @@ SLACK_BOT_TOKEN=xoxb-...
       <Step title="Start gateway">
 
 ```bash
-openclaw gateway
+text2llm gateway
 ```
 
       </Step>
@@ -92,7 +92,7 @@ openclaw gateway
 
       </Step>
 
-      <Step title="Configure OpenClaw HTTP mode">
+      <Step title="Configure text2llm HTTP mode">
 
 ```json5
 {
@@ -150,7 +150,7 @@ For actions/directory reads, user token can be preferred when configured. For wr
     - `dm.groupEnabled` (group DMs default false)
     - `dm.groupChannels` (optional MPIM allowlist)
 
-    Pairing in DMs uses `openclaw pairing approve slack <code>`.
+    Pairing in DMs uses `text2llm pairing approve slack <code>`.
 
   </Tab>
 
@@ -203,7 +203,7 @@ For actions/directory reads, user token can be preferred when configured. For wr
 Default slash command settings:
 
 - `enabled: false`
-- `name: "openclaw"`
+- `name: "text2llm"`
 - `sessionPrefix: "slack:slash"`
 - `ephemeral: true`
 
@@ -291,12 +291,12 @@ Available action groups in current Slack tooling:
 ```json
 {
   "display_information": {
-    "name": "OpenClaw",
-    "description": "Slack connector for OpenClaw"
+    "name": "text2llm",
+    "description": "Slack connector for text2llm"
   },
   "features": {
     "bot_user": {
-      "display_name": "OpenClaw",
+      "display_name": "text2llm",
       "always_online": false
     },
     "app_home": {
@@ -305,8 +305,8 @@ Available action groups in current Slack tooling:
     },
     "slash_commands": [
       {
-        "command": "/openclaw",
-        "description": "Send a message to OpenClaw",
+        "command": "/text2llm",
+        "description": "Send a message to text2llm",
         "should_escape": false
       }
     ]
@@ -385,9 +385,9 @@ Available action groups in current Slack tooling:
     Useful commands:
 
 ```bash
-openclaw channels status --probe
-openclaw logs --follow
-openclaw doctor
+text2llm channels status --probe
+text2llm logs --follow
+text2llm doctor
 ```
 
   </Accordion>
@@ -400,7 +400,7 @@ openclaw doctor
     - pairing approvals / allowlist entries
 
 ```bash
-openclaw pairing list slack
+text2llm pairing list slack
 ```
 
   </Accordion>

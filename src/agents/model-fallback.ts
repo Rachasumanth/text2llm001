@@ -1,4 +1,44 @@
-import type { OpenClawConfig } from "../config/config.js";
+import type { TEXT2LLMConfig } from "../config/config.js";
+import type { FailoverReason } from "./pi-embedded-helpers.js";
+import {
+  ensureAuthProfileStore,
+  isProfileInCooldown,
+  resolveAuthProfileOrder,
+} from "./auth-profiles.js";
+import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "./defaults.js";
+import {
+  coerceToFailoverError,
+  describeFailoverError,
+  isFailoverError,
+  isTimeoutError,
+} from "./failover-error.js";
+import {
+  buildConfiguredAllowlistKeys,
+  buildModelAliasIndex,
+  modelKey,
+  resolveConfiguredModelRef,
+  resolveModelRefFromString,
+} from "./model-selection.js";
+
+type ModelCandidate = {
+  provider: string;
+  model: string;
+};
+
+type FallbackAttempt = {
+  provider: string;
+  model: string;
+  error: string;
+  reason?: FailoverReason;
+  status?: number;
+  code?: string;
+};
+
+/**
+ * Fallback abort check. Only treats explicit AbortError names as user aborts.
+ * Message-based checks (e.g., "aborted") can mask timeouts and skip fallback.
+ */
+function isFallbackAbortError(err: unknown): booleanimport type { TEXT2LLMConfig } from "../config/config.js";
 import type { FailoverReason } from "./pi-embedded-helpers.js";
 import {
   ensureAuthProfileStore,
@@ -54,7 +94,7 @@ function shouldRethrowAbort(err: unknown): boolean {
 }
 
 function resolveImageFallbackCandidates(params: {
-  cfg: OpenClawConfig | undefined;
+  cfg: TEXT2LLMConfig | undefined;
   defaultProvider: string;
   modelOverride?: string;
 }): ModelCandidate[] {
@@ -128,7 +168,7 @@ function resolveImageFallbackCandidates(params: {
 }
 
 function resolveFallbackCandidates(params: {
-  cfg: OpenClawConfig | undefined;
+  cfg: TEXT2LLMConfig | undefined;
   provider: string;
   model: string;
   /** Optional explicit fallbacks list; when provided (even empty), replaces agents.defaults.model.fallbacks. */
@@ -207,7 +247,7 @@ function resolveFallbackCandidates(params: {
 }
 
 export async function runWithModelFallback<T>(params: {
-  cfg: OpenClawConfig | undefined;
+  cfg: TEXT2LLMConfig | undefined;
   provider: string;
   model: string;
   agentDir?: string;
@@ -321,7 +361,7 @@ export async function runWithModelFallback<T>(params: {
 }
 
 export async function runWithImageModelFallback<T>(params: {
-  cfg: OpenClawConfig | undefined;
+  cfg: TEXT2LLMConfig | undefined;
   modelOverride?: string;
   run: (provider: string, model: string) => Promise<T>;
   onError?: (attempt: {

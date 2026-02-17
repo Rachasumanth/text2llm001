@@ -17,6 +17,25 @@ import { rawDataToString } from "../infra/ws.js";
 import { resetLogger, setLoggerOverride } from "../logging.js";
 import { DEFAULT_AGENT_ID, toAgentStoreSessionKey } from "../routing/session-key.js";
 import { getDeterministicFreePortBlock } from "../test-utils/ports.js";
+import { GATEWAY_CLIENT_MODES, GATEWAY_CLIENT_NAMES } froimport fs from "node:fs/promises";
+import { type AddressInfo, createServer } from "node:net";
+import os from "node:os";
+import path from "node:path";
+import { afterAll, afterEach, beforeAll, beforeEach, expect, vi } from "vitest";
+import { WebSocket } from "ws";
+import type { GatewayServerOptions } from "./server.js";
+import { resolveMainSessionKeyFromConfig, type SessionEntry } from "../config/sessions.js";
+import { resetAgentRunContextForTest } from "../infra/agent-events.js";
+import {
+  loadOrCreateDeviceIdentity,
+  publicKeyRawBase64UrlFromPem,
+  signDevicePayload,
+} from "../infra/device-identity.js";
+import { drainSystemEvents, peekSystemEvents } from "../infra/system-events.js";
+import { rawDataToString } from "../infra/ws.js";
+import { resetLogger, setLoggerOverride } from "../logging.js";
+import { DEFAULT_AGENT_ID, toAgentStoreSessionKey } from "../routing/session-key.js";
+import { getDeterministicFreePortBlock } from "../test-utils/ports.js";
 import { GATEWAY_CLIENT_MODES, GATEWAY_CLIENT_NAMES } from "../utils/message-channel.js";
 import { buildDeviceAuthPayload } from "./device-auth.js";
 import { PROTOCOL_VERSION } from "./protocol/index.js";
@@ -79,26 +98,26 @@ export async function writeSessionStore(params: {
 async function setupGatewayTestHome() {
   previousHome = process.env.HOME;
   previousUserProfile = process.env.USERPROFILE;
-  previousStateDir = process.env.OPENCLAW_STATE_DIR;
-  previousConfigPath = process.env.OPENCLAW_CONFIG_PATH;
-  previousSkipBrowserControl = process.env.OPENCLAW_SKIP_BROWSER_CONTROL_SERVER;
-  previousSkipGmailWatcher = process.env.OPENCLAW_SKIP_GMAIL_WATCHER;
-  previousSkipCanvasHost = process.env.OPENCLAW_SKIP_CANVAS_HOST;
-  previousBundledPluginsDir = process.env.OPENCLAW_BUNDLED_PLUGINS_DIR;
-  tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-gateway-home-"));
+  previousStateDir = process.env.TEXT2LLM_STATE_DIR;
+  previousConfigPath = process.env.TEXT2LLM_CONFIG_PATH;
+  previousSkipBrowserControl = process.env.TEXT2LLM_SKIP_BROWSER_CONTROL_SERVER;
+  previousSkipGmailWatcher = process.env.TEXT2LLM_SKIP_GMAIL_WATCHER;
+  previousSkipCanvasHost = process.env.TEXT2LLM_SKIP_CANVAS_HOST;
+  previousBundledPluginsDir = process.env.TEXT2LLM_BUNDLED_PLUGINS_DIR;
+  tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "text2llm-gateway-home-"));
   process.env.HOME = tempHome;
   process.env.USERPROFILE = tempHome;
-  process.env.OPENCLAW_STATE_DIR = path.join(tempHome, ".openclaw");
-  delete process.env.OPENCLAW_CONFIG_PATH;
+  process.env.TEXT2LLM_STATE_DIR = path.join(tempHome, ".text2llm");
+  delete process.env.TEXT2LLM_CONFIG_PATH;
 }
 
 function applyGatewaySkipEnv() {
-  process.env.OPENCLAW_SKIP_BROWSER_CONTROL_SERVER = "1";
-  process.env.OPENCLAW_SKIP_GMAIL_WATCHER = "1";
-  process.env.OPENCLAW_SKIP_CANVAS_HOST = "1";
-  process.env.OPENCLAW_BUNDLED_PLUGINS_DIR = tempHome
-    ? path.join(tempHome, "openclaw-test-no-bundled-extensions")
-    : "openclaw-test-no-bundled-extensions";
+  process.env.TEXT2LLM_SKIP_BROWSER_CONTROL_SERVER = "1";
+  process.env.TEXT2LLM_SKIP_GMAIL_WATCHER = "1";
+  process.env.TEXT2LLM_SKIP_CANVAS_HOST = "1";
+  process.env.TEXT2LLM_BUNDLED_PLUGINS_DIR = tempHome
+    ? path.join(tempHome, "text2llm-test-no-bundled-extensions")
+    : "text2llm-test-no-bundled-extensions";
 }
 
 async function resetGatewayTestState(options: { uniqueConfigRoot: boolean }) {
@@ -110,8 +129,8 @@ async function resetGatewayTestState(options: { uniqueConfigRoot: boolean }) {
   }
   applyGatewaySkipEnv();
   tempConfigRoot = options.uniqueConfigRoot
-    ? await fs.mkdtemp(path.join(tempHome, "openclaw-test-"))
-    : path.join(tempHome, ".openclaw-test");
+    ? await fs.mkdtemp(path.join(tempHome, "text2llm-test-"))
+    : path.join(tempHome, ".text2llm-test");
   setTestConfigRoot(tempConfigRoot);
   sessionStoreSaveDelayMs.value = 0;
   testTailnetIPv4.value = undefined;
@@ -165,34 +184,34 @@ async function cleanupGatewayTestHome(options: { restoreEnv: boolean }) {
       process.env.USERPROFILE = previousUserProfile;
     }
     if (previousStateDir === undefined) {
-      delete process.env.OPENCLAW_STATE_DIR;
+      delete process.env.TEXT2LLM_STATE_DIR;
     } else {
-      process.env.OPENCLAW_STATE_DIR = previousStateDir;
+      process.env.TEXT2LLM_STATE_DIR = previousStateDir;
     }
     if (previousConfigPath === undefined) {
-      delete process.env.OPENCLAW_CONFIG_PATH;
+      delete process.env.TEXT2LLM_CONFIG_PATH;
     } else {
-      process.env.OPENCLAW_CONFIG_PATH = previousConfigPath;
+      process.env.TEXT2LLM_CONFIG_PATH = previousConfigPath;
     }
     if (previousSkipBrowserControl === undefined) {
-      delete process.env.OPENCLAW_SKIP_BROWSER_CONTROL_SERVER;
+      delete process.env.TEXT2LLM_SKIP_BROWSER_CONTROL_SERVER;
     } else {
-      process.env.OPENCLAW_SKIP_BROWSER_CONTROL_SERVER = previousSkipBrowserControl;
+      process.env.TEXT2LLM_SKIP_BROWSER_CONTROL_SERVER = previousSkipBrowserControl;
     }
     if (previousSkipGmailWatcher === undefined) {
-      delete process.env.OPENCLAW_SKIP_GMAIL_WATCHER;
+      delete process.env.TEXT2LLM_SKIP_GMAIL_WATCHER;
     } else {
-      process.env.OPENCLAW_SKIP_GMAIL_WATCHER = previousSkipGmailWatcher;
+      process.env.TEXT2LLM_SKIP_GMAIL_WATCHER = previousSkipGmailWatcher;
     }
     if (previousSkipCanvasHost === undefined) {
-      delete process.env.OPENCLAW_SKIP_CANVAS_HOST;
+      delete process.env.TEXT2LLM_SKIP_CANVAS_HOST;
     } else {
-      process.env.OPENCLAW_SKIP_CANVAS_HOST = previousSkipCanvasHost;
+      process.env.TEXT2LLM_SKIP_CANVAS_HOST = previousSkipCanvasHost;
     }
     if (previousBundledPluginsDir === undefined) {
-      delete process.env.OPENCLAW_BUNDLED_PLUGINS_DIR;
+      delete process.env.TEXT2LLM_BUNDLED_PLUGINS_DIR;
     } else {
-      process.env.OPENCLAW_BUNDLED_PLUGINS_DIR = previousBundledPluginsDir;
+      process.env.TEXT2LLM_BUNDLED_PLUGINS_DIR = previousBundledPluginsDir;
     }
   }
   if (options.restoreEnv && tempHome) {
@@ -296,7 +315,7 @@ export async function startServerWithClient(
 ) {
   const { wsHeaders, ...gatewayOpts } = opts ?? {};
   let port = await getFreePort();
-  const prev = process.env.OPENCLAW_GATEWAY_TOKEN;
+  const prev = process.env.TEXT2LLM_GATEWAY_TOKEN;
   if (typeof token === "string") {
     testState.gatewayAuth = { mode: "token", token };
   }
@@ -306,9 +325,9 @@ export async function startServerWithClient(
       ? (testState.gatewayAuth as { token?: string }).token
       : undefined);
   if (fallbackToken === undefined) {
-    delete process.env.OPENCLAW_GATEWAY_TOKEN;
+    delete process.env.TEXT2LLM_GATEWAY_TOKEN;
   } else {
-    process.env.OPENCLAW_GATEWAY_TOKEN = fallbackToken;
+    process.env.TEXT2LLM_GATEWAY_TOKEN = fallbackToken;
   }
 
   let server: Awaited<ReturnType<typeof startGatewayServer>> | null = null;
@@ -413,13 +432,13 @@ export async function connectReq(
       ? undefined
       : typeof (testState.gatewayAuth as { token?: unknown } | undefined)?.token === "string"
         ? ((testState.gatewayAuth as { token?: string }).token ?? undefined)
-        : process.env.OPENCLAW_GATEWAY_TOKEN;
+        : process.env.TEXT2LLM_GATEWAY_TOKEN;
   const defaultPassword =
     opts?.skipDefaultAuth === true
       ? undefined
       : typeof (testState.gatewayAuth as { password?: unknown } | undefined)?.password === "string"
         ? ((testState.gatewayAuth as { password?: string }).password ?? undefined)
-        : process.env.OPENCLAW_GATEWAY_PASSWORD;
+        : process.env.TEXT2LLM_GATEWAY_PASSWORD;
   const token = opts?.token ?? defaultToken;
   const password = opts?.password ?? defaultPassword;
   const requestedScopes = Array.isArray(opts?.scopes)

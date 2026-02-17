@@ -28,7 +28,48 @@ export type GatewayBonjourDiscoverOpts = {
 };
 
 const DEFAULT_TIMEOUT_MS = 2000;
-const GATEWAY_SERVICE_TYPE = "_openclaw-gw._tcp";
+const GATEWAY_SERVICE_TYPE = "_TEXT2LLM-gw._tcp";
+
+function decodeDnsSdEscapes(value: string): string {
+  let decoded = false;
+  const bytes: number[] = [];
+  let pending = "";
+
+  const flush = () => {
+    if (!pending) {
+      return;
+    }
+    bytes.push(...Buffer.from(pending, "utfimport { runCommandWithTimeout } from "../process/exec.js";
+import { resolveWideAreaDiscoveryDomain } from "./widearea-dns.js";
+
+export type GatewayBonjourBeacon = {
+  instanceName: string;
+  domain?: string;
+  displayName?: string;
+  host?: string;
+  port?: number;
+  lanHost?: string;
+  tailnetDns?: string;
+  gatewayPort?: number;
+  sshPort?: number;
+  gatewayTls?: boolean;
+  gatewayTlsFingerprintSha256?: string;
+  cliPath?: string;
+  role?: string;
+  transport?: string;
+  txt?: Record<string, string>;
+};
+
+export type GatewayBonjourDiscoverOpts = {
+  timeoutMs?: number;
+  domains?: string[];
+  wideAreaDomain?: string | null;
+  platform?: NodeJS.Platform;
+  run?: typeof runCommandWithTimeout;
+};
+
+const DEFAULT_TIMEOUT_MS = 2000;
+const GATEWAY_SERVICE_TYPE = "_TEXT2LLM-gw._tcp";
 
 function decodeDnsSdEscapes(value: string): string {
   let decoded = false;
@@ -204,7 +245,7 @@ function parseDnsSdBrowse(stdout: string): string[] {
     if (!line.includes("Add")) {
       continue;
     }
-    const match = line.match(/_openclaw-gw\._tcp\.?\s+(.+)$/);
+    const match = line.match(/_TEXT2LLM-gw\._tcp\.?\s+(.+)$/);
     if (match?.[1]) {
       instances.add(decodeDnsSdEscapes(match[1].trim()));
     }
@@ -392,7 +433,7 @@ async function discoverWideAreaViaTailnetDns(
     if (!ptrName) {
       continue;
     }
-    const instanceName = ptrName.replace(/\.?_openclaw-gw\._tcp\..*$/, "");
+    const instanceName = ptrName.replace(/\.?_TEXT2LLM-gw\._tcp\..*$/, "");
 
     const srv = await run(["dig", "+short", "+time=1", "+tries=1", nameserverArg, ptrName, "SRV"], {
       timeoutMs: Math.max(1, Math.min(350, budget)),

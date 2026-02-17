@@ -1,4 +1,4 @@
-import type { DmPolicy, GroupPolicy } from "openclaw/plugin-sdk";
+import type { DmPolicy, GroupPolicy } from "text2llm/plugin-sdk";
 export type { DmPolicy, GroupPolicy };
 
 export type BlueBubblesGroupConfig = {

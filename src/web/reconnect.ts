@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { OpenClawConfig } from "../config/config.js";
+import type { TEXT2LLMConfig } from "../config/config.js";
 import type { BackoffPolicy } from "../infra/backoff.js";
 import { computeBackoff, sleepWithAbort } from "../infra/backoff.js";
 import { clamp } from "../utils.js";
@@ -17,7 +17,7 @@ export const DEFAULT_RECONNECT_POLICY: ReconnectPolicy = {
   maxAttempts: 12,
 };
 
-export function resolveHeartbeatSeconds(cfg: OpenClawConfig, overrideSeconds?: number): number {
+export function resolveHeartbeatSeconds(cfg: TEXT2LLMConfig, overrideSeconds?: number): number {
   const candidate = overrideSeconds ?? cfg.web?.heartbeatSeconds;
   if (typeof candidate === "number" && candidate > 0) {
     return candidate;
@@ -26,7 +26,39 @@ export function resolveHeartbeatSeconds(cfg: OpenClawConfig, overrideSeconds?: n
 }
 
 export function resolveReconnectPolicy(
-  cfg: OpenClawConfig,
+  cfg: TEXT2LLMConfig,
+  overrides?: Partial<ReconnectPolicy>,
+): ReconnectPolicy {
+  const reconnectOverrides = cfg.web?.reconnect ?? {};
+  const overrideConfig =import { randomUUID } from "node:crypto";
+import type { TEXT2LLMConfig } from "../config/config.js";
+import type { BackoffPolicy } from "../infra/backoff.js";
+import { computeBackoff, sleepWithAbort } from "../infra/backoff.js";
+import { clamp } from "../utils.js";
+
+export type ReconnectPolicy = BackoffPolicy & {
+  maxAttempts: number;
+};
+
+export const DEFAULT_HEARTBEAT_SECONDS = 60;
+export const DEFAULT_RECONNECT_POLICY: ReconnectPolicy = {
+  initialMs: 2_000,
+  maxMs: 30_000,
+  factor: 1.8,
+  jitter: 0.25,
+  maxAttempts: 12,
+};
+
+export function resolveHeartbeatSeconds(cfg: TEXT2LLMConfig, overrideSeconds?: number): number {
+  const candidate = overrideSeconds ?? cfg.web?.heartbeatSeconds;
+  if (typeof candidate === "number" && candidate > 0) {
+    return candidate;
+  }
+  return DEFAULT_HEARTBEAT_SECONDS;
+}
+
+export function resolveReconnectPolicy(
+  cfg: TEXT2LLMConfig,
   overrides?: Partial<ReconnectPolicy>,
 ): ReconnectPolicy {
   const reconnectOverrides = cfg.web?.reconnect ?? {};

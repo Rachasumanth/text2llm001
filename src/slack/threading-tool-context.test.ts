@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { OpenClawConfig } from "../config/config.js";
+import type { TEXT2LLMConfig } from "../config/config.js";
 import { buildSlackThreadingToolContext } from "./threading-tool-context.js";
 
-const emptyCfg = {} as OpenClawConfig;
+const emptyCfg = {} as TEXT2LLMConfig;
 
 describe("buildSlackThreadingToolContext", () => {
   it("uses top-level replyToMode by default", () => {
@@ -10,7 +10,7 @@ describe("buildSlackThreadingToolContext", () => {
       channels: {
         slack: { replyToMode: "first" },
       },
-    } as OpenClawConfig;
+    } as TEXT2LLMConfig;
     const result = buildSlackThreadingToolContext({
       cfg,
       accountId: null,
@@ -27,7 +27,41 @@ describe("buildSlackThreadingToolContext", () => {
           replyToModeByChatType: { direct: "all" },
         },
       },
-    } as OpenClawConfig;
+    } as TEXT2LLMConfig;
+    const result = buildSlackThreadingToolContext({
+      cfg,
+      accountId: null,
+      context: { ChatType: "direct" },
+  import { describe, expect, it } from "vitest";
+import type { TEXT2LLMConfig } from "../config/config.js";
+import { buildSlackThreadingToolContext } from "./threading-tool-context.js";
+
+const emptyCfg = {} as TEXT2LLMConfig;
+
+describe("buildSlackThreadingToolContext", () => {
+  it("uses top-level replyToMode by default", () => {
+    const cfg = {
+      channels: {
+        slack: { replyToMode: "first" },
+      },
+    } as TEXT2LLMConfig;
+    const result = buildSlackThreadingToolContext({
+      cfg,
+      accountId: null,
+      context: { ChatType: "channel" },
+    });
+    expect(result.replyToMode).toBe("first");
+  });
+
+  it("uses chat-type replyToMode overrides for direct messages when configured", () => {
+    const cfg = {
+      channels: {
+        slack: {
+          replyToMode: "off",
+          replyToModeByChatType: { direct: "all" },
+        },
+      },
+    } as TEXT2LLMConfig;
     const result = buildSlackThreadingToolContext({
       cfg,
       accountId: null,
@@ -44,7 +78,7 @@ describe("buildSlackThreadingToolContext", () => {
           replyToModeByChatType: { direct: "all" },
         },
       },
-    } as OpenClawConfig;
+    } as TEXT2LLMConfig;
     const result = buildSlackThreadingToolContext({
       cfg,
       accountId: null,
@@ -60,7 +94,7 @@ describe("buildSlackThreadingToolContext", () => {
           replyToMode: "first",
         },
       },
-    } as OpenClawConfig;
+    } as TEXT2LLMConfig;
     const result = buildSlackThreadingToolContext({
       cfg,
       accountId: null,
@@ -77,7 +111,7 @@ describe("buildSlackThreadingToolContext", () => {
           dm: { replyToMode: "all" },
         },
       },
-    } as OpenClawConfig;
+    } as TEXT2LLMConfig;
     const result = buildSlackThreadingToolContext({
       cfg,
       accountId: null,
@@ -91,7 +125,7 @@ describe("buildSlackThreadingToolContext", () => {
       channels: {
         slack: { replyToMode: "off" },
       },
-    } as OpenClawConfig;
+    } as TEXT2LLMConfig;
     const result = buildSlackThreadingToolContext({
       cfg,
       accountId: null,

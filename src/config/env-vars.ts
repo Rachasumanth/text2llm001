@@ -1,6 +1,6 @@
-import type { OpenClawConfig } from "./types.js";
+import type { TEXT2LLMConfig } from "./types.js";
 
-export function collectConfigEnvVars(cfg?: OpenClawConfig): Record<string, string> {
+export function collectConfigEnvVars(cfg?: TEXT2LLMConfig): Record<string, string> {
   const envConfig = cfg?.env;
   if (!envConfig) {
     return {};

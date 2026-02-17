@@ -7,7 +7,7 @@ describe("parseCliProfileArgs", () => {
   it("leaves gateway --dev for subcommands", () => {
     const res = parseCliProfileArgs([
       "node",
-      "openclaw",
+      "text2llm",
       "gateway",
       "--dev",
       "--allow-unconfigured",
@@ -16,39 +16,39 @@ describe("parseCliProfileArgs", () => {
       throw new Error(res.error);
     }
     expect(res.profile).toBeNull();
-    expect(res.argv).toEqual(["node", "openclaw", "gateway", "--dev", "--allow-unconfigured"]);
+    expect(res.argv).toEqual(["node", "text2llm", "gateway", "--dev", "--allow-unconfigured"]);
   });
 
   it("still accepts global --dev before subcommand", () => {
-    const res = parseCliProfileArgs(["node", "openclaw", "--dev", "gateway"]);
+    const res = parseCliProfileArgs(["node", "text2llm", "--dev", "gateway"]);
     if (!res.ok) {
       throw new Error(res.error);
     }
     expect(res.profile).toBe("dev");
-    expect(res.argv).toEqual(["node", "openclaw", "gateway"]);
+    expect(res.argv).toEqual(["node", "text2llm", "gateway"]);
   });
 
   it("parses --profile value and strips it", () => {
-    const res = parseCliProfileArgs(["node", "openclaw", "--profile", "work", "status"]);
+    const res = parseCliProfileArgs(["node", "text2llm", "--profile", "work", "status"]);
     if (!res.ok) {
       throw new Error(res.error);
     }
     expect(res.profile).toBe("work");
-    expect(res.argv).toEqual(["node", "openclaw", "status"]);
+    expect(res.argv).toEqual(["node", "text2llm", "status"]);
   });
 
   it("rejects missing profile value", () => {
-    const res = parseCliProfileArgs(["node", "openclaw", "--profile"]);
+    const res = parseCliProfileArgs(["node", "text2llm", "--profile"]);
     expect(res.ok).toBe(false);
   });
 
   it("rejects combining --dev with --profile (dev first)", () => {
-    const res = parseCliProfileArgs(["node", "openclaw", "--dev", "--profile", "work", "status"]);
+    const res = parseCliProfileArgs(["node", "text2llm", "--dev", "--profile", "work", "status"]);
     expect(res.ok).toBe(false);
   });
 
   it("rejects combining --dev with --profile (profile first)", () => {
-    const res = parseCliProfileArgs(["node", "openclaw", "--profile", "work", "--dev", "status"]);
+    const res = parseCliProfileArgs(["node", "text2llm", "--profile", "work", "--dev", "status"]);
     expect(res.ok).toBe(false);
   });
 });
@@ -61,31 +61,31 @@ describe("applyCliProfileEnv", () => {
       env,
       homedir: () => "/home/peter",
     });
-    const expectedStateDir = path.join(path.resolve("/home/peter"), ".openclaw-dev");
-    expect(env.OPENCLAW_PROFILE).toBe("dev");
-    expect(env.OPENCLAW_STATE_DIR).toBe(expectedStateDir);
-    expect(env.OPENCLAW_CONFIG_PATH).toBe(path.join(expectedStateDir, "openclaw.json"));
-    expect(env.OPENCLAW_GATEWAY_PORT).toBe("19001");
+    const expectedStateDir = path.join(path.resolve("/home/peter"), ".text2llm-dev");
+    expect(env.TEXT2LLM_PROFILE).toBe("dev");
+    expect(env.TEXT2LLM_STATE_DIR).toBe(expectedStateDir);
+    expect(env.TEXT2LLM_CONFIG_PATH).toBe(path.join(expectedStateDir, "text2llm.json"));
+    expect(env.TEXT2LLM_GATEWAY_PORT).toBe("19001");
   });
 
   it("does not override explicit env values", () => {
     const env: Record<string, string | undefined> = {
-      OPENCLAW_STATE_DIR: "/custom",
-      OPENCLAW_GATEWAY_PORT: "19099",
+      TEXT2LLM_STATE_DIR: "/custom",
+      TEXT2LLM_GATEWAY_PORT: "19099",
     };
     applyCliProfileEnv({
       profile: "dev",
       env,
       homedir: () => "/home/peter",
     });
-    expect(env.OPENCLAW_STATE_DIR).toBe("/custom");
-    expect(env.OPENCLAW_GATEWAY_PORT).toBe("19099");
-    expect(env.OPENCLAW_CONFIG_PATH).toBe(path.join("/custom", "openclaw.json"));
+    expect(env.TEXT2LLM_STATE_DIR).toBe("/custom");
+    expect(env.TEXT2LLM_GATEWAY_PORT).toBe("19099");
+    expect(env.TEXT2LLM_CONFIG_PATH).toBe(path.join("/custom", "text2llm.json"));
   });
 
-  it("uses OPENCLAW_HOME when deriving profile state dir", () => {
+  it("uses TEXT2LLM_HOME when deriving profile state dir", () => {
     const env: Record<string, string | undefined> = {
-      OPENCLAW_HOME: "/srv/openclaw-home",
+      TEXT2LLM_HOME: "/srv/text2llm-home",
       HOME: "/home/other",
     };
     applyCliProfileEnv({
@@ -94,70 +94,70 @@ describe("applyCliProfileEnv", () => {
       homedir: () => "/home/fallback",
     });
 
-    const resolvedHome = path.resolve("/srv/openclaw-home");
-    expect(env.OPENCLAW_STATE_DIR).toBe(path.join(resolvedHome, ".openclaw-work"));
-    expect(env.OPENCLAW_CONFIG_PATH).toBe(
-      path.join(resolvedHome, ".openclaw-work", "openclaw.json"),
+    const resolvedHome = path.resolve("/srv/text2llm-home");
+    expect(env.TEXT2LLM_STATE_DIR).toBe(path.join(resolvedHome, ".text2llm-work"));
+    expect(env.TEXT2LLM_CONFIG_PATH).toBe(
+      path.join(resolvedHome, ".text2llm-work", "text2llm.json"),
     );
   });
 });
 
 describe("formatCliCommand", () => {
   it("returns command unchanged when no profile is set", () => {
-    expect(formatCliCommand("openclaw doctor --fix", {})).toBe("openclaw doctor --fix");
+    expect(formatCliCommand("text2llm doctor --fix", {})).toBe("text2llm doctor --fix");
   });
 
   it("returns command unchanged when profile is default", () => {
-    expect(formatCliCommand("openclaw doctor --fix", { OPENCLAW_PROFILE: "default" })).toBe(
-      "openclaw doctor --fix",
+    expect(formatCliCommand("text2llm doctor --fix", { TEXT2LLM_PROFILE: "default" })).toBe(
+      "text2llm doctor --fix",
     );
   });
 
   it("returns command unchanged when profile is Default (case-insensitive)", () => {
-    expect(formatCliCommand("openclaw doctor --fix", { OPENCLAW_PROFILE: "Default" })).toBe(
-      "openclaw doctor --fix",
+    expect(formatCliCommand("text2llm doctor --fix", { TEXT2LLM_PROFILE: "Default" })).toBe(
+      "text2llm doctor --fix",
     );
   });
 
   it("returns command unchanged when profile is invalid", () => {
-    expect(formatCliCommand("openclaw doctor --fix", { OPENCLAW_PROFILE: "bad profile" })).toBe(
-      "openclaw doctor --fix",
+    expect(formatCliCommand("text2llm doctor --fix", { TEXT2LLM_PROFILE: "bad profile" })).toBe(
+      "text2llm doctor --fix",
     );
   });
 
   it("returns command unchanged when --profile is already present", () => {
     expect(
-      formatCliCommand("openclaw --profile work doctor --fix", { OPENCLAW_PROFILE: "work" }),
-    ).toBe("openclaw --profile work doctor --fix");
+      formatCliCommand("text2llm --profile work doctor --fix", { TEXT2LLM_PROFILE: "work" }),
+    ).toBe("text2llm --profile work doctor --fix");
   });
 
   it("returns command unchanged when --dev is already present", () => {
-    expect(formatCliCommand("openclaw --dev doctor", { OPENCLAW_PROFILE: "dev" })).toBe(
-      "openclaw --dev doctor",
+    expect(formatCliCommand("text2llm --dev doctor", { TEXT2LLM_PROFILE: "dev" })).toBe(
+      "text2llm --dev doctor",
     );
   });
 
   it("inserts --profile flag when profile is set", () => {
-    expect(formatCliCommand("openclaw doctor --fix", { OPENCLAW_PROFILE: "work" })).toBe(
-      "openclaw --profile work doctor --fix",
+    expect(formatCliCommand("text2llm doctor --fix", { TEXT2LLM_PROFILE: "work" })).toBe(
+      "text2llm --profile work doctor --fix",
     );
   });
 
   it("trims whitespace from profile", () => {
-    expect(formatCliCommand("openclaw doctor --fix", { OPENCLAW_PROFILE: "  jbopenclaw  " })).toBe(
-      "openclaw --profile jbopenclaw doctor --fix",
+    expect(formatCliCommand("text2llm doctor --fix", { TEXT2LLM_PROFILE: "  jbTEXT2LLM  " })).toBe(
+      "text2llm --profile jbTEXT2LLM doctor --fix",
     );
   });
 
-  it("handles command with no args after openclaw", () => {
-    expect(formatCliCommand("openclaw", { OPENCLAW_PROFILE: "test" })).toBe(
-      "openclaw --profile test",
+  it("handles command with no args after text2llm", () => {
+    expect(formatCliCommand("text2llm", { TEXT2LLM_PROFILE: "test" })).toBe(
+      "text2llm --profile test",
     );
   });
 
   it("handles pnpm wrapper", () => {
-    expect(formatCliCommand("pnpm openclaw doctor", { OPENCLAW_PROFILE: "work" })).toBe(
-      "pnpm openclaw --profile work doctor",
+    expect(formatCliCommand("pnpm text2llm doctor", { TEXT2LLM_PROFILE: "work" })).toBe(
+      "pnpm text2llm --profile work doctor",
     );
   });
 });

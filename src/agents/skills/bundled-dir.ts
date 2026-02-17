@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveOpenClawPackageRootSync } from "../../infra/openclaw-root.js";
+import { resolveTEXT2LLMPackageRootSync } from "../../infra/text2llm-root.js";
 
 function looksLikeSkillsDir(dir: string): boolean {
   try {
@@ -36,7 +36,45 @@ export type BundledSkillsResolveOptions = {
 export function resolveBundledSkillsDir(
   opts: BundledSkillsResolveOptions = {},
 ): string | undefined {
-  const override = process.env.OPENCLAW_BUNDLED_SKILLS_DIR?.trim();
+  const override = process.env.TEXT2LLM_BUNDLED_SKILLSimport fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { resolveTEXT2LLMPackageRootSync } from "../../infra/text2llm-root.js";
+
+function looksLikeSkillsDir(dir: string): boolean {
+  try {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.name.startsWith(".")) {
+        continue;
+      }
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isFile() && entry.name.endsWith(".md")) {
+        return true;
+      }
+      if (entry.isDirectory()) {
+        if (fs.existsSync(path.join(fullPath, "SKILL.md"))) {
+          return true;
+        }
+      }
+    }
+  } catch {
+    return false;
+  }
+  return false;
+}
+
+export type BundledSkillsResolveOptions = {
+  argv1?: string;
+  moduleUrl?: string;
+  cwd?: string;
+  execPath?: string;
+};
+
+export function resolveBundledSkillsDir(
+  opts: BundledSkillsResolveOptions = {},
+): string | undefined {
+  const override = process.env.TEXT2LLM_BUNDLED_SKILLS_DIR?.trim();
   if (override) {
     return override;
   }
@@ -59,7 +97,7 @@ export function resolveBundledSkillsDir(
     const moduleDir = path.dirname(fileURLToPath(moduleUrl));
     const argv1 = opts.argv1 ?? process.argv[1];
     const cwd = opts.cwd ?? process.cwd();
-    const packageRoot = resolveOpenClawPackageRootSync({
+    const packageRoot = resolveTEXT2LLMPackageRootSync({
       argv1,
       moduleUrl,
       cwd,

@@ -2,7 +2,7 @@ import type { Command } from "commander";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { OpenClawConfig } from "../config/config.js";
+import type { TEXT2LLMConfig } from "../config/config.js";
 import type { PluginRecord } from "../plugins/registry.js";
 import { loadConfig, writeConfigFile } from "../config/config.js";
 import { resolveStateDir } from "../config/paths.js";
@@ -82,9 +82,9 @@ function formatPluginLine(plugin: PluginRecord, verbose = false): string {
 }
 
 function applySlotSelectionForPlugin(
-  config: OpenClawConfig,
+  config: TEXT2LLMConfig,
   pluginId: string,
-): { config: OpenClawConfig; warnings: string[] } {
+): { config: TEXT2LLMConfig; warnings: string[] } {
   const report = buildPluginStatusReport({ config });
   const plugin = report.plugins.find((entry) => entry.id === pluginId);
   if (!plugin) {
@@ -111,11 +111,11 @@ function logSlotWarnings(warnings: string[]) {
 export function registerPluginsCli(program: Command) {
   const plugins = program
     .command("plugins")
-    .description("Manage OpenClaw plugins/extensions")
+    .description("Manage text2llm plugins/extensions")
     .addHelpText(
       "after",
       () =>
-        `\n${theme.muted("Docs:")} ${formatDocsLink("/cli/plugins", "docs.openclaw.ai/cli/plugins")}\n`,
+        `\n${theme.muted("Docs:")} ${formatDocsLink("/cli/plugins", "docs.text2llm.ai/cli/plugins")}\n`,
     );
 
   plugins
@@ -300,7 +300,7 @@ export function registerPluginsCli(program: Command) {
     .argument("<id>", "Plugin id")
     .action(async (id: string) => {
       const cfg = loadConfig();
-      let next: OpenClawConfig = {
+      let next: TEXT2LLMConfig = {
         ...cfg,
         plugins: {
           ...cfg.plugins,
@@ -497,7 +497,7 @@ export function registerPluginsCli(program: Command) {
             process.exit(1);
           }
 
-          let next: OpenClawConfig = {
+          let next: TEXT2LLMConfig = {
             ...cfg,
             plugins: {
               ...cfg.plugins,
@@ -542,7 +542,7 @@ export function registerPluginsCli(program: Command) {
           process.exit(1);
         }
 
-        let next: OpenClawConfig = {
+        let next: TEXT2LLMConfig = {
           ...cfg,
           plugins: {
             ...cfg.plugins,
@@ -606,7 +606,7 @@ export function registerPluginsCli(program: Command) {
         process.exit(1);
       }
 
-      let next: OpenClawConfig = {
+      let next: TEXT2LLMConfig = {
         ...cfg,
         plugins: {
           ...cfg.plugins,
@@ -712,7 +712,7 @@ export function registerPluginsCli(program: Command) {
           lines.push(`- ${target}${diag.message}`);
         }
       }
-      const docs = formatDocsLink("/plugin", "docs.openclaw.ai/plugin");
+      const docs = formatDocsLink("/plugin", "docs.text2llm.ai/plugin");
       lines.push("");
       lines.push(`${theme.muted("Docs:")} ${docs}`);
       defaultRuntime.log(lines.join("\n"));

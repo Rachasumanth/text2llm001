@@ -1,14 +1,14 @@
 ---
 title: IRC
-description: Connect OpenClaw to IRC channels and direct messages.
+description: Connect text2llm to IRC channels and direct messages.
 ---
 
-Use IRC when you want OpenClaw in classic channels (`#room`) and direct messages.
+Use IRC when you want text2llm in classic channels (`#room`) and direct messages.
 IRC ships as an extension plugin, but it is configured in the main config under `channels.irc`.
 
 ## Quick start
 
-1. Enable IRC config in `~/.openclaw/openclaw.json`.
+1. Enable IRC config in `~/.text2llm/text2llm.json`.
 2. Set at least:
 
 ```json
@@ -19,8 +19,8 @@ IRC ships as an extension plugin, but it is configured in the main config under 
       "host": "irc.libera.chat",
       "port": 6697,
       "tls": true,
-      "nick": "openclaw-bot",
-      "channels": ["#openclaw"]
+      "nick": "text2llm-bot",
+      "channels": ["#text2llm"]
     }
   }
 }
@@ -29,7 +29,7 @@ IRC ships as an extension plugin, but it is configured in the main config under 
 3. Start/restart gateway:
 
 ```bash
-openclaw gateway run
+text2llm gateway run
 ```
 
 ## Security defaults
@@ -83,7 +83,7 @@ Example (allow anyone in `#tuirc-dev` to talk to the bot):
 
 ## Reply triggering (mentions)
 
-Even if a channel is allowed (via `groupPolicy` + `groups`) and the sender is allowed, OpenClaw defaults to **mention-gating** in group contexts.
+Even if a channel is allowed (via `groupPolicy` + `groups`) and the sender is allowed, text2llm defaults to **mention-gating** in group contexts.
 
 That means you may see logs like `drop channel … (missing-mention)` unless the message includes a mention pattern that matches the bot.
 

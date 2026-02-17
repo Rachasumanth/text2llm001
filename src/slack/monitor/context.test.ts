@@ -1,11 +1,11 @@
 import type { App } from "@slack/bolt";
 import { describe, expect, it } from "vitest";
-import type { OpenClawConfig } from "../../config/config.js";
+import type { TEXT2LLMConfig } from "../../config/config.js";
 import type { RuntimeEnv } from "../../runtime.js";
 import { createSlackMonitorContext, normalizeSlackChannelType } from "./context.js";
 
 const baseParams = () => ({
-  cfg: {} as OpenClawConfig,
+  cfg: {} as TEXT2LLMConfig,
   accountId: "default",
   botToken: "token",
   app: { client: {} } as App,
@@ -29,7 +29,43 @@ const baseParams = () => ({
   replyToMode: "off" as const,
   slashCommand: {
     enabled: false,
-    name: "openclaw",
+    name: "text2llm",
+    sessionPrefix: "slack:slash",
+    ephemeral: true,
+  },
+  textLimit: 4000,
+  ackReactionScopeimport type { App } from "@slack/bolt";
+import { describe, expect, it } from "vitest";
+import type { TEXT2LLMConfig } from "../../config/config.js";
+import type { RuntimeEnv } from "../../runtime.js";
+import { createSlackMonitorContext, normalizeSlackChannelType } from "./context.js";
+
+const baseParams = () => ({
+  cfg: {} as TEXT2LLMConfig,
+  accountId: "default",
+  botToken: "token",
+  app: { client: {} } as App,
+  runtime: {} as RuntimeEnv,
+  botUserId: "B1",
+  teamId: "T1",
+  apiAppId: "A1",
+  historyLimit: 0,
+  sessionScope: "per-sender" as const,
+  mainKey: "main",
+  dmEnabled: true,
+  dmPolicy: "open" as const,
+  allowFrom: [],
+  groupDmEnabled: true,
+  groupDmChannels: [],
+  defaultRequireMention: true,
+  groupPolicy: "open" as const,
+  useAccessGroups: false,
+  reactionMode: "off" as const,
+  reactionAllowlist: [],
+  replyToMode: "off" as const,
+  slashCommand: {
+    enabled: false,
+    name: "text2llm",
     sessionPrefix: "slack:slash",
     ephemeral: true,
   },

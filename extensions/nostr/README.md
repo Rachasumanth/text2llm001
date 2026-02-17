@@ -1,10 +1,10 @@
-# @openclaw/nostr
+# @text2llm/nostr
 
-Nostr DM channel plugin for OpenClaw using NIP-04 encrypted direct messages.
+Nostr DM channel plugin for text2llm using NIP-04 encrypted direct messages.
 
 ## Overview
 
-This extension adds Nostr as a messaging channel to OpenClaw. It enables your bot to:
+This extension adds Nostr as a messaging channel to text2llm. It enables your bot to:
 
 - Receive encrypted DMs from Nostr users
 - Send encrypted responses back
@@ -13,7 +13,7 @@ This extension adds Nostr as a messaging channel to OpenClaw. It enables your bo
 ## Installation
 
 ```bash
-openclaw plugins install @openclaw/nostr
+text2llm plugins install @text2llm/nostr
 ```
 
 ## Quick Setup
@@ -90,7 +90,7 @@ openclaw plugins install @openclaw/nostr
 # Using strfry
 docker run -p 7777:7777 ghcr.io/hoytech/strfry
 
-# Configure openclaw to use local relay
+# Configure text2llm to use local relay
 "relays": ["ws://localhost:7777"]
 ```
 

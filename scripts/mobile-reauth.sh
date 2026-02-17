@@ -32,7 +32,46 @@ case "$AUTH_STATUS" in
         "$SCRIPT_DIR/claude-auth-status.sh" full
         exit 0
         ;;
-    CLAUDE_EXPIRING|OPENCLAW_EXPIRING|CLAWDBOT_EXPIRING)
+    CLAUDE_EXPIRING|TEXT2LLM_EXPIRING|CLAWDBOT_EXPIRING)
+        echo -e "${YELLOW}Auth is expiring soon.${NC}"
+        echo ""
+        ;;
+    *)
+        echo -e "$#!/bin/bash
+# Mobile-friendly Claude Code re-authentication
+# Designed for use via SSH from Termux
+#
+# This script handles the authentication flow in a way that works
+# from a mobile device by:
+# 1. Checking if auth is needed
+# 2. Running claude setup-token for long-lived auth
+# 3. Outputting URLs that can be easily opened on phone
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+echo "=== Claude Code Mobile Re-Auth ==="
+echo ""
+
+# Check current auth status
+echo "Checking auth status..."
+AUTH_STATUS=$("$SCRIPT_DIR/claude-auth-status.sh" simple 2>/dev/null || echo "ERROR")
+
+case "$AUTH_STATUS" in
+    OK)
+        echo -e "${GREEN}Auth is valid!${NC}"
+        "$SCRIPT_DIR/claude-auth-status.sh" full
+        exit 0
+        ;;
+    CLAUDE_EXPIRING|TEXT2LLM_EXPIRING|CLAWDBOT_EXPIRING)
         echo -e "${YELLOW}Auth is expiring soon.${NC}"
         echo ""
         ;;
@@ -69,11 +108,11 @@ if claude setup-token; then
     echo ""
     "$SCRIPT_DIR/claude-auth-status.sh" full
 
-    # Restart openclaw service if running
-    if systemctl --user is-active openclaw >/dev/null 2>&1; then
+    # Restart text2llm service if running
+    if systemctl --user is-active text2llm >/dev/null 2>&1; then
         echo ""
-        echo "Restarting openclaw service..."
-        systemctl --user restart openclaw
+        echo "Restarting text2llm service..."
+        systemctl --user restart text2llm
         echo -e "${GREEN}Service restarted.${NC}"
     fi
 else

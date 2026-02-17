@@ -1,4 +1,4 @@
-import type { ClawdbotConfig, RuntimeEnv, HistoryEntry } from "openclaw/plugin-sdk";
+import type { ClawdbotConfig, RuntimeEnv, HistoryEntry } from "text2llm/plugin-sdk";
 import * as Lark from "@larksuiteoapi/node-sdk";
 import * as http from "http";
 import type { ResolvedFeishuAccount } from "./types.js";

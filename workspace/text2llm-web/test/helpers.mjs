@@ -27,7 +27,7 @@ export async function getFreePort() {
 
 export async function createTempConfigFile() {
   const root = await mkdtemp(path.join(os.tmpdir(), "text2llm-web-test-"));
-  const configPath = path.join(root, "openclaw.json");
+  const configPath = path.join(root, "text2llm.json");
   await writeFile(configPath, JSON.stringify({}, null, 2), "utf8");
   return { root, configPath };
 }
@@ -40,7 +40,7 @@ export async function startTestServer(options = {}) {
     env: {
       ...process.env,
       TEXT2LLM_WEB_PORT: String(port),
-      OPENCLAW_CONFIG_PATH: configPath,
+      TEXT2LLM_CONFIG_PATH: configPath,
       ...(options.env || {}),
     },
     shell: false,

@@ -20,8 +20,8 @@ describe("tool-policy", () => {
     expect(resolveToolProfilePolicy("nope")).toBeUndefined();
   });
 
-  it("includes core tool groups in group:openclaw", () => {
-    const group = TOOL_GROUPS["group:openclaw"];
+  it("includes core tool groups in group:text2llm", () => {
+    const group = TOOL_GROUPS["group:text2llm"];
     expect(group).toContain("browser");
     expect(group).toContain("message");
     expect(group).toContain("session_status");

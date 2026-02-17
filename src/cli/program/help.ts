@@ -9,23 +9,46 @@ const CLI_NAME = resolveCliName();
 
 const EXAMPLES = [
   [
-    "openclaw channels login --verbose",
+    "text2llm channels login --verbose",
     "Link personal WhatsApp Web and show QR + connection logs.",
   ],
   [
-    'openclaw message send --target +15555550123 --message "Hi" --json',
+    'text2llm message send --target +15555550123 --message "Hi" --json',
     "Send via your web session and print JSON result.",
   ],
-  ["openclaw gateway --port 18789", "Run the WebSocket Gateway locally."],
-  ["openclaw --dev gateway", "Run a dev Gateway (isolated state/config) on ws://127.0.0.1:19001."],
-  ["openclaw gateway --force", "Kill anything bound to the default gateway port, then start it."],
-  ["openclaw gateway ...", "Gateway control via WebSocket."],
+  ["text2llm gateway --port 18789", "Run the WebSocket Gateway locally."],
+  ["text2llm --dev gateway", "Run a dev Gateway (isolated state/config) on ws://127.0.0.1:19001."],
+  ["text2llm gateway --force", "Kill anything bound to the default gateway port, then start it."],
+  ["text2llm gateway ...", "Gateway control via WebSocket."],
   [
-    'openclaw agent --to +15555550123 --message "Run summary" --deliver',
+    'text2llm agent --to +15import type { Command } from "commander";
+import type { ProgramContext } from "./context.js";
+import { formatDocsLink } from "../../terminal/links.js";
+import { isRich, theme } from "../../terminal/theme.js";
+import { formatCliBannerLine, hasEmittedCliBanner } from "../banner.js";
+import { replaceCliName, resolveCliName } from "../cli-name.js";
+
+const CLI_NAME = resolveCliName();
+
+const EXAMPLES = [
+  [
+    "text2llm channels login --verbose",
+    "Link personal WhatsApp Web and show QR + connection logs.",
+  ],
+  [
+    'text2llm message send --target +15555550123 --message "Hi" --json',
+    "Send via your web session and print JSON result.",
+  ],
+  ["text2llm gateway --port 18789", "Run the WebSocket Gateway locally."],
+  ["text2llm --dev gateway", "Run a dev Gateway (isolated state/config) on ws://127.0.0.1:19001."],
+  ["text2llm gateway --force", "Kill anything bound to the default gateway port, then start it."],
+  ["text2llm gateway ...", "Gateway control via WebSocket."],
+  [
+    'text2llm agent --to +15555550123 --message "Run summary" --deliver',
     "Talk directly to the agent using the Gateway; optionally send the WhatsApp reply.",
   ],
   [
-    'openclaw message send --channel telegram --target @mychat --message "Hi"',
+    'text2llm message send --channel telegram --target @mychat --message "Hi"',
     "Send via your Telegram bot.",
   ],
 ] as const;
@@ -37,11 +60,11 @@ export function configureProgramHelp(program: Command, ctx: ProgramContext) {
     .version(ctx.programVersion)
     .option(
       "--dev",
-      "Dev profile: isolate state under ~/.openclaw-dev, default gateway port 19001, and shift derived ports (browser/canvas)",
+      "Dev profile: isolate state under ~/.text2llm-dev, default gateway port 19001, and shift derived ports (browser/canvas)",
     )
     .option(
       "--profile <name>",
-      "Use a named profile (isolates OPENCLAW_STATE_DIR/OPENCLAW_CONFIG_PATH under ~/.openclaw-<name>)",
+      "Use a named profile (isolates TEXT2LLM_STATE_DIR/TEXT2LLM_CONFIG_PATH under ~/.text2llm-<name>)",
     );
 
   program.option("--no-color", "Disable ANSI colors", false);
@@ -92,7 +115,7 @@ export function configureProgramHelp(program: Command, ctx: ProgramContext) {
     if (command !== program) {
       return "";
     }
-    const docs = formatDocsLink("/cli", "docs.openclaw.ai/cli");
+    const docs = formatDocsLink("/cli", "docs.text2llm.ai/cli");
     return `\n${theme.heading("Examples:")}\n${fmtExamples}\n\n${theme.muted("Docs:")} ${docs}\n`;
   });
 }

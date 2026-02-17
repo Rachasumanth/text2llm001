@@ -30,6 +30,38 @@ vi.mock("../../agents/model-fallback.js", () => ({
 
 vi.mock("../../agents/pi-embedded.js", () => ({
   queueEmbeddedPiMessage: vi.fn().mockReturnValue(false),
+import fs from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { describe, expect, it, vi } from "vitest";
+import type { SessionEntry } from "../../config/sessions.js";
+import type { TypingMode } from "../../config/types.js";
+import type { TemplateContext } from "../templating.js";
+import type { GetReplyOptions } from "../types.js";
+import type { FollowupRun, QueueSettings } from "./queue.js";
+import * as sessions from "../../config/sessions.js";
+import { createMockTypingController } from "./test-helpers.js";
+
+const runEmbeddedPiAgentMock = vi.fn();
+
+vi.mock("../../agents/model-fallback.js", () => ({
+  runWithModelFallback: async ({
+    provider,
+    model,
+    run,
+  }: {
+    provider: string;
+    model: string;
+    run: (provider: string, model: string) => Promise<unknown>;
+  }) => ({
+    result: await run(provider, model),
+    provider,
+    model,
+  }),
+}));
+
+vi.mock("../../agents/pi-embedded.js", () => ({
+  queueEmbeddedPiMessage: vi.fn().mockReturnValue(false),
   runEmbeddedPiAgent: (params: unknown) => runEmbeddedPiAgentMock(params),
 }));
 
@@ -122,9 +154,9 @@ function createMinimalRun(params?: {
 
 describe("runReplyAgent typing (heartbeat)", () => {
   it("resets corrupted Gemini sessions and deletes transcripts", async () => {
-    const prevStateDir = process.env.OPENCLAW_STATE_DIR;
-    const stateDir = await fs.mkdtemp(path.join(tmpdir(), "openclaw-session-reset-"));
-    process.env.OPENCLAW_STATE_DIR = stateDir;
+    const prevStateDir = process.env.TEXT2LLM_STATE_DIR;
+    const stateDir = await fs.mkdtemp(path.join(tmpdir(), "text2llm-session-reset-"));
+    process.env.TEXT2LLM_STATE_DIR = stateDir;
     try {
       const sessionId = "session-corrupt";
       const storePath = path.join(stateDir, "sessions", "sessions.json");
@@ -162,16 +194,16 @@ describe("runReplyAgent typing (heartbeat)", () => {
       expect(persisted.main).toBeUndefined();
     } finally {
       if (prevStateDir) {
-        process.env.OPENCLAW_STATE_DIR = prevStateDir;
+        process.env.TEXT2LLM_STATE_DIR = prevStateDir;
       } else {
-        delete process.env.OPENCLAW_STATE_DIR;
+        delete process.env.TEXT2LLM_STATE_DIR;
       }
     }
   });
   it("keeps sessions intact on other errors", async () => {
-    const prevStateDir = process.env.OPENCLAW_STATE_DIR;
-    const stateDir = await fs.mkdtemp(path.join(tmpdir(), "openclaw-session-noreset-"));
-    process.env.OPENCLAW_STATE_DIR = stateDir;
+    const prevStateDir = process.env.TEXT2LLM_STATE_DIR;
+    const stateDir = await fs.mkdtemp(path.join(tmpdir(), "text2llm-session-noreset-"));
+    process.env.TEXT2LLM_STATE_DIR = stateDir;
     try {
       const sessionId = "session-ok";
       const storePath = path.join(stateDir, "sessions", "sessions.json");
@@ -207,9 +239,9 @@ describe("runReplyAgent typing (heartbeat)", () => {
       expect(persisted.main).toBeDefined();
     } finally {
       if (prevStateDir) {
-        process.env.OPENCLAW_STATE_DIR = prevStateDir;
+        process.env.TEXT2LLM_STATE_DIR = prevStateDir;
       } else {
-        delete process.env.OPENCLAW_STATE_DIR;
+        delete process.env.TEXT2LLM_STATE_DIR;
       }
     }
   });

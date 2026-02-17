@@ -1,9 +1,9 @@
 import type { AnyAgentTool } from "../agents/tools/common.js";
-import type { OpenClawPluginToolContext } from "./types.js";
+import type { TEXT2LLMPluginToolContext } from "./types.js";
 import { normalizeToolName } from "../agents/tool-policy.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { applyTestPluginDefaults, normalizePluginsConfig } from "./config-state.js";
-import { loadOpenClawPlugins } from "./loader.js";
+import { loadTEXT2LLMPlugins } from "./loader.js";
 
 const log = createSubsystemLogger("plugins");
 
@@ -42,7 +42,7 @@ function isOptionalToolAllowed(params: {
 }
 
 export function resolvePluginTools(params: {
-  context: OpenClawPluginToolContext;
+  context: TEXT2LLMPluginToolContext;
   existingToolNames?: Set<string>;
   toolAllowlist?: string[];
 }): AnyAgentTool[] {
@@ -54,7 +54,7 @@ export function resolvePluginTools(params: {
     return [];
   }
 
-  const registry = loadOpenClawPlugins({
+  const registry = loadTEXT2LLMPlugins({
     config: effectiveConfig,
     workspaceDir: params.context.workspaceDir,
     logger: {

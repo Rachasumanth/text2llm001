@@ -1,5 +1,5 @@
 import type { ChannelDirectoryEntryKind, ChannelId } from "../../channels/plugins/types.js";
-import type { OpenClawConfig } from "../../config/config.js";
+import type { TEXT2LLMConfig } from "../../config/config.js";
 
 type CacheEntry<T> = {
   value: T;
@@ -21,11 +21,11 @@ export function buildDirectoryCacheKey(key: DirectoryCacheKey): string {
 
 export class DirectoryCache<T> {
   private readonly cache = new Map<string, CacheEntry<T>>();
-  private lastConfigRef: OpenClawConfig | null = null;
+  private lastConfigRef: TEXT2LLMConfig | null = null;
 
   constructor(private readonly ttlMs: number) {}
 
-  get(key: string, cfg: OpenClawConfig): T | undefined {
+  get(key: string, cfg: TEXT2LLMConfig): T | undefined {
     this.resetIfConfigChanged(cfg);
     const entry = this.cache.get(key);
     if (!entry) {
@@ -38,7 +38,7 @@ export class DirectoryCache<T> {
     return entry.value;
   }
 
-  set(key: string, value: T, cfg: OpenClawConfig): void {
+  set(key: string, value: T, cfg: TEXT2LLMConfig): void {
     this.resetIfConfigChanged(cfg);
     this.cache.set(key, { value, fetchedAt: Date.now() });
   }
@@ -51,14 +51,14 @@ export class DirectoryCache<T> {
     }
   }
 
-  clear(cfg?: OpenClawConfig): void {
+  clear(cfg?: TEXT2LLMConfig): void {
     this.cache.clear();
     if (cfg) {
       this.lastConfigRef = cfg;
     }
   }
 
-  private resetIfConfigChanged(cfg: OpenClawConfig): void {
+  private resetIfConfigChanged(cfg: TEXT2LLMConfig): void {
     if (this.lastConfigRef && this.lastConfigRef !== cfg) {
       this.cache.clear();
     }

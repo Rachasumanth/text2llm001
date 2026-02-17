@@ -1,4 +1,42 @@
-import type { OpenClawConfig } from "../config/config.js";
+import type { TEXT2LLMConfig } from "../config/config.js";
+import type { CliBackendConfig } from "../config/types.js";
+import { normalizeProviderId } from "./model-selection.js";
+
+export type ResolvedCliBackend = {
+  id: string;
+  config: CliBackendConfig;
+};
+
+const CLAUDE_MODEL_ALIASES: Record<string, string> = {
+  opus: "opus",
+  "opus-4.6": "opus",
+  "opus-4.5": "opus",
+  "opus-4": "opus",
+  "claude-opus-4-6": "opus",
+  "claude-opus-4-5": "opus",
+  "claude-opus-4": "opus",
+  sonnet: "sonnet",
+  "sonnet-4.5": "sonnet",
+  "sonnet-4.1": "sonnet",
+  "sonnet-4.0": "sonnet",
+  "claude-sonnet-4-5": "sonnet",
+  "claude-sonnet-4-1": "sonnet",
+  "claude-sonnet-4-0": "sonnet",
+  haiku: "haiku",
+  "haiku-3.5": "haiku",
+  "claude-haiku-3-5": "haiku",
+};
+
+const DEFAULT_CLAUDE_BACKEND: CliBackendConfig = {
+  command: "claude",
+  args: ["-p", "--output-format", "json", "--dangerously-skip-permissions"],
+  resumeArgs: [
+    "-p",
+    "--output-format",
+    "json",
+    "--dangerously-skip-permissions",
+    "--resume",
+    "import type { TEXT2LLMConfig } from "../config/config.js";
 import type { CliBackendConfig } from "../config/types.js";
 import { normalizeProviderId } from "./model-selection.js";
 
@@ -109,7 +147,7 @@ function mergeBackendConfig(base: CliBackendConfig, override?: CliBackendConfig)
   };
 }
 
-export function resolveCliBackendIds(cfg?: OpenClawConfig): Set<string> {
+export function resolveCliBackendIds(cfg?: TEXT2LLMConfig): Set<string> {
   const ids = new Set<string>([
     normalizeBackendKey("claude-cli"),
     normalizeBackendKey("codex-cli"),
@@ -123,7 +161,7 @@ export function resolveCliBackendIds(cfg?: OpenClawConfig): Set<string> {
 
 export function resolveCliBackendConfig(
   provider: string,
-  cfg?: OpenClawConfig,
+  cfg?: TEXT2LLMConfig,
 ): ResolvedCliBackend | null {
   const normalized = normalizeBackendKey(provider);
   const configured = cfg?.agents?.defaults?.cliBackends ?? {};

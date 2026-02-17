@@ -3,15 +3,41 @@ import { describe, expect, it } from "vitest";
 import { expandHomePrefix, resolveEffectiveHomeDir, resolveRequiredHomeDir } from "./home-dir.js";
 
 describe("resolveEffectiveHomeDir", () => {
-  it("prefers OPENCLAW_HOME over HOME and USERPROFILE", () => {
+  it("prefers TEXT2LLM_HOME over HOME and USERPROFILE", () => {
     const env = {
-      OPENCLAW_HOME: "/srv/openclaw-home",
+      TEXT2LLM_HOME: "/srv/text2llm-home",
       HOME: "/home/other",
       USERPROFILE: "C:/Users/other",
     } as NodeJS.ProcessEnv;
 
     expect(resolveEffectiveHomeDir(env, () => "/fallback")).toBe(
-      path.resolve("/srv/openclaw-home"),
+      path.resolve("/srv/text2llm-home"),
+    );
+  });
+
+  it("falls back to HOME then USERPROFILE then homedir", () => {
+    expect(resolveEffectiveHomeDir({ HOME: "/home/alice" } as NodeJS.ProcessEnv)).toBe(
+      path.resolve("/home/alice"),
+    );
+    expect(resolveEffectiveHomeDir({ USERPROFILE: "C:/Users/alice" } as NodeJS.ProcessEnv)).toBe(
+      path.resolve("C:/Users/alice"),
+    );
+    expect(resolveEffectiveHomeDir({} as NodeJS.ProcessEnv, () => "/fallback")).toBe(
+      path.resolve("/fallback"),
+    );import path from "node:path";
+import { describe, expect, it } from "vitest";
+import { expandHomePrefix, resolveEffectiveHomeDir, resolveRequiredHomeDir } from "./home-dir.js";
+
+describe("resolveEffectiveHomeDir", () => {
+  it("prefers TEXT2LLM_HOME over HOME and USERPROFILE", () => {
+    const env = {
+      TEXT2LLM_HOME: "/srv/text2llm-home",
+      HOME: "/home/other",
+      USERPROFILE: "C:/Users/other",
+    } as NodeJS.ProcessEnv;
+
+    expect(resolveEffectiveHomeDir(env, () => "/fallback")).toBe(
+      path.resolve("/srv/text2llm-home"),
     );
   });
 
@@ -27,9 +53,9 @@ describe("resolveEffectiveHomeDir", () => {
     );
   });
 
-  it("expands OPENCLAW_HOME when set to ~", () => {
+  it("expands TEXT2LLM_HOME when set to ~", () => {
     const env = {
-      OPENCLAW_HOME: "~/svc",
+      TEXT2LLM_HOME: "~/svc",
       HOME: "/home/alice",
     } as NodeJS.ProcessEnv;
 
@@ -46,17 +72,17 @@ describe("resolveRequiredHomeDir", () => {
     ).toBe(process.cwd());
   });
 
-  it("returns a fully resolved path for OPENCLAW_HOME", () => {
+  it("returns a fully resolved path for TEXT2LLM_HOME", () => {
     const result = resolveRequiredHomeDir(
-      { OPENCLAW_HOME: "/custom/home" } as NodeJS.ProcessEnv,
+      { TEXT2LLM_HOME: "/custom/home" } as NodeJS.ProcessEnv,
       () => "/fallback",
     );
     expect(result).toBe(path.resolve("/custom/home"));
   });
 
-  it("returns cwd when OPENCLAW_HOME is tilde-only and no fallback home exists", () => {
+  it("returns cwd when TEXT2LLM_HOME is tilde-only and no fallback home exists", () => {
     expect(
-      resolveRequiredHomeDir({ OPENCLAW_HOME: "~" } as NodeJS.ProcessEnv, () => {
+      resolveRequiredHomeDir({ TEXT2LLM_HOME: "~" } as NodeJS.ProcessEnv, () => {
         throw new Error("no home");
       }),
     ).toBe(process.cwd());
@@ -66,9 +92,9 @@ describe("resolveRequiredHomeDir", () => {
 describe("expandHomePrefix", () => {
   it("expands tilde using effective home", () => {
     const value = expandHomePrefix("~/x", {
-      env: { OPENCLAW_HOME: "/srv/openclaw-home" } as NodeJS.ProcessEnv,
+      env: { TEXT2LLM_HOME: "/srv/text2llm-home" } as NodeJS.ProcessEnv,
     });
-    expect(value).toBe(`${path.resolve("/srv/openclaw-home")}/x`);
+    expect(value).toBe(`${path.resolve("/srv/text2llm-home")}/x`);
   });
 
   it("keeps non-tilde values unchanged", () => {

@@ -1,4 +1,4 @@
-import type { OpenClawConfig } from "../../config/config.js";
+import type { TEXT2LLMConfig } from "../../config/config.js";
 import { DEFAULT_ACCOUNT_ID, normalizeAccountId } from "../../routing/session-key.js";
 
 type ChannelSectionBase = {
@@ -6,14 +6,14 @@ type ChannelSectionBase = {
   accounts?: Record<string, Record<string, unknown>>;
 };
 
-function channelHasAccounts(cfg: OpenClawConfig, channelKey: string): boolean {
+function channelHasAccounts(cfg: TEXT2LLMConfig, channelKey: string): boolean {
   const channels = cfg.channels as Record<string, unknown> | undefined;
   const base = channels?.[channelKey] as ChannelSectionBase | undefined;
   return Boolean(base?.accounts && Object.keys(base.accounts).length > 0);
 }
 
 function shouldStoreNameInAccounts(params: {
-  cfg: OpenClawConfig;
+  cfg: TEXT2LLMConfig;
   channelKey: string;
   accountId: string;
   alwaysUseAccounts?: boolean;
@@ -28,12 +28,44 @@ function shouldStoreNameInAccounts(params: {
 }
 
 export function applyAccountNameToChannelSection(params: {
-  cfg: OpenClawConfig;
+  cfg: TEXT2LLMConfig;
+  channelKey: string;
+  accountId: string;import type { TEXT2LLMConfig } from "../../config/config.js";
+import { DEFAULT_ACCOUNT_ID, normalizeAccountId } from "../../routing/session-key.js";
+
+type ChannelSectionBase = {
+  name?: string;
+  accounts?: Record<string, Record<string, unknown>>;
+};
+
+function channelHasAccounts(cfg: TEXT2LLMConfig, channelKey: string): boolean {
+  const channels = cfg.channels as Record<string, unknown> | undefined;
+  const base = channels?.[channelKey] as ChannelSectionBase | undefined;
+  return Boolean(base?.accounts && Object.keys(base.accounts).length > 0);
+}
+
+function shouldStoreNameInAccounts(params: {
+  cfg: TEXT2LLMConfig;
+  channelKey: string;
+  accountId: string;
+  alwaysUseAccounts?: boolean;
+}): boolean {
+  if (params.alwaysUseAccounts) {
+    return true;
+  }
+  if (params.accountId !== DEFAULT_ACCOUNT_ID) {
+    return true;
+  }
+  return channelHasAccounts(params.cfg, params.channelKey);
+}
+
+export function applyAccountNameToChannelSection(params: {
+  cfg: TEXT2LLMConfig;
   channelKey: string;
   accountId: string;
   name?: string;
   alwaysUseAccounts?: boolean;
-}): OpenClawConfig {
+}): TEXT2LLMConfig {
   const trimmed = params.name?.trim();
   if (!trimmed) {
     return params.cfg;
@@ -60,7 +92,7 @@ export function applyAccountNameToChannelSection(params: {
           name: trimmed,
         },
       },
-    } as OpenClawConfig;
+    } as TEXT2LLMConfig;
   }
   const baseAccounts: Record<string, Record<string, unknown>> = base?.accounts ?? {};
   const existingAccount = baseAccounts[accountId] ?? {};
@@ -83,14 +115,14 @@ export function applyAccountNameToChannelSection(params: {
         },
       },
     },
-  } as OpenClawConfig;
+  } as TEXT2LLMConfig;
 }
 
 export function migrateBaseNameToDefaultAccount(params: {
-  cfg: OpenClawConfig;
+  cfg: TEXT2LLMConfig;
   channelKey: string;
   alwaysUseAccounts?: boolean;
-}): OpenClawConfig {
+}): TEXT2LLMConfig {
   if (params.alwaysUseAccounts) {
     return params.cfg;
   }
@@ -117,5 +149,5 @@ export function migrateBaseNameToDefaultAccount(params: {
         accounts,
       },
     },
-  } as OpenClawConfig;
+  } as TEXT2LLMConfig;
 }

@@ -1,4 +1,36 @@
-import type { OpenClawConfig } from "./config.js";
+import type { TEXT2LLMConfig } from "./config.js";
+import type { MarkdownTableMode } from "./types.base.js";
+import { normalizeChannelId } from "../channels/plugins/index.js";
+import { normalizeAccountId } from "../routing/session-key.js";
+
+type MarkdownConfigEntry = {
+  markdown?: {
+    tables?: MarkdownTableMode;
+  };
+};
+
+type MarkdownConfigSection = MarkdownConfigEntry & {
+  accounts?: Record<string, MarkdownConfigEntry>;
+};
+
+const DEFAULT_TABLE_MODES = new Map<string, MarkdownTableMode>([
+  ["signal", "bullets"],
+  ["whatsapp", "bullets"],
+]);
+
+const isMarkdownTableMode = (value: unknown): value is MarkdownTableMode =>
+  value === "off" || value === "bullets" || value === "code";
+
+function resolveMarkdownModeFromSection(
+  section: MarkdownConfigSection | undefined,
+  accountId?: string | null,
+): MarkdownTableMode | undefined {
+  if (!section) {
+    return undefined;
+  }
+  const normalizedAccountId = normalizeAccountId(accountId);
+  const accounts = section.accounts;
+  if (accounts && typeof accounts ===import type { TEXT2LLMConfig } from "./config.js";
 import type { MarkdownTableMode } from "./types.base.js";
 import { normalizeChannelId } from "../channels/plugins/index.js";
 import { normalizeAccountId } from "../routing/session-key.js";
@@ -50,7 +82,7 @@ function resolveMarkdownModeFromSection(
 }
 
 export function resolveMarkdownTableMode(params: {
-  cfg?: Partial<OpenClawConfig>;
+  cfg?: Partial<TEXT2LLMConfig>;
   channel?: string | null;
   accountId?: string | null;
 }): MarkdownTableMode {

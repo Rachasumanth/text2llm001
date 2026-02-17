@@ -1,5 +1,5 @@
-import type { OpenClawConfig } from "openclaw/plugin-sdk";
-import { createReplyPrefixOptions } from "openclaw/plugin-sdk";
+import type { Text2llmConfig } from "text2llm/plugin-sdk";
+import { createReplyPrefixOptions } from "text2llm/plugin-sdk";
 import { describe, expect, it } from "vitest";
 import { mattermostPlugin } from "./channel.js";
 
@@ -48,7 +48,7 @@ describe("mattermostPlugin", () => {
     });
 
     it("uses account responsePrefix overrides", () => {
-      const cfg: OpenClawConfig = {
+      const cfg: Text2llmConfig = {
         channels: {
           mattermost: {
             responsePrefix: "[Channel]",

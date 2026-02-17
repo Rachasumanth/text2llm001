@@ -1,5 +1,21 @@
 import type { ModelAliasIndex } from "../../agents/model-selection.js";
-import type { OpenClawConfig } from "../../config/config.js";
+import type { TEXT2LLMConfig } from "../../config/config.js";
+import type { ExecAsk, ExecHost, ExecSecurity } from "../../infra/exec-approvals.js";
+import type { ReplyPayload } from "../types.js";
+import type { InlineDirectives } from "./directive-handling.parse.js";
+import type { ElevatedLevel, ReasoningLevel, ThinkLevel, VerboseLevel } from "./directives.js";
+import {
+  resolveAgentConfig,
+  resolveAgentDir,
+  resolveSessionAgentId,
+} from "../../agents/agent-scope.js";
+import { resolveSandboxRuntimeStatus } from "../../agents/sandbox.js";
+import { type SessionEntry, updateSessionStore } from "../../config/sessions.js";
+import { enqueueSystemEvent } from "../../infra/system-events.js";
+import { applyVerboseOverride } from "../../sessions/level-overrides.js";
+import { applyModelOverrideToSessionEntry } from "../../sessions/model-overrides.js";
+import { formatThinkingLevels, formatXHighModelHint, supportsXHighThinking } from "../thinking.import type { ModelAliasIndex } from "../../agents/model-selection.js";
+import type { TEXT2LLMConfig } from "../../config/config.js";
 import type { ExecAsk, ExecHost, ExecSecurity } from "../../infra/exec-approvals.js";
 import type { ReplyPayload } from "../types.js";
 import type { InlineDirectives } from "./directive-handling.parse.js";
@@ -30,7 +46,7 @@ import {
 } from "./directive-handling.shared.js";
 
 function resolveExecDefaults(params: {
-  cfg: OpenClawConfig;
+  cfg: TEXT2LLMConfig;
   sessionEntry?: SessionEntry;
   agentId?: string;
 }): { host: ExecHost; security: ExecSecurity; ask: ExecAsk; node?: string } {
@@ -59,7 +75,7 @@ function resolveExecDefaults(params: {
 }
 
 export async function handleDirectiveOnly(params: {
-  cfg: OpenClawConfig;
+  cfg: TEXT2LLMConfig;
   directives: InlineDirectives;
   sessionEntry: SessionEntry;
   sessionStore: Record<string, SessionEntry>;

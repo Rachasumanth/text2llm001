@@ -8,7 +8,7 @@ RUN apt-get update \
     git \
   && rm -rf /var/lib/apt/lists/*
 
-COPY run.sh /usr/local/bin/openclaw-install-e2e
-RUN chmod +x /usr/local/bin/openclaw-install-e2e
+COPY run.sh /usr/local/bin/text2llm-install-e2e
+RUN chmod +x /usr/local/bin/text2llm-install-e2e
 
-ENTRYPOINT ["/usr/local/bin/openclaw-install-e2e"]
+ENTRYPOINT ["/usr/local/bin/text2llm-install-e2e"]

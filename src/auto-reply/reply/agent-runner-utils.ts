@@ -1,6 +1,6 @@
 import type { NormalizedUsage } from "../../agents/usage.js";
 import type { ChannelId, ChannelThreadingToolContext } from "../../channels/plugins/types.js";
-import type { OpenClawConfig } from "../../config/config.js";
+import type { TEXT2LLMConfig } from "../../config/config.js";
 import type { TemplateContext } from "../templating.js";
 import type { ReplyPayload } from "../types.js";
 import type { FollowupRun } from "./queue.js";
@@ -16,7 +16,27 @@ const BUN_FETCH_SOCKET_ERROR_RE = /socket connection was closed unexpectedly/i;
  */
 export function buildThreadingToolContext(params: {
   sessionCtx: TemplateContext;
-  config: OpenClawConfig | undefined;
+  config: TEXT2LLMConfig | undefined;
+  hasRepliedRef: { value: boolean } | undefined;
+}): Channelimport type { NormalizedUsage } from "../../agents/usage.js";
+import type { ChannelId, ChannelThreadingToolContext } from "../../channels/plugins/types.js";
+import type { TEXT2LLMConfig } from "../../config/config.js";
+import type { TemplateContext } from "../templating.js";
+import type { ReplyPayload } from "../types.js";
+import type { FollowupRun } from "./queue.js";
+import { getChannelDock } from "../../channels/dock.js";
+import { normalizeAnyChannelId, normalizeChannelId } from "../../channels/registry.js";
+import { isReasoningTagProvider } from "../../utils/provider-utils.js";
+import { estimateUsageCost, formatTokenCount, formatUsd } from "../../utils/usage-format.js";
+
+const BUN_FETCH_SOCKET_ERROR_RE = /socket connection was closed unexpectedly/i;
+
+/**
+ * Build provider-specific threading context for tool auto-injection.
+ */
+export function buildThreadingToolContext(params: {
+  sessionCtx: TemplateContext;
+  config: TEXT2LLMConfig | undefined;
   hasRepliedRef: { value: boolean } | undefined;
 }): ChannelThreadingToolContext {
   const { sessionCtx, config, hasRepliedRef } = params;

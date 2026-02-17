@@ -1,10 +1,10 @@
-import type { OpenClawConfig } from "../config/config.js";
+import type { TEXT2LLMConfig } from "../config/config.js";
 import { resolveDefaultAgentId } from "../agents/agent-scope.js";
 import { resolveMemoryBackendConfig } from "../memory/backend-config.js";
 import { getMemorySearchManager } from "../memory/index.js";
 
 export async function startGatewayMemoryBackend(params: {
-  cfg: OpenClawConfig;
+  cfg: TEXT2LLMConfig;
   log: { info?: (msg: string) => void; warn: (msg: string) => void };
 }): Promise<void> {
   const agentId = resolveDefaultAgentId(params.cfg);

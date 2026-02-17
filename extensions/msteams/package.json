@@ -1,7 +1,7 @@
 {
-  "name": "@openclaw/msteams",
+  "name": "@text2llm/msteams",
   "version": "2026.2.13",
-  "description": "OpenClaw Microsoft Teams channel plugin",
+  "description": "text2llm Microsoft Teams channel plugin",
   "type": "module",
   "dependencies": {
     "@microsoft/agents-hosting": "^1.2.3",
@@ -11,9 +11,9 @@
     "proper-lockfile": "^4.1.2"
   },
   "devDependencies": {
-    "openclaw": "workspace:*"
+    "text2llm": "workspace:*"
   },
-  "openclaw": {
+  "text2llm": {
     "extensions": [
       "./index.ts"
     ],
@@ -30,7 +30,7 @@
       "order": 60
     },
     "install": {
-      "npmSpec": "@openclaw/msteams",
+      "npmSpec": "@text2llm/msteams",
       "localPath": "extensions/msteams",
       "defaultChoice": "npm"
     }

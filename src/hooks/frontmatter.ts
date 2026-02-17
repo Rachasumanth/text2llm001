@@ -1,6 +1,42 @@
 import JSON5 from "json5";
 import type {
-  OpenClawHookMetadata,
+  TEXT2LLMHookMetadata,
+  HookEntry,
+  HookInstallSpec,
+  HookInvocationPolicy,
+  ParsedHookFrontmatter,
+} from "./types.js";
+import { LEGACY_MANIFEST_KEYS, MANIFEST_KEY } from "../compat/legacy-names.js";
+import { parseFrontmatterBlock } from "../markdown/frontmatter.js";
+import { parseBooleanValue } from "../utils/boolean.js";
+
+export function parseFrontmatter(content: string): ParsedHookFrontmatter {
+  return parseFrontmatterBlock(content);
+}
+
+function normalizeStringList(input: unknown): string[] {
+  if (!input) {
+    return [];
+  }
+  if (Array.isArray(input)) {
+    return input.map((value) => String(value).trim()).filter(Boolean);
+  }
+  if (typeof input === "string") {
+    return input
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function parseInstallSpec(input: unknown): HookInstallSpec | undefined {
+  if (!input || typeof input !== "object") {
+    return undefined;
+  }
+  const raw = input as Record<string, unkimport JSON5 from "json5";
+import type {
+  TEXT2LLMHookMetadata,
   HookEntry,
   HookInstallSpec,
   HookInvocationPolicy,
@@ -76,9 +112,9 @@ function parseFrontmatterBool(value: string | undefined, fallback: boolean): boo
   return parsed === undefined ? fallback : parsed;
 }
 
-export function resolveOpenClawMetadata(
+export function resolveTEXT2LLMMetadata(
   frontmatter: ParsedHookFrontmatter,
-): OpenClawHookMetadata | undefined {
+): TEXT2LLMHookMetadata | undefined {
   const raw = getFrontmatterValue(frontmatter, "metadata");
   if (!raw) {
     return undefined;

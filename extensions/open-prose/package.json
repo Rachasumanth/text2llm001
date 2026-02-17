@@ -1,13 +1,13 @@
 {
-  "name": "@openclaw/open-prose",
+  "name": "@text2llm/open-prose",
   "version": "2026.2.13",
   "private": true,
   "description": "OpenProse VM skill pack plugin (slash command + telemetry).",
   "type": "module",
   "devDependencies": {
-    "openclaw": "workspace:*"
+    "text2llm": "workspace:*"
   },
-  "openclaw": {
+  "text2llm": {
     "extensions": [
       "./index.ts"
     ]

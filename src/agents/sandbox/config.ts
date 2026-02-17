@@ -1,4 +1,4 @@
-import type { OpenClawConfig } from "../../config/config.js";
+import type { TEXT2LLMConfig } from "../../config/config.js";
 import type {
   SandboxBrowserConfig,
   SandboxConfig,
@@ -124,7 +124,7 @@ export function resolveSandboxPruneConfig(params: {
 }
 
 export function resolveSandboxConfigForAgent(
-  cfg?: OpenClawConfig,
+  cfg?: TEXT2LLMConfig,
   agentId?: string,
 ): SandboxConfig {
   const agent = cfg?.agents?.defaults?.sandbox;

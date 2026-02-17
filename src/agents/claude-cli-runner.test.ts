@@ -47,7 +47,7 @@ describe("runClaudeCliAgent", () => {
     });
 
     await runClaudeCliAgent({
-      sessionId: "openclaw-session",
+      sessionId: "text2llm-session",
       sessionFile: "/tmp/session.jsonl",
       workspaceDir: "/tmp",
       prompt: "hi",
@@ -73,7 +73,7 @@ describe("runClaudeCliAgent", () => {
     });
 
     await runClaudeCliAgent({
-      sessionId: "openclaw-session",
+      sessionId: "text2llm-session",
       sessionFile: "/tmp/session.jsonl",
       workspaceDir: "/tmp",
       prompt: "hi",

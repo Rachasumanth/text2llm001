@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { OpenClawConfig } from "../config/config.js";
+import type { TEXT2LLMConfig } from "../config/config.js";
 import type { TelegramAccountConfig } from "../config/types.js";
 import type { RuntimeEnv } from "../runtime.js";
 import { registerTelegramNativeCommands } from "./bot-native-commands.js";
@@ -17,7 +17,37 @@ describe("registerTelegramNativeCommands", () => {
     listSkillCommandsForAgents.mockReset();
   });
 
-  const buildParams = (cfg: OpenClawConfig, accountId = "default") => ({
+  const buildParams = (cfg: TEXT2LLMConfig, accountId = "default") => ({
+    bot: {
+      api: {
+        setMyCommands: vi.fn().mockResolvedValue(undefined),
+        sendMessage: vi.fn().mockResolvedValue(undefined),
+      },
+      command: vi.fn(),
+    } as unknown as Parameters<typeof registerTelegramNativeCommands>[0]["bot"],
+    cfg,
+    runtime: {} as RuntimeEnv,
+    accountId,
+   import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { TEXT2LLMConfig } from "../config/config.js";
+import type { TelegramAccountConfig } from "../config/types.js";
+import type { RuntimeEnv } from "../runtime.js";
+import { registerTelegramNativeCommands } from "./bot-native-commands.js";
+
+const { listSkillCommandsForAgents } = vi.hoisted(() => ({
+  listSkillCommandsForAgents: vi.fn(() => []),
+}));
+
+vi.mock("../auto-reply/skill-commands.js", () => ({
+  listSkillCommandsForAgents,
+}));
+
+describe("registerTelegramNativeCommands", () => {
+  beforeEach(() => {
+    listSkillCommandsForAgents.mockReset();
+  });
+
+  const buildParams = (cfg: TEXT2LLMConfig, accountId = "default") => ({
     bot: {
       api: {
         setMyCommands: vi.fn().mockResolvedValue(undefined),
@@ -47,7 +77,7 @@ describe("registerTelegramNativeCommands", () => {
   });
 
   it("scopes skill commands when account binding exists", () => {
-    const cfg: OpenClawConfig = {
+    const cfg: TEXT2LLMConfig = {
       agents: {
         list: [{ id: "main", default: true }, { id: "butler" }],
       },
@@ -68,7 +98,7 @@ describe("registerTelegramNativeCommands", () => {
   });
 
   it("keeps skill commands unscoped without a matching binding", () => {
-    const cfg: OpenClawConfig = {
+    const cfg: TEXT2LLMConfig = {
       agents: {
         list: [{ id: "main", default: true }, { id: "butler" }],
       },
@@ -80,7 +110,7 @@ describe("registerTelegramNativeCommands", () => {
   });
 
   it("truncates Telegram command registration to 100 commands", () => {
-    const cfg: OpenClawConfig = {
+    const cfg: TEXT2LLMConfig = {
       commands: { native: false },
     };
     const customCommands = Array.from({ length: 120 }, (_, index) => ({

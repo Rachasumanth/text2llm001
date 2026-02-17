@@ -1,6 +1,41 @@
-import { type OpenClawConfig, loadConfig } from "../config/config.js";
-import { resolveOpenClawAgentDir } from "./agent-paths.js";
-import { ensureOpenClawModelsJson } from "./models-config.js";
+import { type TEXT2LLMConfig, loadConfig } from "../config/config.js";
+import { resolveTEXT2LLMAgentDir } from "./agent-paths.js";
+import { ensureTEXT2LLMModelsJson } from "./models-config.js";
+
+export type ModelCatalogEntry = {
+  id: string;
+  name: string;
+  provider: string;
+  contextWindow?: number;
+  reasoning?: boolean;
+  input?: Array<"text" | "image">;
+};
+
+type DiscoveredModel = {
+  id: string;
+  name?: string;
+  provider: string;
+  contextWindow?: number;
+  reasoning?: boolean;
+  input?: Array<"text" | "image">;
+};
+
+type PiSdkModule = typeof import("./pi-model-discovery.js");
+
+let modelCatalogPromise: Promise<ModelCatalogEntry[]> | null = null;
+let hasLoggedModelCatalogError = false;
+const defaultImportPiSdk = () => import("./pi-model-discovery.js");
+let importPiSdk = defaultImportPiSdk;
+
+export function resetModelCatalogCacheForTest() {
+  modelCatalogPromise = null;
+  hasLoggedModelCatalogError = false;
+  importPiSdk = defaultImportPiSdk;
+}
+
+// Test-only escape hatch: allow mocking the dynamic imporimport { type TEXT2LLMConfig, loadConfig } from "../config/config.js";
+import { resolveTEXT2LLMAgentDir } from "./agent-paths.js";
+import { ensureTEXT2LLMModelsJson } from "./models-config.js";
 
 export type ModelCatalogEntry = {
   id: string;
@@ -39,7 +74,7 @@ export function __setModelCatalogImportForTest(loader?: () => Promise<PiSdkModul
 }
 
 export async function loadModelCatalog(params?: {
-  config?: OpenClawConfig;
+  config?: TEXT2LLMConfig;
   useCache?: boolean;
 }): Promise<ModelCatalogEntry[]> {
   if (params?.useCache === false) {
@@ -61,13 +96,13 @@ export async function loadModelCatalog(params?: {
       });
     try {
       const cfg = params?.config ?? loadConfig();
-      await ensureOpenClawModelsJson(cfg);
+      await ensureTEXT2LLMModelsJson(cfg);
       // IMPORTANT: keep the dynamic import *inside* the try/catch.
       // If this fails once (e.g. during a pnpm install that temporarily swaps node_modules),
       // we must not poison the cache with a rejected promise (otherwise all channel handlers
       // will keep failing until restart).
       const piSdk = await importPiSdk();
-      const agentDir = resolveOpenClawAgentDir();
+      const agentDir = resolveTEXT2LLMAgentDir();
       const { join } = await import("node:path");
       const authStorage = new piSdk.AuthStorage(join(agentDir, "auth.json"));
       const registry = new piSdk.ModelRegistry(authStorage, join(agentDir, "models.json")) as

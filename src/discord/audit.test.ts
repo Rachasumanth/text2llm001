@@ -27,7 +27,7 @@ describe("discord audit", () => {
           },
         },
       },
-    } as unknown as import("../config/config.js").OpenClawConfig;
+    } as unknown as import("../config/config.js").TEXT2LLMConfig;
 
     const collected = collectDiscordAuditChannelIds({
       cfg,

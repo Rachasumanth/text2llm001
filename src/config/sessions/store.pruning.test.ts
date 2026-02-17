@@ -13,7 +13,39 @@ import {
   saveSessionStore,
 } from "./store.js";
 
-// Mock loadConfig so resolveMaintenanceConfig() never reads a real openclaw.json.
+// Mock loadConfig so resolveMaintenanceConfig() never reads a real text2llm.json.
+// Unit tests always pass explicit overrides so this mock is inert for them.
+// Integration tests set return values to control the config.
+vi.mock("../config.js", () => ({
+  loadConfig: vi.fn().mockReturnValue({}),
+}));
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function makeEntry(updatedAt: number): SessionEntry {
+  return { sessionId: crypto.randomUUID(), updatedAt };
+}
+
+function makeStore(entries: Array<[string, SessionEntry]>): Record<string, SessionEntry> {
+  return Object.fromEntries(entries);
+}
+
+// -------------------------import crypto from "node:crypto";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { SessionEntry } from "./types.js";
+import {
+  capEntryCount,
+  clearSessionStoreCacheForTest,
+  loadSessionStore,
+  pruneStaleEntries,
+  rotateSessionFile,
+  saveSessionStore,
+} from "./store.js";
+
+// Mock loadConfig so resolveMaintenanceConfig() never reads a real text2llm.json.
 // Unit tests always pass explicit overrides so this mock is inert for them.
 // Integration tests set return values to control the config.
 vi.mock("../config.js", () => ({
@@ -251,7 +283,7 @@ describe("rotateSessionFile", () => {
   let storePath: string;
 
   beforeEach(async () => {
-    testDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-rotate-"));
+    testDir = await fs.mkdtemp(path.join(os.tmpdir(), "text2llm-rotate-"));
     storePath = path.join(testDir, "sessions.json");
   });
 
@@ -342,10 +374,10 @@ describe("Integration: saveSessionStore with pruning", () => {
   let mockLoadConfig: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
-    testDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-pruning-integ-"));
+    testDir = await fs.mkdtemp(path.join(os.tmpdir(), "text2llm-pruning-integ-"));
     storePath = path.join(testDir, "sessions.json");
-    savedCacheTtl = process.env.OPENCLAW_SESSION_CACHE_TTL_MS;
-    process.env.OPENCLAW_SESSION_CACHE_TTL_MS = "0";
+    savedCacheTtl = process.env.TEXT2LLM_SESSION_CACHE_TTL_MS;
+    process.env.TEXT2LLM_SESSION_CACHE_TTL_MS = "0";
     clearSessionStoreCacheForTest();
 
     const configModule = await import("../config.js");
@@ -357,9 +389,9 @@ describe("Integration: saveSessionStore with pruning", () => {
     await fs.rm(testDir, { recursive: true, force: true }).catch(() => undefined);
     clearSessionStoreCacheForTest();
     if (savedCacheTtl === undefined) {
-      delete process.env.OPENCLAW_SESSION_CACHE_TTL_MS;
+      delete process.env.TEXT2LLM_SESSION_CACHE_TTL_MS;
     } else {
-      process.env.OPENCLAW_SESSION_CACHE_TTL_MS = savedCacheTtl;
+      process.env.TEXT2LLM_SESSION_CACHE_TTL_MS = savedCacheTtl;
     }
   });
 

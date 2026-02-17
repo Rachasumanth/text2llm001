@@ -1,7 +1,40 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installProcessWarningFilter, shouldIgnoreWarning } from "./warning-filter.js";
 
-const warningFilterKey = Symbol.for("openclaw.warning-filter");
+const warningFilterKey = Symbol.for("text2llm.warning-filter");
+const baseEmitWarning = process.emitWarning.bind(process);
+
+function resetWarningFilterInstallState(): void {
+  const globalState = globalThis as typeof globalThis & {
+    [warningFilterKey]?: { installed: boolean };
+  };
+  delete globalState[warningFilterKey];
+  process.emitWarning = baseEmitWarning;
+}
+
+describe("warning filter", () => {
+  beforeEach(() => {
+    resetWarningFilterInstallState();
+  });
+
+  afterEach(() => {
+    resetWarningFilterInstallState();
+    vi.restoreAllMocks();
+  });
+
+  it("suppresses known deprecation and experimental warning signatures", () => {
+    expect(
+      shouldIgnoreWarning({
+        name: "DeprecationWarning",
+        code: "DEP0040",
+        message: "The punycode module is deprecated.",
+      }),
+    ).toBe(true);
+    expect(
+      shouldIgnoreWarnimport { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { installProcessWarningFilter, shouldIgnoreWarning } from "./warning-filter.js";
+
+const warningFilterKey = Symbol.for("text2llm.warning-filter");
 const baseEmitWarning = process.emitWarning.bind(process);
 
 function resetWarningFilterInstallState(): void {
@@ -85,10 +118,10 @@ describe("warning filter", () => {
       await new Promise((resolve) => setImmediate(resolve));
       expect(seenWarnings.find((warning) => warning.code === "DEP0060")).toBeUndefined();
 
-      emitWarning("Visible warning", { type: "Warning", code: "OPENCLAW_TEST_WARNING" });
+      emitWarning("Visible warning", { type: "Warning", code: "TEXT2LLM_TEST_WARNING" });
       await new Promise((resolve) => setImmediate(resolve));
       expect(
-        seenWarnings.find((warning) => warning.code === "OPENCLAW_TEST_WARNING"),
+        seenWarnings.find((warning) => warning.code === "TEXT2LLM_TEST_WARNING"),
       ).toBeDefined();
     } finally {
       process.off("warning", onWarning);

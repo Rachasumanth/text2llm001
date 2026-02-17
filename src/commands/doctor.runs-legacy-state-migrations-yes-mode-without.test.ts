@@ -26,7 +26,7 @@ beforeEach(() => {
 
   readConfigFileSnapshot.mockReset();
   writeConfigFile.mockReset().mockResolvedValue(undefined);
-  resolveOpenClawPackageRoot.mockReset().mockResolvedValue(null);
+  resolveTEXT2LLMPackageRoot.mockReset().mockResolvedValue(null);
   runGatewayUpdate.mockReset().mockResolvedValue({
     status: "skipped",
     mode: "unknown",
@@ -34,7 +34,43 @@ beforeEach(() => {
     durationMs: 0,
   });
   legacyReadConfigFileSnapshot.mockReset().mockResolvedValue({
-    path: "/tmp/openclaw.json",
+    pathimport fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+let originalIsTTY: boolean | undefined;
+let originalStateDir: string | undefined;
+let originalUpdateInProgress: string | undefined;
+let tempStateDir: string | undefined;
+
+function setStdinTty(value: boolean | undefined) {
+  try {
+    Object.defineProperty(process.stdin, "isTTY", {
+      value,
+      configurable: true,
+    });
+  } catch {
+    // ignore
+  }
+}
+
+beforeEach(() => {
+  confirm.mockReset().mockResolvedValue(true);
+  select.mockReset().mockResolvedValue("node");
+  note.mockClear();
+
+  readConfigFileSnapshot.mockReset();
+  writeConfigFile.mockReset().mockResolvedValue(undefined);
+  resolveTEXT2LLMPackageRoot.mockReset().mockResolvedValue(null);
+  runGatewayUpdate.mockReset().mockResolvedValue({
+    status: "skipped",
+    mode: "unknown",
+    steps: [],
+    durationMs: 0,
+  });
+  legacyReadConfigFileSnapshot.mockReset().mockResolvedValue({
+    path: "/tmp/text2llm.json",
     exists: false,
     raw: null,
     parsed: {},
@@ -75,11 +111,11 @@ beforeEach(() => {
 
   originalIsTTY = process.stdin.isTTY;
   setStdinTty(true);
-  originalStateDir = process.env.OPENCLAW_STATE_DIR;
-  originalUpdateInProgress = process.env.OPENCLAW_UPDATE_IN_PROGRESS;
-  process.env.OPENCLAW_UPDATE_IN_PROGRESS = "1";
-  tempStateDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-doctor-state-"));
-  process.env.OPENCLAW_STATE_DIR = tempStateDir;
+  originalStateDir = process.env.TEXT2LLM_STATE_DIR;
+  originalUpdateInProgress = process.env.TEXT2LLM_UPDATE_IN_PROGRESS;
+  process.env.TEXT2LLM_UPDATE_IN_PROGRESS = "1";
+  tempStateDir = fs.mkdtempSync(path.join(os.tmpdir(), "text2llm-doctor-state-"));
+  process.env.TEXT2LLM_STATE_DIR = tempStateDir;
   fs.mkdirSync(path.join(tempStateDir, "agents", "main", "sessions"), {
     recursive: true,
   });
@@ -89,14 +125,14 @@ beforeEach(() => {
 afterEach(() => {
   setStdinTty(originalIsTTY);
   if (originalStateDir === undefined) {
-    delete process.env.OPENCLAW_STATE_DIR;
+    delete process.env.TEXT2LLM_STATE_DIR;
   } else {
-    process.env.OPENCLAW_STATE_DIR = originalStateDir;
+    process.env.TEXT2LLM_STATE_DIR = originalStateDir;
   }
   if (originalUpdateInProgress === undefined) {
-    delete process.env.OPENCLAW_UPDATE_IN_PROGRESS;
+    delete process.env.TEXT2LLM_UPDATE_IN_PROGRESS;
   } else {
-    process.env.OPENCLAW_UPDATE_IN_PROGRESS = originalUpdateInProgress;
+    process.env.TEXT2LLM_UPDATE_IN_PROGRESS = originalUpdateInProgress;
   }
   if (tempStateDir) {
     fs.rmSync(tempStateDir, { recursive: true, force: true });
@@ -109,7 +145,7 @@ const confirm = vi.fn().mockResolvedValue(true);
 const select = vi.fn().mockResolvedValue("node");
 const note = vi.fn();
 const writeConfigFile = vi.fn().mockResolvedValue(undefined);
-const resolveOpenClawPackageRoot = vi.fn().mockResolvedValue(null);
+const resolveTEXT2LLMPackageRoot = vi.fn().mockResolvedValue(null);
 const runGatewayUpdate = vi.fn().mockResolvedValue({
   status: "skipped",
   mode: "unknown",
@@ -133,7 +169,7 @@ const runCommandWithTimeout = vi.fn().mockResolvedValue({
 const ensureAuthProfileStore = vi.fn().mockReturnValue({ version: 1, profiles: {} });
 
 const legacyReadConfigFileSnapshot = vi.fn().mockResolvedValue({
-  path: "/tmp/openclaw.json",
+  path: "/tmp/text2llm.json",
   exists: false,
   raw: null,
   parsed: {},
@@ -173,14 +209,14 @@ vi.mock("../agents/skills-status.js", () => ({
 }));
 
 vi.mock("../plugins/loader.js", () => ({
-  loadOpenClawPlugins: () => ({ plugins: [], diagnostics: [] }),
+  loadTEXT2LLMPlugins: () => ({ plugins: [], diagnostics: [] }),
 }));
 
 vi.mock("../config/config.js", async (importOriginal) => {
   const actual = await importOriginal();
   return {
     ...actual,
-    CONFIG_PATH: "/tmp/openclaw.json",
+    CONFIG_PATH: "/tmp/text2llm.json",
     createConfigIO,
     readConfigFileSnapshot,
     writeConfigFile,
@@ -215,8 +251,8 @@ vi.mock("../process/exec.js", () => ({
   runCommandWithTimeout,
 }));
 
-vi.mock("../infra/openclaw-root.js", () => ({
-  resolveOpenClawPackageRoot,
+vi.mock("../infra/text2llm-root.js", () => ({
+  resolveTEXT2LLMPackageRoot,
 }));
 
 vi.mock("../infra/update-runner.js", () => ({
@@ -328,7 +364,7 @@ vi.mock("./doctor-state-migrations.js", () => ({
 describe("doctor command", () => {
   it("runs legacy state migrations in yes mode without prompting", async () => {
     readConfigFileSnapshot.mockResolvedValue({
-      path: "/tmp/openclaw.json",
+      path: "/tmp/text2llm.json",
       exists: true,
       raw: "{}",
       parsed: {},
@@ -387,7 +423,7 @@ describe("doctor command", () => {
 
   it("skips gateway restarts in non-interactive mode", async () => {
     readConfigFileSnapshot.mockResolvedValue({
-      path: "/tmp/openclaw.json",
+      path: "/tmp/text2llm.json",
       exists: true,
       raw: "{}",
       parsed: {},
@@ -419,7 +455,7 @@ describe("doctor command", () => {
 
   it("migrates anthropic oauth config profile id when only email profile exists", async () => {
     readConfigFileSnapshot.mockResolvedValue({
-      path: "/tmp/openclaw.json",
+      path: "/tmp/text2llm.json",
       exists: true,
       raw: "{}",
       parsed: {},

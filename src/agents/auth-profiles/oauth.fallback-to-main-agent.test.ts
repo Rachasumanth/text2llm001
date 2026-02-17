@@ -7,8 +7,8 @@ import { resolveApiKeyForProfile } from "./oauth.js";
 import { ensureAuthProfileStore } from "./store.js";
 
 describe("resolveApiKeyForProfile fallback to main agent", () => {
-  const previousStateDir = process.env.OPENCLAW_STATE_DIR;
-  const previousAgentDir = process.env.OPENCLAW_AGENT_DIR;
+  const previousStateDir = process.env.TEXT2LLM_STATE_DIR;
+  const previousAgentDir = process.env.TEXT2LLM_AGENT_DIR;
   const previousPiAgentDir = process.env.PI_CODING_AGENT_DIR;
   let tmpDir: string;
   let mainAgentDir: string;
@@ -21,9 +21,32 @@ describe("resolveApiKeyForProfile fallback to main agent", () => {
     await fs.mkdir(mainAgentDir, { recursive: true });
     await fs.mkdir(secondaryAgentDir, { recursive: true });
 
-    // Set environment variables so resolveOpenClawAgentDir() returns mainAgentDir
-    process.env.OPENCLAW_STATE_DIR = tmpDir;
-    process.env.OPENCLAW_AGENT_DIR = mainAgentDir;
+    // Set import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { AuthProfileStore } from "./types.js";
+import { resolveApiKeyForProfile } from "./oauth.js";
+import { ensureAuthProfileStore } from "./store.js";
+
+describe("resolveApiKeyForProfile fallback to main agent", () => {
+  const previousStateDir = process.env.TEXT2LLM_STATE_DIR;
+  const previousAgentDir = process.env.TEXT2LLM_AGENT_DIR;
+  const previousPiAgentDir = process.env.PI_CODING_AGENT_DIR;
+  let tmpDir: string;
+  let mainAgentDir: string;
+  let secondaryAgentDir: string;
+
+  beforeEach(async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "oauth-fallback-test-"));
+    mainAgentDir = path.join(tmpDir, "agents", "main", "agent");
+    secondaryAgentDir = path.join(tmpDir, "agents", "kids", "agent");
+    await fs.mkdir(mainAgentDir, { recursive: true });
+    await fs.mkdir(secondaryAgentDir, { recursive: true });
+
+    // Set environment variables so resolveTEXT2LLMAgentDir() returns mainAgentDir
+    process.env.TEXT2LLM_STATE_DIR = tmpDir;
+    process.env.TEXT2LLM_AGENT_DIR = mainAgentDir;
     process.env.PI_CODING_AGENT_DIR = mainAgentDir;
   });
 
@@ -32,14 +55,14 @@ describe("resolveApiKeyForProfile fallback to main agent", () => {
 
     // Restore original environment
     if (previousStateDir === undefined) {
-      delete process.env.OPENCLAW_STATE_DIR;
+      delete process.env.TEXT2LLM_STATE_DIR;
     } else {
-      process.env.OPENCLAW_STATE_DIR = previousStateDir;
+      process.env.TEXT2LLM_STATE_DIR = previousStateDir;
     }
     if (previousAgentDir === undefined) {
-      delete process.env.OPENCLAW_AGENT_DIR;
+      delete process.env.TEXT2LLM_AGENT_DIR;
     } else {
-      process.env.OPENCLAW_AGENT_DIR = previousAgentDir;
+      process.env.TEXT2LLM_AGENT_DIR = previousAgentDir;
     }
     if (previousPiAgentDir === undefined) {
       delete process.env.PI_CODING_AGENT_DIR;

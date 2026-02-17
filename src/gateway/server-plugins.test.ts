@@ -3,10 +3,10 @@ import type { PluginRegistry } from "../plugins/registry.js";
 import type { PluginDiagnostic } from "../plugins/types.js";
 import { loadGatewayPlugins } from "./server-plugins.js";
 
-const loadOpenClawPlugins = vi.hoisted(() => vi.fn());
+const loadTEXT2LLMPlugins = vi.hoisted(() => vi.fn());
 
 vi.mock("../plugins/loader.js", () => ({
-  loadOpenClawPlugins,
+  loadTEXT2LLMPlugins,
 }));
 
 const createRegistry = (diagnostics: PluginDiagnostic[]): PluginRegistry => ({
@@ -34,7 +34,45 @@ describe("loadGatewayPlugins", () => {
         message: "failed to load plugin: boom",
       },
     ];
-    loadOpenClawPlugins.mockReturnValue(createRegistry(diagnostics));
+    loadTEXT2LLMPlugins.mockReturnValue(createRegistry(diagnostics));
+
+import { describe, expect, test, vi } from "vitest";
+import type { PluginRegistry } from "../plugins/registry.js";
+import type { PluginDiagnostic } from "../plugins/types.js";
+import { loadGatewayPlugins } from "./server-plugins.js";
+
+const loadTEXT2LLMPlugins = vi.hoisted(() => vi.fn());
+
+vi.mock("../plugins/loader.js", () => ({
+  loadTEXT2LLMPlugins,
+}));
+
+const createRegistry = (diagnostics: PluginDiagnostic[]): PluginRegistry => ({
+  plugins: [],
+  tools: [],
+  hooks: [],
+  typedHooks: [],
+  channels: [],
+  providers: [],
+  gatewayHandlers: {},
+  httpHandlers: [],
+  httpRoutes: [],
+  cliRegistrars: [],
+  services: [],
+  diagnostics,
+});
+
+describe("loadGatewayPlugins", () => {
+  test("logs plugin errors with details", () => {
+    const diagnostics: PluginDiagnostic[] = [
+      {
+        level: "error",
+        pluginId: "telegram",
+        source: "/tmp/telegram/index.ts",
+        message: "failed to load plugin: boom",
+      },
+    ];
+    loadTEXT2LLMPlugins.mockReturnValue(createRegistry(diagnostics));
 
     const log = {
       info: vi.fn(),

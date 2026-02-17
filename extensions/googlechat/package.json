@@ -1,19 +1,19 @@
 {
-  "name": "@openclaw/googlechat",
+  "name": "@text2llm/googlechat",
   "version": "2026.2.13",
   "private": true,
-  "description": "OpenClaw Google Chat channel plugin",
+  "description": "text2llm Google Chat channel plugin",
   "type": "module",
   "dependencies": {
     "google-auth-library": "^10.5.0"
   },
   "devDependencies": {
-    "openclaw": "workspace:*"
+    "text2llm": "workspace:*"
   },
   "peerDependencies": {
-    "openclaw": ">=2026.1.26"
+    "text2llm": ">=2026.1.26"
   },
-  "openclaw": {
+  "text2llm": {
     "extensions": [
       "./index.ts"
     ],
@@ -32,7 +32,7 @@
       "order": 55
     },
     "install": {
-      "npmSpec": "@openclaw/googlechat",
+      "npmSpec": "@text2llm/googlechat",
       "localPath": "extensions/googlechat",
       "defaultChoice": "npm"
     }

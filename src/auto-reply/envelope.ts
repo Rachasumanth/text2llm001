@@ -1,4 +1,36 @@
-import type { OpenClawConfig } from "../config/config.js";
+import type { TEXT2LLMConfig } from "../config/config.js";
+import { resolveUserTimezone } from "../agents/date-time.js";
+import { normalizeChatType } from "../channels/chat-type.js";
+import { resolveSenderLabel, type SenderLabelParams } from "../channels/sender-label.js";
+import {
+  resolveTimezone,
+  formatUtcTimestamp,
+  formatZonedTimestamp,
+} from "../infra/format-time/format-datetime.ts";
+import { formatTimeAgo } from "../infra/format-time/format-relative.ts";
+
+export type AgentEnvelopeParams = {
+  channel: string;
+  from?: string;
+  timestamp?: number | Date;
+  host?: string;
+  ip?: string;
+  body: string;
+  previousTimestamp?: number | Date;
+  envelope?: EnvelopeFormatOptions;
+};
+
+export type EnvelopeFormatOptions = {
+  /**
+   * "local" (default), "utc", "user", or an explicit IANA timezone string.
+   */
+  timezone?: string;
+  /**
+   * Include absolute timestamps in the envelope (default: true).
+   */
+  includeTimestamp?: boolean;
+  /**
+   * Include elapsed time suffix when previousTimestamp is provideimport type { TEXT2LLMConfig } from "../config/config.js";
 import { resolveUserTimezone } from "../agents/date-time.js";
 import { normalizeChatType } from "../channels/chat-type.js";
 import { resolveSenderLabel, type SenderLabelParams } from "../channels/sender-label.js";
@@ -62,7 +94,7 @@ function sanitizeEnvelopeHeaderPart(value: string): string {
     .trim();
 }
 
-export function resolveEnvelopeFormatOptions(cfg?: OpenClawConfig): EnvelopeFormatOptions {
+export function resolveEnvelopeFormatOptions(cfg?: TEXT2LLMConfig): EnvelopeFormatOptions {
   const defaults = cfg?.agents?.defaults;
   return {
     timezone: defaults?.envelopeTimezone,

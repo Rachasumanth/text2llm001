@@ -1,5 +1,5 @@
 import Foundation
-import OpenClawKit
+import Text2llmKit
 
 @MainActor
 final class NodeCapabilityRouter {

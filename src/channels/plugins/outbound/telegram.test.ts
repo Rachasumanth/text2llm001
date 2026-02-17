@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { OpenClawConfig } from "../../../config/config.js";
+import type { TEXT2LLMConfig } from "../../../config/config.js";
 import { telegramOutbound } from "./telegram.js";
 
 describe("telegramOutbound.sendPayload", () => {
@@ -7,7 +7,39 @@ describe("telegramOutbound.sendPayload", () => {
     const sendTelegram = vi.fn(async () => ({ messageId: "m1", chatId: "c1" }));
 
     const result = await telegramOutbound.sendPayload?.({
-      cfg: {} as OpenClawConfig,
+      cfg: {} as TEXT2LLMConfig,
+      to: "telegram:123",
+      text: "ignored",
+      payload: {
+        text: "Hello",
+        channelData: {
+          telegram: {
+            buttons: [[{ text: "Option", callback_data: "/option" }]],
+          },
+        },
+      },
+      deps: { sendTelegram },
+    });
+
+    expect(sendTelegram).toHaveBeenCalledTimes(1);
+    expect(sendTelegram).toHaveBeenCalledWith(
+      "telegram:123",
+      "Hello",
+      expect.objectContaining({
+        buttons: [[{ text: "Option", callback_data: "/option" }]],
+        textMode: "html",
+      }),
+    );
+    expect(result).toEqual(import { describe, expect, it, vi } from "vitest";
+import type { TEXT2LLMConfig } from "../../../config/config.js";
+import { telegramOutbound } from "./telegram.js";
+
+describe("telegramOutbound.sendPayload", () => {
+  it("sends text payload with buttons", async () => {
+    const sendTelegram = vi.fn(async () => ({ messageId: "m1", chatId: "c1" }));
+
+    const result = await telegramOutbound.sendPayload?.({
+      cfg: {} as TEXT2LLMConfig,
       to: "telegram:123",
       text: "ignored",
       payload: {
@@ -40,7 +72,7 @@ describe("telegramOutbound.sendPayload", () => {
       .mockResolvedValueOnce({ messageId: "m2", chatId: "c1" });
 
     const result = await telegramOutbound.sendPayload?.({
-      cfg: {} as OpenClawConfig,
+      cfg: {} as TEXT2LLMConfig,
       to: "telegram:123",
       text: "ignored",
       payload: {

@@ -1,0 +1,83 @@
+{
+  "agents": {
+    "defaults": {
+      "workspace": "c:/Users/4HIN/source/text2llm/workspace"
+    }
+  },
+  "tools": {
+    "profile": "coding",
+    "allow": [
+      "group:web",
+      "browser",
+      "group:fs",
+      "group:runtime",
+      "group:memory"
+    ],
+    "deny": [
+      "group:messaging",
+      "group:nodes",
+      "group:automation",
+      "canvas",
+      "cron",
+      "gateway"
+    ]
+  },
+  "skills": {
+    "allowBundled": [
+      "__none__"
+    ],
+    "entries": {
+      "data-pipeline": {
+        "enabled": true
+      },
+      "tokenizer-trainer": {
+        "enabled": true
+      },
+      "model-architect": {
+        "enabled": true
+      },
+      "gpu-provisioner": {
+        "enabled": true,
+        "env": {
+          "RUNPOD_API_KEY": "${RUNPOD_API_KEY}",
+          "VAST_API_KEY": "${VAST_API_KEY}"
+        }
+      },
+      "training-runner": {
+        "enabled": true
+      },
+      "wandb-tracker": {
+        "enabled": true,
+        "apiKey": "${WANDB_API_KEY}",
+        "env": {
+          "WANDB_API_KEY": "${WANDB_API_KEY}"
+        }
+      },
+      "eval-bench": {
+        "enabled": true
+      },
+      "model-publisher": {
+        "enabled": true,
+        "env": {
+          "HF_TOKEN": "${HF_TOKEN}"
+        }
+      },
+      "cloud-storage": {
+        "enabled": true
+      }
+    }
+  },
+  "plugins": {
+    "entries": {
+      "google-gemini-cli-auth": {
+        "enabled": true
+      },
+      "copilot-proxy": {
+        "enabled": true
+      },
+      "google-antigravity-auth": {
+        "enabled": true
+      }
+    }
+  }
+}

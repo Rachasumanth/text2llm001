@@ -223,25 +223,25 @@ describe("buildServiceEnvironment", () => {
     } else {
       expect(env.PATH).toContain("/usr/bin");
     }
-    expect(env.OPENCLAW_GATEWAY_PORT).toBe("18789");
-    expect(env.OPENCLAW_GATEWAY_TOKEN).toBe("secret");
-    expect(env.OPENCLAW_SERVICE_MARKER).toBe("openclaw");
-    expect(env.OPENCLAW_SERVICE_KIND).toBe("gateway");
-    expect(typeof env.OPENCLAW_SERVICE_VERSION).toBe("string");
-    expect(env.OPENCLAW_SYSTEMD_UNIT).toBe("openclaw-gateway.service");
+    expect(env.TEXT2LLM_GATEWAY_PORT).toBe("18789");
+    expect(env.TEXT2LLM_GATEWAY_TOKEN).toBe("secret");
+    expect(env.TEXT2LLM_SERVICE_MARKER).toBe("text2llm");
+    expect(env.TEXT2LLM_SERVICE_KIND).toBe("gateway");
+    expect(typeof env.TEXT2LLM_SERVICE_VERSION).toBe("string");
+    expect(env.TEXT2LLM_SYSTEMD_UNIT).toBe("text2llm-gateway.service");
     if (process.platform === "darwin") {
-      expect(env.OPENCLAW_LAUNCHD_LABEL).toBe("ai.openclaw.gateway");
+      expect(env.TEXT2LLM_LAUNCHD_LABEL).toBe("ai.text2llm.gateway");
     }
   });
 
   it("uses profile-specific unit and label", () => {
     const env = buildServiceEnvironment({
-      env: { HOME: "/home/user", OPENCLAW_PROFILE: "work" },
+      env: { HOME: "/home/user", TEXT2LLM_PROFILE: "work" },
       port: 18789,
     });
-    expect(env.OPENCLAW_SYSTEMD_UNIT).toBe("openclaw-gateway-work.service");
+    expect(env.TEXT2LLM_SYSTEMD_UNIT).toBe("text2llm-gateway-work.service");
     if (process.platform === "darwin") {
-      expect(env.OPENCLAW_LAUNCHD_LABEL).toBe("ai.openclaw.work");
+      expect(env.TEXT2LLM_LAUNCHD_LABEL).toBe("ai.text2llm.work");
     }
   });
 });

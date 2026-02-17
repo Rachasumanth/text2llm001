@@ -1,6 +1,34 @@
 import type { GatewayRequestHandlers } from "./types.js";
 import { loadConfig } from "../../config/config.js";
-import { resolveOpenClawPackageRoot } from "../../infra/openclaw-root.js";
+import { resolveTEXT2LLMPackageRoot } from "../../infra/text2llm-root.js";
+import {
+  formatDoctorNonInteractiveHint,
+  type RestartSentinelPayload,
+  writeRestartSentinel,
+} from "../../infra/restart-sentinel.js";
+import { scheduleGatewaySigusr1Restart } from "../../infra/restart.js";
+import { normalizeUpdateChannel } from "../../infra/update-channels.js";
+import { runGatewayUpdate } from "../../infra/update-runner.js";
+import {
+  ErrorCodes,
+  errorShape,
+  formatValidationErrors,
+  validateUpdateRunParams,
+} from "../protocol/index.js";
+
+export const updateHandlers: GatewayRequestHandlers = {
+  "update.run": async ({ params, respond }) => {
+    if (!validateUpdateRunParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid update.run params: ${formatValidationErrors(validateUpdateRunParams.errors)}`,
+        ),
+ import type { GatewayRequestHandlers } from "./types.js";
+import { loadConfig } from "../../config/config.js";
+import { resolveTEXT2LLMPackageRoot } from "../../infra/text2llm-root.js";
 import {
   formatDoctorNonInteractiveHint,
   type RestartSentinelPayload,
@@ -53,7 +81,7 @@ export const updateHandlers: GatewayRequestHandlers = {
       const config = loadConfig();
       const configChannel = normalizeUpdateChannel(config.update?.channel);
       const root =
-        (await resolveOpenClawPackageRoot({
+        (await resolveTEXT2LLMPackageRoot({
           moduleUrl: import.meta.url,
           argv1: process.argv[1],
           cwd: process.cwd(),

@@ -1,11 +1,11 @@
 ---
-summary: "CLI reference for `openclaw onboard` (interactive onboarding wizard)"
+summary: "CLI reference for `text2llm onboard` (interactive onboarding wizard)"
 read_when:
   - You want guided setup for gateway, workspace, auth, channels, and skills
 title: "onboard"
 ---
 
-# `openclaw onboard`
+# `text2llm onboard`
 
 Interactive onboarding wizard (local or remote Gateway setup).
 
@@ -20,16 +20,16 @@ Interactive onboarding wizard (local or remote Gateway setup).
 ## Examples
 
 ```bash
-openclaw onboard
-openclaw onboard --flow quickstart
-openclaw onboard --flow manual
-openclaw onboard --mode remote --remote-url ws://gateway-host:18789
+text2llm onboard
+text2llm onboard --flow quickstart
+text2llm onboard --flow manual
+text2llm onboard --mode remote --remote-url ws://gateway-host:18789
 ```
 
 Non-interactive custom provider:
 
 ```bash
-openclaw onboard --non-interactive \
+text2llm onboard --non-interactive \
   --auth-choice custom-api-key \
   --custom-base-url "https://llm.example.com/v1" \
   --custom-model-id "foo-large" \
@@ -46,7 +46,7 @@ If you specifically want the GLM Coding Plan endpoints, pick `zai-coding-global`
 
 ```bash
 # Promptless endpoint selection
-openclaw onboard --non-interactive \
+text2llm onboard --non-interactive \
   --auth-choice zai-coding-global \
   --zai-api-key "$ZAI_API_KEY"
 
@@ -60,15 +60,15 @@ Flow notes:
 
 - `quickstart`: minimal prompts, auto-generates a gateway token.
 - `manual`: full prompts for port/bind/auth (alias of `advanced`).
-- Fastest first chat: `openclaw dashboard` (Control UI, no channel setup).
+- Fastest first chat: `text2llm dashboard` (Control UI, no channel setup).
 - Custom Provider: connect any OpenAI or Anthropic compatible endpoint,
   including hosted providers not listed. Use Unknown to auto-detect.
 
 ## Common follow-up commands
 
 ```bash
-openclaw configure
-openclaw agents add <name>
+text2llm configure
+text2llm agents add <name>
 ```
 
 <Note>

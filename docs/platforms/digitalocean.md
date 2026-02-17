@@ -1,16 +1,16 @@
 ---
-summary: "OpenClaw on DigitalOcean (simple paid VPS option)"
+summary: "text2llm on DigitalOcean (simple paid VPS option)"
 read_when:
-  - Setting up OpenClaw on DigitalOcean
-  - Looking for cheap VPS hosting for OpenClaw
+  - Setting up text2llm on DigitalOcean
+  - Looking for cheap VPS hosting for text2llm
 title: "DigitalOcean"
 ---
 
-# OpenClaw on DigitalOcean
+# text2llm on DigitalOcean
 
 ## Goal
 
-Run a persistent OpenClaw Gateway on DigitalOcean for **$6/month** (or $4/mo with reserved pricing).
+Run a persistent text2llm Gateway on DigitalOcean for **$6/month** (or $4/mo with reserved pricing).
 
 If you want a $0/month option and don’t mind ARM + provider-specific setup, see the [Oracle Cloud guide](/platforms/oracle).
 
@@ -56,7 +56,7 @@ If you want a $0/month option and don’t mind ARM + provider-specific setup, se
 ssh root@YOUR_DROPLET_IP
 ```
 
-## 3) Install OpenClaw
+## 3) Install text2llm
 
 ```bash
 # Update system
@@ -66,17 +66,17 @@ apt update && apt upgrade -y
 curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
 apt install -y nodejs
 
-# Install OpenClaw
-curl -fsSL https://openclaw.ai/install.sh | bash
+# Install text2llm
+curl -fsSL https://text2llm.ai/install.sh | bash
 
 # Verify
-openclaw --version
+text2llm --version
 ```
 
 ## 4) Run Onboarding
 
 ```bash
-openclaw onboard --install-daemon
+text2llm onboard --install-daemon
 ```
 
 The wizard will walk you through:
@@ -90,13 +90,13 @@ The wizard will walk you through:
 
 ```bash
 # Check status
-openclaw status
+text2llm status
 
 # Check service
-systemctl --user status openclaw-gateway.service
+systemctl --user status text2llm-gateway.service
 
 # View logs
-journalctl --user -u openclaw-gateway.service -f
+journalctl --user -u text2llm-gateway.service -f
 ```
 
 ## 6) Access the Dashboard
@@ -120,8 +120,8 @@ curl -fsSL https://tailscale.com/install.sh | sh
 tailscale up
 
 # Configure Gateway to use Tailscale Serve
-openclaw config set gateway.tailscale.mode serve
-openclaw gateway restart
+text2llm config set gateway.tailscale.mode serve
+text2llm gateway restart
 ```
 
 Open: `https://<magicdns>/`
@@ -134,8 +134,8 @@ Notes:
 **Option C: Tailnet bind (no Serve)**
 
 ```bash
-openclaw config set gateway.bind tailnet
-openclaw gateway restart
+text2llm config set gateway.bind tailnet
+text2llm gateway restart
 ```
 
 Open: `http://<tailscale-ip>:18789` (token required).
@@ -145,14 +145,14 @@ Open: `http://<tailscale-ip>:18789` (token required).
 ### Telegram
 
 ```bash
-openclaw pairing list telegram
-openclaw pairing approve telegram <CODE>
+text2llm pairing list telegram
+text2llm pairing approve telegram <CODE>
 ```
 
 ### WhatsApp
 
 ```bash
-openclaw channels login whatsapp
+text2llm channels login whatsapp
 # Scan QR code
 ```
 
@@ -194,13 +194,13 @@ htop
 
 All state lives in:
 
-- `~/.openclaw/` — config, credentials, session data
-- `~/.openclaw/workspace/` — workspace (SOUL.md, memory, etc.)
+- `~/.text2llm/` — config, credentials, session data
+- `~/.text2llm/workspace/` — workspace (SOUL.md, memory, etc.)
 
 These survive reboots. Back them up periodically:
 
 ```bash
-tar -czvf openclaw-backup.tar.gz ~/.openclaw ~/.openclaw/workspace
+tar -czvf text2llm-backup.tar.gz ~/.text2llm ~/.text2llm/workspace
 ```
 
 ---
@@ -230,9 +230,9 @@ For the full setup guide, see [Oracle Cloud](/platforms/oracle). For signup tips
 ### Gateway won't start
 
 ```bash
-openclaw gateway status
-openclaw doctor --non-interactive
-journalctl -u openclaw --no-pager -n 50
+text2llm gateway status
+text2llm doctor --non-interactive
+journalctl -u text2llm --no-pager -n 50
 ```
 
 ### Port already in use

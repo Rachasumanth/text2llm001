@@ -1,5 +1,44 @@
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
-import type { OpenClawConfig } from "../../config/config.js";
+import type { TEXT2LLMConfig } from "../../config/config.js";
+import { createActionGate, readStringParam } from "./common.js";
+import { handleDiscordGuildAction } from "./discord-actions-guild.js";
+import { handleDiscordMessagingAction } from "./discord-actions-messaging.js";
+import { handleDiscordModerationAction } from "./discord-actions-moderation.js";
+import { handleDiscordPresenceAction } from "./discord-actions-presence.js";
+
+const messagingActions = new Set([
+  "react",
+  "reactions",
+  "sticker",
+  "poll",
+  "permissions",
+  "fetchMessage",
+  "readMessages",
+  "sendMessage",
+  "editMessage",
+  "deleteMessage",
+  "threadCreate",
+  "threadList",
+  "threadReply",
+  "pinMessage",
+  "unpinMessage",
+  "listPins",
+  "searchMessages",
+]);
+
+const guildActions = new Set([
+  "memberInfo",
+  "roleInfo",
+  "emojiList",
+  "emojiUpload",
+  "stickerUpload",
+  "roleAdd",
+  "roleRemove",
+  "channelInfo",
+  "channelList",
+  "voiceStatus",
+  "eventList",import type { AgentToolResult } from "@mariozechner/pi-agent-core";
+import type { TEXT2LLMConfig } from "../../config/config.js";
 import { createActionGate, readStringParam } from "./common.js";
 import { handleDiscordGuildAction } from "./discord-actions-guild.js";
 import { handleDiscordMessagingAction } from "./discord-actions-messaging.js";
@@ -56,7 +95,7 @@ const presenceActions = new Set(["setPresence"]);
 
 export async function handleDiscordAction(
   params: Record<string, unknown>,
-  cfg: OpenClawConfig,
+  cfg: TEXT2LLMConfig,
 ): Promise<AgentToolResult<unknown>> {
   const action = readStringParam(params, "action", { required: true });
   const isActionEnabled = createActionGate(cfg.channels?.discord?.actions);

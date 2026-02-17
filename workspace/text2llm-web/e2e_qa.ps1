@@ -1,4 +1,4 @@
-$LogFile = "c:\Users\4HIN\source\openclaw\workspace\text2llm-web\e2e_log.txt"
+$LogFile = "c:\Users\4HIN\source\text2llm\workspace\text2llm-web\e2e_log.txt"
 "Starting E2E Test" | Out-File -FilePath $LogFile -Encoding utf8
 
 $baseUrl = "http://localhost:8788"

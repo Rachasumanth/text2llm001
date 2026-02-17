@@ -1,6 +1,6 @@
-name: OpenClaw
+name: text2llm
 options:
-  bundleIdPrefix: ai.openclaw
+  bundleIdPrefix: ai.text2llm
   deploymentTarget:
     iOS: "18.0"
   xcodeVersion: "16.0"
@@ -10,33 +10,33 @@ settings:
     SWIFT_VERSION: "6.0"
 
 packages:
-  OpenClawKit:
-    path: ../shared/OpenClawKit
+  Text2llmKit:
+    path: ../shared/Text2llmKit
   Swabble:
     path: ../../Swabble
 
 schemes:
-  OpenClaw:
+  text2llm:
     shared: true
     build:
       targets:
-        OpenClaw: all
+        text2llm: all
     test:
       targets:
-        - OpenClawTests
+        - Text2llmTests
 
 targets:
-  OpenClaw:
+  text2llm:
     type: application
     platform: iOS
     sources:
       - path: Sources
     dependencies:
-      - package: OpenClawKit
-      - package: OpenClawKit
-        product: OpenClawChatUI
-      - package: OpenClawKit
-        product: OpenClawProtocol
+      - package: Text2llmKit
+      - package: Text2llmKit
+        product: Text2llmChatUI
+      - package: Text2llmKit
+        product: Text2llmProtocol
       - package: Swabble
         product: SwabbleKit
       - sdk: AppIntents.framework
@@ -71,15 +71,15 @@ targets:
         CODE_SIGN_IDENTITY: "Apple Development"
         CODE_SIGN_STYLE: Manual
         DEVELOPMENT_TEAM: Y5PE65HELJ
-        PRODUCT_BUNDLE_IDENTIFIER: ai.openclaw.ios
-        PROVISIONING_PROFILE_SPECIFIER: "ai.openclaw.ios Development"
+        PRODUCT_BUNDLE_IDENTIFIER: ai.text2llm.ios
+        PROVISIONING_PROFILE_SPECIFIER: "ai.text2llm.ios Development"
         SWIFT_VERSION: "6.0"
         SWIFT_STRICT_CONCURRENCY: complete
         ENABLE_APPINTENTS_METADATA: NO
     info:
       path: Sources/Info.plist
       properties:
-        CFBundleDisplayName: OpenClaw
+        CFBundleDisplayName: text2llm
         CFBundleIconName: AppIcon
         CFBundleShortVersionString: "2026.2.13"
         CFBundleVersion: "20260213"
@@ -88,16 +88,16 @@ targets:
           UIApplicationSupportsMultipleScenes: false
         UIBackgroundModes:
           - audio
-        NSLocalNetworkUsageDescription: OpenClaw discovers and connects to your OpenClaw gateway on the local network.
+        NSLocalNetworkUsageDescription: text2llm discovers and connects to your text2llm gateway on the local network.
         NSAppTransportSecurity:
           NSAllowsArbitraryLoadsInWebContent: true
         NSBonjourServices:
-          - _openclaw-gw._tcp
-        NSCameraUsageDescription: OpenClaw can capture photos or short video clips when requested via the gateway.
-        NSLocationWhenInUseUsageDescription: OpenClaw uses your location when you allow location sharing.
-        NSLocationAlwaysAndWhenInUseUsageDescription: OpenClaw can share your location in the background when you enable Always.
-        NSMicrophoneUsageDescription: OpenClaw needs microphone access for voice wake.
-        NSSpeechRecognitionUsageDescription: OpenClaw uses on-device speech recognition for voice wake.
+          - _text2llm-gw._tcp
+        NSCameraUsageDescription: text2llm can capture photos or short video clips when requested via the gateway.
+        NSLocationWhenInUseUsageDescription: text2llm uses your location when you allow location sharing.
+        NSLocationAlwaysAndWhenInUseUsageDescription: text2llm can share your location in the background when you enable Always.
+        NSMicrophoneUsageDescription: text2llm needs microphone access for voice wake.
+        NSSpeechRecognitionUsageDescription: text2llm uses on-device speech recognition for voice wake.
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationPortraitUpsideDown
@@ -109,26 +109,26 @@ targets:
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
 
-  OpenClawTests:
+  Text2llmTests:
     type: bundle.unit-test
     platform: iOS
     sources:
       - path: Tests
     dependencies:
-      - target: OpenClaw
+      - target: text2llm
       - package: Swabble
         product: SwabbleKit
       - sdk: AppIntents.framework
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: ai.openclaw.ios.tests
+        PRODUCT_BUNDLE_IDENTIFIER: ai.text2llm.ios.tests
         SWIFT_VERSION: "6.0"
         SWIFT_STRICT_CONCURRENCY: complete
-        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/OpenClaw.app/OpenClaw"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/text2llm.app/text2llm"
         BUNDLE_LOADER: "$(TEST_HOST)"
     info:
       path: Tests/Info.plist
       properties:
-        CFBundleDisplayName: OpenClawTests
+        CFBundleDisplayName: Text2llmTests
         CFBundleShortVersionString: "2026.2.13"
         CFBundleVersion: "20260213"
