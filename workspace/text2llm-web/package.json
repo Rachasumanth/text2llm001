@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "start": "node server.mjs",
+    "start:proxy": "node proxy-server.mjs",
     "test": "node --test test/**/*.test.mjs",
+    "test:proxy": "node --test test/proxy-server.test.mjs",
     "test:phase9": "node --test test/unit.adapter-contract.test.mjs test/integration.gpu-provider-sandbox.test.mjs test/e2e.gpu-flow.test.mjs test/security.gpu-secrets-authz.test.mjs",
     "test:phase10": "node --test test/rollout.phase10-gates.test.mjs",
     "test:strict": "npm run test:phase9 ; npm run test:phase10"

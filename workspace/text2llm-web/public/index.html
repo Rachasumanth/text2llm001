@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Orbitron:wght@500;700&display=swap"
       rel="stylesheet"
     />
     <link rel="icon" href="/applogo.jpeg" />
@@ -64,7 +64,7 @@
                 <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
                 <polyline points="9 22 9 12 15 12 15 22" />
               </svg>
-              <span>HOME</span>
+              <span>Mission Control</span>
             </a>
             <!-- ... -->
 
@@ -81,7 +81,7 @@
                 <line x1="8" y1="21" x2="16" y2="21" />
                 <line x1="12" y1="17" x2="12" y2="21" />
               </svg>
-              <span>CLUI</span>
+              <span>Runtime</span>
             </a>
             <a href="#" class="nav-item" data-view="notebook">
               <svg
@@ -97,7 +97,7 @@
                   d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"
                 />
               </svg>
-              <span>Notebook</span>
+              <span>Experiments</span>
             </a>
             <a href="#" class="nav-item" data-view="data-studio" title="Open Data Studio">
               <svg
@@ -112,12 +112,12 @@
                 <path d="M4 5v10c0 1.66 3.58 3 8 3s8-1.34 8-3V5" />
                 <path d="M4 10c0 1.66 3.58 3 8 3s8-1.34 8-3" />
               </svg>
-              <span>Data Studio</span>
+              <span>Datasets</span>
             </a>
           </div>
 
           <div class="nav-section bottom-section">
-            <div class="nav-label">All products</div>
+            <div class="nav-label">Operations</div>
             <a href="#" class="nav-item" data-view="projects">
               <svg
                 width="18"
@@ -129,7 +129,7 @@
               >
                 <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
               </svg>
-              <span>Projects</span>
+              <span>Project Vault</span>
             </a>
             <a href="#" class="nav-item" data-view="instances">
               <svg
@@ -145,7 +145,7 @@
                 <line x1="6" y1="6" x2="6.01" y2="6" />
                 <line x1="6" y1="18" x2="6.01" y2="18" />
               </svg>
-              <span>Instances</span>
+              <span>Infrastructure</span>
             </a>
             <a href="#" class="nav-item" data-view="store">
               <svg
@@ -160,7 +160,7 @@
                 <line x1="3" y1="6" x2="21" y2="6" />
                 <path d="M16 10a4 4 0 0 1-8 0" />
               </svg>
-              <span>Store</span>
+              <span>Model Library</span>
             </a>
             <a href="#" class="nav-item" data-view="settings">
               <svg
@@ -202,8 +202,8 @@
               </svg>
             </div>
             <div class="user-info">
-              <span class="user-name">User name</span>
-              <span class="user-plan">Free plan</span>
+              <span class="user-name">User</span>
+              <span class="user-plan">Builder</span>
             </div>
             <button id="theme-toggle" class="icon-btn" style="margin-left: auto;" aria-label="Toggle theme">
                <!-- Default Moon (Dark Mode) -->
@@ -266,15 +266,18 @@
               type="button"
               id="chat-list-toggle-btn"
               class="chat-list-toggle-btn"
-              title="Hide chats"
-              aria-label="Hide chats"
-              aria-expanded="true"
+              title="Open chats"
+              aria-label="Open chats"
+              aria-expanded="false"
             >
-              ×
+              Chats
             </button>
             <aside class="chat-list-pane" aria-label="Chat Threads">
               <div class="chat-list-header">
-                <div class="chat-list-title">Chats</div>
+                <div class="chat-list-header-row">
+                  <div class="chat-list-title">Project Sessions</div>
+                  <button type="button" class="chat-list-close-btn" id="chat-list-close-btn" title="Close chats" aria-label="Close chats">×</button>
+                </div>
                 <button type="button" class="chat-thread-new-btn" id="home-new-chat-btn">+ New Chat</button>
               </div>
               <div class="chat-thread-list" id="chat-thread-list"></div>
@@ -283,13 +286,14 @@
             <section class="chat-main-pane">
               <!-- Welcome Section (hidden when chatting) -->
               <div id="welcome-section" class="welcome-container">
-                <h1 class="welcome-title">WELCOME</h1>
-                <p class="welcome-subtitle">I'm your AI lab assistant. Describe what you want to build.</p>
+                <div class="lab-hero-meta">Active Project Workspace</div>
+                <h1 class="welcome-title">Virtual AI Lab</h1>
+                <p class="welcome-subtitle">Choose a recommendation or send your next project instruction.</p>
 
                 <div class="suggestion-chips">
-                  <button class="suggestion-chip">Build a 100M parameter LLM</button>
-                  <button class="suggestion-chip">Train a code generation model</button>
-                  <button class="suggestion-chip">Create a domain-specific chatbot</button>
+                  <button class="suggestion-chip">Define a domain-specific project objective and constraints</button>
+                  <button class="suggestion-chip">Prepare a data quality checklist for finetuning</button>
+                  <button class="suggestion-chip">Design evaluation gates before deployment</button>
                 </div>
               </div>
 
@@ -305,7 +309,7 @@
                   </svg>
                 </button>
 
-                <textarea id="idea-input" placeholder="Message Text2LLM..." rows="1"></textarea>
+                <textarea id="idea-input" placeholder="Ask anything about your project..." rows="1"></textarea>
 
                 <button type="submit" class="action-btn submit-btn" id="send-btn" title="Send message">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -669,6 +673,8 @@
                       <option value="paste">Paste text</option>
                       <option value="upload">Upload file</option>
                       <option value="url">Connect URL</option>
+                      <option value="library">Project library</option>
+                      <option value="remote">Remote connector</option>
                     </select>
                   </label>
                   <label class="gpu-form-label">
@@ -696,6 +702,28 @@
                 <label id="ds-content-wrap" class="gpu-form-label ds-source-wrap">
                   <span>Paste content</span>
                   <textarea id="ds-content-input" class="ds-content-input" rows="4" placeholder='[{"text":"example"}]'></textarea>
+                </label>
+
+                <label id="ds-library-wrap" class="gpu-form-label ds-source-wrap hidden">
+                  <span>Library dataset resource</span>
+                  <div class="ds-inline-2">
+                    <select id="ds-library-select" class="gpu-form-select" title="Project library resource"></select>
+                    <button id="ds-library-refresh-btn" class="ds-btn" type="button">Refresh library</button>
+                  </div>
+                </label>
+
+                <label id="ds-remote-wrap" class="gpu-form-label ds-source-wrap hidden">
+                  <span>Remote connector</span>
+                  <div class="ds-inline-3">
+                    <select id="ds-remote-provider" class="gpu-form-select" title="Remote source provider">
+                      <option value="huggingface">Hugging Face dataset</option>
+                      <option value="zenodo">Zenodo record</option>
+                      <option value="url">Direct file URL</option>
+                      <option value="kaggle">Kaggle dataset</option>
+                    </select>
+                    <input id="ds-remote-id" class="gpu-form-input" type="text" placeholder="Dataset id (e.g. squad)" />
+                    <input id="ds-remote-url" class="gpu-form-input" type="url" placeholder="Optional direct URL" />
+                  </div>
                 </label>
 
                 <div class="ds-import-actions">
@@ -726,6 +754,13 @@
                     <input id="ds-search-input" class="gpu-form-input" type="text" placeholder="Search rows" />
                     <button id="ds-search-btn" class="ds-btn" type="button">Search</button>
                     <button id="ds-clear-search-btn" class="ds-btn" type="button">Clear</button>
+                  </div>
+
+                  <div class="ds-toolbar-row ds-toolbar-row-edit">
+                    <button id="ds-add-row-btn" class="ds-btn" type="button">Add row</button>
+                    <button id="ds-add-col-btn" class="ds-btn" type="button">Add column</button>
+                    <button id="ds-rename-col-btn" class="ds-btn" type="button">Rename column</button>
+                    <button id="ds-delete-col-btn" class="ds-btn ds-btn-danger" type="button">Delete column</button>
                   </div>
 
                   <div class="ds-ops-grid">
@@ -1024,6 +1059,104 @@
 
       </main>
     </div>
+
+    <nav class="mobile-tools-dock" id="mobile-tools-dock" aria-label="Quick tools">
+      <button type="button" class="mobile-tool-btn" data-view="clui" title="Runtime">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+        <span>Runtime</span>
+      </button>
+      <button type="button" class="mobile-tool-btn" data-view="data-studio" title="Datasets">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"></ellipse><path d="M4 5v10c0 1.66 3.58 3 8 3s8-1.34 8-3V5"></path><path d="M4 10c0 1.66 3.58 3 8 3s8-1.34 8-3"></path></svg>
+        <span>Datasets</span>
+      </button>
+      <button type="button" class="mobile-tool-btn mobile-tool-home-btn" data-view="home" title="Mission Control">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+        <span>Home</span>
+      </button>
+      <button type="button" class="mobile-tool-btn" data-view="instances" title="Infrastructure">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
+        <span>Infra</span>
+      </button>
+      <button type="button" class="mobile-tool-btn mobile-tool-more-btn" id="mobile-tools-more-btn" title="More tools">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="1.5"></circle><circle cx="19" cy="12" r="1.5"></circle><circle cx="5" cy="12" r="1.5"></circle></svg>
+        <span>More</span>
+      </button>
+    </nav>
+
+    <button
+      type="button"
+      class="mobile-tools-backdrop"
+      id="mobile-tools-backdrop"
+      aria-label="Close tools"
+      hidden
+    ></button>
+
+    <div class="mobile-tools-sheet" id="mobile-tools-sheet" role="dialog" aria-label="More tools" aria-hidden="true">
+      <div class="mobile-tools-sheet-grab" aria-hidden="true"></div>
+      <div class="mobile-tools-sheet-header">
+        <div class="mobile-tools-sheet-title">More Tools</div>
+        <div class="mobile-tools-sheet-subtitle">Open the rest of your workspace tools</div>
+      </div>
+      <button type="button" class="mobile-tools-sheet-item" data-view="notebook">
+        <span class="mobile-tools-sheet-icon">📓</span>
+        <span class="mobile-tools-sheet-content">
+          <span class="mobile-tools-sheet-label">Experiments</span>
+          <span class="mobile-tools-sheet-hint">Notebook and execution</span>
+        </span>
+        <span class="mobile-tools-sheet-chevron">›</span>
+      </button>
+      <button type="button" class="mobile-tools-sheet-item" data-view="projects">
+        <span class="mobile-tools-sheet-icon">📁</span>
+        <span class="mobile-tools-sheet-content">
+          <span class="mobile-tools-sheet-label">Project Vault</span>
+          <span class="mobile-tools-sheet-hint">Manage projects</span>
+        </span>
+        <span class="mobile-tools-sheet-chevron">›</span>
+      </button>
+      <button type="button" class="mobile-tools-sheet-item" data-view="store">
+        <span class="mobile-tools-sheet-icon">🧠</span>
+        <span class="mobile-tools-sheet-content">
+          <span class="mobile-tools-sheet-label">Model Library</span>
+          <span class="mobile-tools-sheet-hint">Browse models and resources</span>
+        </span>
+        <span class="mobile-tools-sheet-chevron">›</span>
+      </button>
+      <button type="button" class="mobile-tools-sheet-item" data-view="settings">
+        <span class="mobile-tools-sheet-icon">⚙️</span>
+        <span class="mobile-tools-sheet-content">
+          <span class="mobile-tools-sheet-label">Settings</span>
+          <span class="mobile-tools-sheet-hint">Workspace preferences</span>
+        </span>
+        <span class="mobile-tools-sheet-chevron">›</span>
+      </button>
+    </div>
+
+    <footer class="status-bar" id="status-bar" aria-label="Workspace status bar">
+      <div class="status-left">
+        <button type="button" class="status-item status-button" id="status-notification-btn" title="Notifications">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+            <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+          </svg>
+          <span id="status-notification-count">0</span>
+        </button>
+        <button type="button" class="status-item status-button" id="status-runtime-item" title="Open Runtime view">
+          <span id="status-runtime">Runtime: Offline</span>
+        </button>
+        <div class="status-item">
+          <span id="status-stream">Agent: Ready</span>
+        </div>
+        <div class="status-item"><span id="status-project">No project</span></div>
+      </div>
+      <div class="status-right">
+        <div class="status-item"><span id="status-stage">Stage: Define</span></div>
+        <div class="status-item"><span id="status-thread-count">0 runs</span></div>
+        <div class="status-item"><span id="status-model">Model: Auto</span></div>
+        <button type="button" class="status-item status-button" id="status-primary-action-btn" title="Run prompt">
+          <span id="status-primary-action-label">Run</span>
+        </button>
+      </div>
+    </footer>
 
 
     <!-- xterm.js Scripts from CDN -->

@@ -16,6 +16,8 @@ const ANSI_ESCAPE_REGEX = /\u001b\[[0-9;]*m/g;
 let thinkingTicker = null;
 let thinkingStartedAt = 0;
 let lastThinkingStatus = "Thinking...";
+let manualMissionStage = null;
+let runtimeSocketState = "idle";
 
 function getStoredProjectId() {
   try {
@@ -36,6 +38,7 @@ function projectIdsEqual(left, right) {
 
 function setCurrentProjectId(projectId) {
   currentProjectId = normalizeProjectId(projectId);
+  manualMissionStage = null;
   try {
     if (currentProjectId) {
       localStorage.setItem(ACTIVE_PROJECT_STORAGE_KEY, currentProjectId);
@@ -45,6 +48,7 @@ function setCurrentProjectId(projectId) {
   } catch (_) {
     // ignore localStorage write errors
   }
+  refreshStatusBar();
 }
 
 function getActiveProjectIdOrDefault() {
@@ -72,7 +76,7 @@ function renderCurrentProjectLabel(projectName = null) {
   if (resolvedName && currentProjectId) {
     const newChatBtn = document.createElement("button");
     newChatBtn.className = "project-new-chat-btn";
-    newChatBtn.title = "Start New Chat in Project";
+    newChatBtn.title = "Start new chat in project";
     newChatBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>`;
     newChatBtn.onclick = async (ev) => {
       ev.stopPropagation();
@@ -99,11 +103,13 @@ function renderCurrentProjectLabel(projectName = null) {
 function syncCurrentProjectLabelFromCache() {
   if (!currentProjectId) {
     renderCurrentProjectLabel(null);
+    refreshLabTelemetry();
     return;
   }
 
   const project = cachedProjects.find((item) => projectIdsEqual(item?.id, currentProjectId));
   renderCurrentProjectLabel(project?.name || null);
+  refreshLabTelemetry();
 }
 
 function isDiagnosticLine(line) {
@@ -186,6 +192,461 @@ const homeNewChatBtn = document.getElementById("home-new-chat-btn");
 const chatThreadList = document.getElementById("chat-thread-list");
 const homeChatLayout = document.querySelector(".home-chat-layout");
 const chatListToggleBtn = document.getElementById("chat-list-toggle-btn");
+const chatListCloseBtn = document.getElementById("chat-list-close-btn");
+const labActiveProjectEl = document.getElementById("lab-active-project");
+const labActiveModelEl = document.getElementById("lab-active-model");
+const labThreadCountEl = document.getElementById("lab-thread-count");
+const labLastSyncEl = document.getElementById("lab-last-sync");
+const missionProjectNameEl = document.getElementById("mission-project-name");
+const missionStageNameEl = document.getElementById("mission-stage-name");
+const missionModelNameEl = document.getElementById("mission-model-name");
+const missionThreadCountEl = document.getElementById("mission-thread-count");
+const runQueuePrimaryEl = document.getElementById("run-queue-primary");
+const runQueueNextActionEl = document.getElementById("run-queue-next-action");
+const runQueueCheckpointEl = document.getElementById("run-queue-checkpoint");
+const bottomInsightTabButtons = document.querySelectorAll(".bottom-insight-tab");
+const bottomInsightPanes = document.querySelectorAll(".bottom-insight-pane");
+const pipelineStageButtons = document.querySelectorAll(".pipeline-stage");
+const statusNotificationBtn = document.getElementById("status-notification-btn");
+const statusNotificationCountEl = document.getElementById("status-notification-count");
+const statusBranchEl = document.getElementById("status-git-branch");
+const statusPathEl = document.getElementById("status-file-path");
+const statusActiveViewEl = document.getElementById("status-active-view");
+const statusDocModeEl = document.getElementById("status-doc-mode");
+const statusEncodingEl = document.getElementById("status-encoding");
+const statusEolEl = document.getElementById("status-eol");
+const statusModelEl = document.getElementById("status-model");
+const statusRuntimeEl = document.getElementById("status-runtime");
+const statusStreamEl = document.getElementById("status-stream");
+const statusProjectEl = document.getElementById("status-project");
+const statusStageEl = document.getElementById("status-stage");
+const statusThreadCountEl = document.getElementById("status-thread-count");
+const statusPrimaryActionBtn = document.getElementById("status-primary-action-btn");
+const statusPrimaryActionLabelEl = document.getElementById("status-primary-action-label");
+const statusRuntimeItemBtn = document.getElementById("status-runtime-item");
+const statusFilePathItemBtn = document.getElementById("status-file-path-item");
+const mobileToolButtons = document.querySelectorAll(".mobile-tool-btn[data-view], .mobile-tools-sheet-item[data-view]");
+const mobileToolsMainButtons = document.querySelectorAll(".mobile-tool-btn[data-view]");
+const mobileToolsMoreBtn = document.getElementById("mobile-tools-more-btn");
+const mobileToolsSheet = document.getElementById("mobile-tools-sheet");
+const mobileToolsBackdrop = document.getElementById("mobile-tools-backdrop");
+const COMPACT_LAYOUT_MAX_WIDTH = 1023;
+
+function isCompactLayout() {
+  return window.innerWidth <= COMPACT_LAYOUT_MAX_WIDTH;
+}
+
+const STATUS_VIEW_META = {
+  home: {
+    label: "Mission Control",
+    path: "workspace/projects/mission.md",
+    mode: "Markdown",
+  },
+  clui: {
+    label: "Runtime",
+    path: "workspace/runtime/console.log",
+    mode: "Log",
+  },
+  notebook: {
+    label: "Experiments",
+    path: "workspace/notebooks/lab.ipynb",
+    mode: "Notebook",
+  },
+  "data-studio": {
+    label: "Datasets",
+    path: "workspace/data/dataset.csv",
+    mode: "Data",
+  },
+  projects: {
+    label: "Project Vault",
+    path: "workspace/projects.json",
+    mode: "JSON",
+  },
+  instances: {
+    label: "Infrastructure",
+    path: "workspace/infra/instances.json",
+    mode: "JSON",
+  },
+  store: {
+    label: "Model Library",
+    path: "workspace/store/catalog.md",
+    mode: "Markdown",
+  },
+  settings: {
+    label: "Settings",
+    path: "workspace/text2llm.json",
+    mode: "JSON",
+  },
+};
+
+function getActiveViewKey() {
+  const active = document.querySelector(".nav-item[data-view].active");
+  return active?.getAttribute("data-view") || "home";
+}
+
+function getActiveModelName() {
+  let activeModel = "Auto";
+  try {
+    activeModel = localStorage.getItem("text2llm.web.proxy.model") || "Auto";
+  } catch (_) {
+    activeModel = "Auto";
+  }
+  return activeModel;
+}
+
+function getScopedThreadsForStatus() {
+  return chatThreads.filter((thread) => projectIdsEqual(thread.projectId, currentProjectId));
+}
+
+function getCurrentProjectDisplayName() {
+  if (!currentProjectId) {
+    return "No project";
+  }
+  return cachedProjects.find((item) => projectIdsEqual(item?.id, currentProjectId))?.name || String(currentProjectId);
+}
+
+function getInferredStageForStatus(scopedThreads) {
+  const inferredStage = currentProjectId ? inferMissionStageFromThreads(scopedThreads) : "Define";
+  return normalizeMissionStageLabel(currentProjectId ? (manualMissionStage || inferredStage) : "Define");
+}
+
+function getRuntimeLabel(viewKey) {
+  if (runtimeSocketState === "connected") return "Runtime: Online";
+  if (runtimeSocketState === "connecting") return "Runtime: Connecting";
+  if (runtimeSocketState === "disconnected") return "Runtime: Offline";
+  if (viewKey === "clui") return "Runtime: Starting";
+  return "Runtime: Offline";
+}
+
+function openViewFromStatusBar(viewKey) {
+  const nav = document.querySelector(`.nav-item[data-view="${viewKey}"]`);
+  if (nav) {
+    nav.click();
+  }
+}
+
+function closeMobileToolsSheet() {
+  if (mobileToolsSheet) {
+    mobileToolsSheet.classList.remove("open");
+    mobileToolsSheet.setAttribute("aria-hidden", "true");
+  }
+  if (mobileToolsBackdrop) {
+    mobileToolsBackdrop.hidden = true;
+  }
+}
+
+function setMobileToolsActive(viewKey) {
+  if (!mobileToolsMainButtons || mobileToolsMainButtons.length === 0) {
+    return;
+  }
+  mobileToolsMainButtons.forEach((button) => {
+    const active = button.getAttribute("data-view") === viewKey;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-current", active ? "page" : "false");
+  });
+}
+
+function initMobileToolDock() {
+  if (!mobileToolButtons || mobileToolButtons.length === 0) {
+    return;
+  }
+
+  mobileToolButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const viewKey = button.getAttribute("data-view");
+      if (!viewKey) {
+        return;
+      }
+      openViewFromStatusBar(viewKey);
+      closeMobileToolsSheet();
+    });
+  });
+
+  if (mobileToolsMoreBtn) {
+    mobileToolsMoreBtn.addEventListener("click", () => {
+      if (!mobileToolsSheet) {
+        return;
+      }
+      const opening = !mobileToolsSheet.classList.contains("open");
+      mobileToolsSheet.classList.toggle("open", opening);
+      mobileToolsSheet.setAttribute("aria-hidden", opening ? "false" : "true");
+      if (mobileToolsBackdrop) {
+        mobileToolsBackdrop.hidden = !opening;
+      }
+    });
+  }
+
+  if (mobileToolsBackdrop) {
+    mobileToolsBackdrop.addEventListener("click", closeMobileToolsSheet);
+  }
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      closeMobileToolsSheet();
+    }
+  });
+
+  setMobileToolsActive(getActiveViewKey());
+}
+
+function buildStatusNotifications({ hasProject, scopedThreads, activeModel }) {
+  const notices = [];
+  if (!hasProject) {
+    notices.push("Select a project to start a run.");
+  }
+  if (runtimeSocketState === "disconnected") {
+    notices.push("Runtime is offline. Open Runtime to reconnect.");
+  }
+  if (hasProject && scopedThreads.length === 0) {
+    notices.push("No runs yet in this project.");
+  }
+  if (hasProject && activeModel === "Auto") {
+    notices.push("Model is Auto. Choose a specific model for stable output.");
+  }
+  return notices;
+}
+
+function initStatusBarActions() {
+  if (statusNotificationBtn) {
+    statusNotificationBtn.addEventListener("click", () => {
+      const raw = statusNotificationBtn.dataset.messages || "";
+      const messages = raw
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean);
+
+      if (messages.length === 0) {
+        window.alert("Workspace status: all clear.");
+        return;
+      }
+
+      window.alert(`Status alerts:\n\n- ${messages.join("\n- ")}`);
+      if (!currentProjectId) {
+        openViewFromStatusBar("projects");
+      } else if (runtimeSocketState === "disconnected") {
+        openViewFromStatusBar("clui");
+      }
+    });
+  }
+
+  if (statusRuntimeItemBtn) {
+    statusRuntimeItemBtn.addEventListener("click", () => {
+      openViewFromStatusBar("clui");
+    });
+  }
+
+  if (statusPrimaryActionBtn) {
+    statusPrimaryActionBtn.addEventListener("click", async () => {
+      if (isStreaming) {
+        if (abortController) {
+          abortController.abort();
+        }
+        if (currentSessionId) {
+          try {
+            await fetch("/api/chat/stop", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ sessionId: currentSessionId }),
+            });
+          } catch (_) {
+            // best effort
+          }
+        }
+        setStreamingState(false);
+        return;
+      }
+
+      if (!ideaInput) {
+        return;
+      }
+
+      const prompt = ideaInput.value.trim();
+      if (prompt) {
+        ideaInput.value = "";
+        ideaInput.style.height = "";
+        sendMessage(prompt);
+        return;
+      }
+
+      const scopedThreads = getScopedThreadsForStatus();
+      const stage = getInferredStageForStatus(scopedThreads);
+      const promptByStage = {
+        Define: "Help me define objective, constraints, and success metrics for this project.",
+        Data: "Help me design a data quality and preparation plan for this project.",
+        Train: "Help me design the next training run with safe budget and checkpoint strategy.",
+        Evaluate: "Help me create evaluation gates before I deploy this model.",
+        Deploy: "Help me prepare a staged deployment and rollback checklist.",
+      };
+      ideaInput.value = promptByStage[stage] || promptByStage.Define;
+      ideaInput.dispatchEvent(new Event("input"));
+      ideaInput.focus();
+    });
+  }
+}
+
+function refreshStatusBar(explicitViewKey = null) {
+  const viewKey = explicitViewKey || getActiveViewKey();
+  const meta = STATUS_VIEW_META[viewKey] || STATUS_VIEW_META.home;
+  const scopedThreads = getScopedThreadsForStatus();
+  const activeModel = getActiveModelName();
+  const projectName = getCurrentProjectDisplayName();
+  const stage = getInferredStageForStatus(scopedThreads);
+  const hasProject = Boolean(currentProjectId);
+  const runtimeLabel = getRuntimeLabel(viewKey);
+  const streamLabel = isStreaming ? "Agent: Running" : "Agent: Ready";
+  const notifications = buildStatusNotifications({ hasProject, scopedThreads, activeModel });
+
+  if (statusBranchEl) {
+    statusBranchEl.textContent = hasProject ? `project/${String(currentProjectId).slice(0, 12)}` : "workspace";
+  }
+  if (statusPathEl) statusPathEl.textContent = meta.path;
+  if (statusActiveViewEl) statusActiveViewEl.textContent = meta.label;
+  if (statusDocModeEl) statusDocModeEl.textContent = meta.mode;
+  if (statusEncodingEl) statusEncodingEl.textContent = "UTF-8";
+  if (statusEolEl) statusEolEl.textContent = "LF";
+
+  if (statusModelEl) statusModelEl.textContent = `Model: ${activeModel}`;
+
+  if (statusRuntimeEl) {
+    statusRuntimeEl.textContent = runtimeLabel;
+  }
+  if (statusStreamEl) {
+    statusStreamEl.textContent = streamLabel;
+  }
+  if (statusProjectEl) {
+    statusProjectEl.textContent = projectName;
+    statusProjectEl.title = projectName;
+  }
+  if (statusStageEl) {
+    statusStageEl.textContent = `Stage: ${stage}`;
+  }
+  if (statusThreadCountEl) {
+    const count = scopedThreads.length;
+    statusThreadCountEl.textContent = `${count} run${count === 1 ? "" : "s"}`;
+  }
+  if (statusPrimaryActionLabelEl) {
+    statusPrimaryActionLabelEl.textContent = isStreaming ? "Stop" : "Run";
+  }
+
+  if (statusNotificationCountEl) statusNotificationCountEl.textContent = String(notifications.length);
+  if (statusNotificationBtn) {
+    statusNotificationBtn.title = notifications.length > 0 ? `${notifications.length} notification(s)` : "No notifications";
+    statusNotificationBtn.dataset.messages = notifications.join("\n");
+  }
+
+  setMobileToolsActive(viewKey);
+}
+
+function normalizeMissionStageLabel(stage) {
+  const value = String(stage || "").trim().toLowerCase();
+  if (value === "data") return "Data";
+  if (value === "train") return "Train";
+  if (value === "evaluate" || value === "eval") return "Evaluate";
+  if (value === "deploy") return "Deploy";
+  return "Define";
+}
+
+function inferMissionStageFromThreads(scopedThreads) {
+  const combined = scopedThreads
+    .flatMap((thread) => (Array.isArray(thread.messages) ? thread.messages : []))
+    .map((msg) => String(msg?.content || "").toLowerCase())
+    .join(" ");
+
+  if (!combined.trim()) return "Define";
+  if (/\b(deploy|serving|production|endpoint|inference api)\b/.test(combined)) return "Deploy";
+  if (/\b(evaluate|evaluation|benchmark|metric|accuracy|f1)\b/.test(combined)) return "Evaluate";
+  if (/\b(train|finetune|epoch|gpu|lora)\b/.test(combined)) return "Train";
+  if (/\b(dataset|clean|chunk|label|split|data quality)\b/.test(combined)) return "Data";
+  return "Define";
+}
+
+function setPipelineStage(stage) {
+  const nextStage = normalizeMissionStageLabel(stage);
+  pipelineStageButtons.forEach((button) => {
+    const buttonStage = normalizeMissionStageLabel(button.getAttribute("data-stage") || "");
+    button.classList.toggle("active", buttonStage === nextStage);
+  });
+}
+
+function stageNextAction(stage, hasProject) {
+  if (!hasProject) {
+    return "Select or create a project, then define mission objectives and constraints.";
+  }
+  switch (normalizeMissionStageLabel(stage)) {
+    case "Data":
+      return "Finalize dataset cleaning rules, tagging strategy, and train/validation split.";
+    case "Train":
+      return "Queue the next training run with budget and checkpoint policy.";
+    case "Evaluate":
+      return "Run benchmark suite and validate acceptance metrics before release.";
+    case "Deploy":
+      return "Promote the best model version and enable rollout guardrails.";
+    default:
+      return "Write a crisp project objective and measurable success criteria.";
+  }
+}
+
+function refreshLabTelemetry() {
+  const scopedThreads = chatThreads.filter((thread) => projectIdsEqual(thread.projectId, currentProjectId));
+  const projectName = currentProjectId
+    ? (cachedProjects.find((item) => projectIdsEqual(item?.id, currentProjectId))?.name || currentProjectId)
+    : "No project selected";
+  let activeModel = "Auto";
+  try {
+    activeModel = localStorage.getItem("text2llm.web.proxy.model") || "Auto";
+  } catch (_) {
+    activeModel = "Auto";
+  }
+
+  if (labActiveProjectEl) {
+    labActiveProjectEl.textContent = String(projectName || "No project selected");
+  }
+  if (labActiveModelEl) {
+    labActiveModelEl.textContent = String(activeModel || "Auto");
+  }
+  if (labThreadCountEl) {
+    labThreadCountEl.textContent = String(scopedThreads.length || 0);
+  }
+  if (labLastSyncEl) {
+    labLastSyncEl.textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+
+  if (missionProjectNameEl) {
+    missionProjectNameEl.textContent = String(projectName || "No project selected");
+  }
+  if (missionModelNameEl) {
+    missionModelNameEl.textContent = String(activeModel || "Auto");
+  }
+  if (missionThreadCountEl) {
+    missionThreadCountEl.textContent = String(scopedThreads.length || 0);
+  }
+
+  const inferredStage = currentProjectId ? inferMissionStageFromThreads(scopedThreads) : "Define";
+  const resolvedStage = normalizeMissionStageLabel(currentProjectId ? (manualMissionStage || inferredStage) : "Define");
+  if (missionStageNameEl) {
+    missionStageNameEl.textContent = resolvedStage;
+  }
+  setPipelineStage(resolvedStage);
+
+  const hasProject = Boolean(currentProjectId);
+  const nextAction = stageNextAction(resolvedStage, hasProject);
+  const latestThread = [...scopedThreads]
+    .sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime())[0];
+
+  if (runQueuePrimaryEl) {
+    runQueuePrimaryEl.textContent = latestThread?.title ? `Session: ${latestThread.title}` : "No active run";
+  }
+  if (runQueueNextActionEl) {
+    runQueueNextActionEl.textContent = nextAction;
+  }
+  if (runQueueCheckpointEl) {
+    runQueueCheckpointEl.textContent = latestThread?.updatedAt
+      ? new Date(latestThread.updatedAt).toLocaleString([], { hour: "2-digit", minute: "2-digit", month: "short", day: "numeric" })
+      : "--";
+  }
+
+  refreshStatusBar();
+}
 
 function setChatListCollapsed(collapsed) {
   if (!homeChatLayout || !chatListToggleBtn) {
@@ -193,9 +654,9 @@ function setChatListCollapsed(collapsed) {
   }
 
   homeChatLayout.classList.toggle("chat-list-collapsed", Boolean(collapsed));
-  chatListToggleBtn.textContent = collapsed ? "☰" : "×";
-  chatListToggleBtn.title = collapsed ? "Show chats" : "Hide chats";
-  chatListToggleBtn.setAttribute("aria-label", collapsed ? "Show chats" : "Hide chats");
+  chatListToggleBtn.textContent = collapsed ? "Chats" : "Close";
+  chatListToggleBtn.title = collapsed ? "Open chats" : "Close chats";
+  chatListToggleBtn.setAttribute("aria-label", collapsed ? "Open chats" : "Close chats");
   chatListToggleBtn.setAttribute("aria-expanded", collapsed ? "false" : "true");
 
   try {
@@ -210,11 +671,14 @@ function initChatListToggle() {
     return;
   }
 
-  let collapsed = false;
+  let collapsed = isCompactLayout() ? true : window.innerWidth >= 1024;
   try {
-    collapsed = localStorage.getItem(CHAT_LIST_COLLAPSED_STORAGE_KEY) === "1";
+    const storedValue = localStorage.getItem(CHAT_LIST_COLLAPSED_STORAGE_KEY);
+    if (isCompactLayout() && (storedValue === "1" || storedValue === "0")) {
+      collapsed = storedValue === "1";
+    }
   } catch (_) {
-    collapsed = false;
+    collapsed = isCompactLayout() ? true : window.innerWidth >= 1024;
   }
 
   setChatListCollapsed(collapsed);
@@ -222,6 +686,70 @@ function initChatListToggle() {
   chatListToggleBtn.addEventListener("click", () => {
     const nextCollapsed = !homeChatLayout.classList.contains("chat-list-collapsed");
     setChatListCollapsed(nextCollapsed);
+  });
+
+  if (chatListCloseBtn) {
+    chatListCloseBtn.addEventListener("click", () => {
+      setChatListCollapsed(true);
+    });
+  }
+}
+
+function initMissionPipelineActions() {
+  if (!pipelineStageButtons || pipelineStageButtons.length === 0) {
+    return;
+  }
+  pipelineStageButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const stage = normalizeMissionStageLabel(button.getAttribute("data-stage") || "Define");
+      manualMissionStage = stage;
+      setPipelineStage(stage);
+      if (missionStageNameEl) {
+        missionStageNameEl.textContent = stage;
+      }
+      if (runQueueNextActionEl) {
+        runQueueNextActionEl.textContent = stageNextAction(stage, Boolean(currentProjectId));
+      }
+      if (ideaInput && !isStreaming) {
+        const promptByStage = {
+          Define: "Help me define objective, constraints, and success metrics for this project.",
+          Data: "Help me design a data quality and preparation plan for this project.",
+          Train: "Help me design the next training run with safe budget and checkpoint strategy.",
+          Evaluate: "Help me create evaluation gates before I deploy this model.",
+          Deploy: "Help me prepare a staged deployment and rollback checklist.",
+        };
+        ideaInput.value = promptByStage[stage] || promptByStage.Define;
+        ideaInput.dispatchEvent(new Event("input"));
+        ideaInput.focus();
+      }
+    });
+  });
+}
+
+function initBottomInsightTabs() {
+  if (!bottomInsightTabButtons || bottomInsightTabButtons.length === 0) {
+    return;
+  }
+
+  bottomInsightTabButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const targetId = button.getAttribute("data-target");
+      if (!targetId) {
+        return;
+      }
+
+      bottomInsightTabButtons.forEach((item) => {
+        const selected = item === button;
+        item.classList.toggle("active", selected);
+        item.setAttribute("aria-selected", selected ? "true" : "false");
+      });
+
+      bottomInsightPanes.forEach((pane) => {
+        const selected = pane.id === targetId;
+        pane.classList.toggle("active", selected);
+        pane.setAttribute("aria-hidden", selected ? "false" : "true");
+      });
+    });
   });
 }
 
@@ -336,6 +864,7 @@ function renderThreadList() {
 
   if (!sorted.length) {
     chatThreadList.innerHTML = `<span class="chat-thread-empty">No chats yet</span>`;
+    refreshLabTelemetry();
     return;
   }
 
@@ -385,6 +914,7 @@ function renderThreadList() {
     item.appendChild(actions);
     chatThreadList.appendChild(item);
   });
+  refreshLabTelemetry();
 }
 
 async function renameThread(threadId) {
@@ -563,6 +1093,7 @@ async function createAndActivateNewThread(options = {}) {
   syncViewForCurrentThread();
   saveChatThreads();
   renderThreadList();
+  refreshLabTelemetry();
 
   if (ideaInput) {
     ideaInput.value = "";
@@ -581,6 +1112,7 @@ function initializeChatThreads() {
   syncViewForCurrentThread();
   syncCurrentProjectLabelFromCache();
   renderThreadList();
+  refreshLabTelemetry();
 }
 
 if (document.readyState === "loading") {
@@ -595,8 +1127,37 @@ if (document.readyState === "loading") {
   initChatListToggle();
 }
 
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", () => {
+    refreshLabTelemetry();
+    initMissionPipelineActions();
+    initBottomInsightTabs();
+    initStatusBarActions();
+    initMobileToolDock();
+    setInterval(refreshLabTelemetry, 30000);
+  });
+} else {
+  refreshLabTelemetry();
+  initMissionPipelineActions();
+  initBottomInsightTabs();
+  initStatusBarActions();
+  initMobileToolDock();
+  setInterval(refreshLabTelemetry, 30000);
+}
+
 /* ── Sidebar ── */
 function toggleSidebar() {
+  if (!sidebar) {
+    return;
+  }
+
+  if (isCompactLayout()) {
+    sidebar.classList.toggle("open");
+    sidebar.classList.remove("closed");
+    document.body.classList.remove("sidebar-closed");
+    return;
+  }
+
   sidebar.classList.toggle("closed");
   document.body.classList.toggle("sidebar-closed");
 }
@@ -614,11 +1175,26 @@ if (menuToggle) {
 
 // Close sidebar when clicking outside on mobile
 document.addEventListener("click", (e) => {
-  if (window.innerWidth <= 768 &&
+  if (isCompactLayout() &&
       sidebar.classList.contains("open") &&
       !sidebar.contains(e.target) &&
       e.target !== menuToggle) {
     sidebar.classList.remove("open");
+  }
+});
+
+window.addEventListener("resize", () => {
+  if (!sidebar) {
+    return;
+  }
+
+  if (isCompactLayout()) {
+    sidebar.classList.remove("closed");
+    document.body.classList.remove("sidebar-closed");
+    closeMobileToolsSheet();
+  } else {
+    sidebar.classList.remove("open");
+    closeMobileToolsSheet();
   }
 });
 
@@ -894,6 +1470,7 @@ function setStreamingState(streaming) {
   if (sendBtn) sendBtn.style.display = streaming ? "none" : "flex";
   if (stopBtn) stopBtn.style.display = streaming ? "flex" : "none";
   if (ideaInput) ideaInput.disabled = streaming;
+  refreshStatusBar();
 }
 
 /* ── Finetune Monitor Panel ── */
@@ -2730,9 +3307,14 @@ function initViewNavigation() {
         if (targetView === "store") {
           activateStore();
         }
+        if (targetView === "home") {
+          refreshLabTelemetry();
+        }
+        refreshStatusBar(targetView);
+        closeMobileToolsSheet();
       }
 
-      if (window.innerWidth <= 768) {
+      if (isCompactLayout()) {
         sidebar.classList.remove("open");
       }
     });
@@ -2809,9 +3391,13 @@ function connectTerminalWebSocket() {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const wsUrl = `${protocol}//${window.location.host}/terminal`;
 
+  runtimeSocketState = "connecting";
+  refreshStatusBar("clui");
   ws = new WebSocket(wsUrl);
 
   ws.onopen = () => {
+    runtimeSocketState = "connected";
+    refreshStatusBar("clui");
     console.log('Terminal WebSocket connected');
     terminal.write('\r\n\x1b[1;32m✓ Connected to terminal\x1b[0m\r\n\r\n');
     ws.send(JSON.stringify({ type: 'resize', cols: terminal.cols, rows: terminal.rows }));
@@ -2820,11 +3406,15 @@ function connectTerminalWebSocket() {
   ws.onmessage = (event) => { terminal.write(event.data); };
 
   ws.onerror = (error) => {
+    runtimeSocketState = "disconnected";
+    refreshStatusBar("clui");
     console.error('WebSocket error:', error);
     terminal.write('\r\n\x1b[1;31m✗ Connection error\x1b[0m\r\n');
   };
 
   ws.onclose = () => {
+    runtimeSocketState = "disconnected";
+    refreshStatusBar("clui");
     console.log('Terminal WebSocket disconnected');
     terminal.write('\r\n\x1b[1;33m⚠ Disconnected from terminal\x1b[0m\r\n');
     setTimeout(() => {
@@ -3970,6 +4560,7 @@ const dataStudioState = {
   initialized: false,
   loading: false,
   datasets: [],
+  libraryResources: [],
   selectedDatasetId: null,
   selectedDataset: null,
   rows: [],
@@ -3992,6 +4583,13 @@ function dataStudioEls() {
     fileInput: document.getElementById("ds-file-input"),
     contentWrap: document.getElementById("ds-content-wrap"),
     contentInput: document.getElementById("ds-content-input"),
+    libraryWrap: document.getElementById("ds-library-wrap"),
+    librarySelect: document.getElementById("ds-library-select"),
+    libraryRefreshBtn: document.getElementById("ds-library-refresh-btn"),
+    remoteWrap: document.getElementById("ds-remote-wrap"),
+    remoteProvider: document.getElementById("ds-remote-provider"),
+    remoteId: document.getElementById("ds-remote-id"),
+    remoteUrl: document.getElementById("ds-remote-url"),
     createBtn: document.getElementById("ds-create-btn"),
     status: document.getElementById("ds-status"),
     count: document.getElementById("ds-count"),
@@ -4002,6 +4600,10 @@ function dataStudioEls() {
     searchInput: document.getElementById("ds-search-input"),
     searchBtn: document.getElementById("ds-search-btn"),
     clearSearchBtn: document.getElementById("ds-clear-search-btn"),
+    addRowBtn: document.getElementById("ds-add-row-btn"),
+    addColBtn: document.getElementById("ds-add-col-btn"),
+    renameColBtn: document.getElementById("ds-rename-col-btn"),
+    deleteColBtn: document.getElementById("ds-delete-col-btn"),
     cleanOp: document.getElementById("ds-clean-op"),
     cleanField: document.getElementById("ds-clean-field"),
     cleanPattern: document.getElementById("ds-clean-pattern"),
@@ -4051,16 +4653,59 @@ function getSelectedDatasetSummary() {
   return dataStudioState.datasets.find((item) => item.id === dataStudioState.selectedDatasetId) || null;
 }
 
+function getEditableDatasetColumns(rows = []) {
+  const columnSet = new Set();
+  rows.forEach((row) => {
+    Object.keys(row || {}).forEach((key) => {
+      const normalized = String(key || "");
+      if (normalized && !normalized.startsWith("__")) {
+        columnSet.add(normalized);
+      }
+    });
+  });
+  return Array.from(columnSet);
+}
+
+function renderDataStudioLibraryResources() {
+  const { librarySelect } = dataStudioEls();
+  if (!librarySelect) {
+    return;
+  }
+
+  const resources = Array.isArray(dataStudioState.libraryResources)
+    ? dataStudioState.libraryResources
+    : [];
+  const datasetResources = resources.filter((item) => item?.type === "dataset");
+
+  if (datasetResources.length === 0) {
+    librarySelect.innerHTML = `<option value="">No dataset resources in project library</option>`;
+    return;
+  }
+
+  librarySelect.innerHTML = datasetResources.map((item) => (
+    `<option value="${escapeHtml(String(item.id || ""))}">${escapeHtml(String(item.name || item.id || "Dataset"))} (${escapeHtml(String(item.source || "library"))})</option>`
+  )).join("");
+}
+
+async function loadDataStudioLibraryResources() {
+  const response = await fetch(withActiveProjectQuery("/api/data-studio/library/resources"));
+  const payload = await readApiResponse(response);
+  dataStudioState.libraryResources = Array.isArray(payload.resources) ? payload.resources : [];
+  renderDataStudioLibraryResources();
+}
+
 function renderDataStudioSourceInputs() {
-  const { sourceSelect, urlWrap, fileWrap, contentWrap } = dataStudioEls();
-  if (!sourceSelect || !urlWrap || !fileWrap || !contentWrap) {
+  const { sourceSelect, urlWrap, fileWrap, contentWrap, libraryWrap, remoteWrap } = dataStudioEls();
+  if (!sourceSelect || !urlWrap || !fileWrap || !contentWrap || !libraryWrap || !remoteWrap) {
     return;
   }
 
   const source = String(sourceSelect.value || "paste");
   urlWrap.classList.toggle("hidden", source !== "url");
   fileWrap.classList.toggle("hidden", source !== "upload");
-  contentWrap.classList.toggle("hidden", source === "url" || source === "upload");
+  libraryWrap.classList.toggle("hidden", source !== "library");
+  remoteWrap.classList.toggle("hidden", source !== "remote");
+  contentWrap.classList.toggle("hidden", source !== "paste");
 }
 
 function renderDatasetList() {
@@ -4133,11 +4778,7 @@ function renderDataStudioTable() {
   }
 
   const rows = Array.isArray(dataStudioState.rows) ? dataStudioState.rows : [];
-  const columnSet = new Set();
-  rows.forEach((row) => {
-    Object.keys(row || {}).forEach((key) => columnSet.add(key));
-  });
-  const columns = Array.from(columnSet);
+  const columns = getEditableDatasetColumns(rows);
 
   if (rows.length === 0) {
     tableHead.innerHTML = "";
@@ -4145,14 +4786,53 @@ function renderDataStudioTable() {
   } else {
     tableHead.innerHTML = `<tr>${columns.map((column) => `<th>${escapeHtml(column)}</th>`).join("")}</tr>`;
     tableBody.innerHTML = rows.map((row) => {
-      const cells = columns.map((column) => `<td>${escapeHtml(String(row?.[column] ?? ""))}</td>`).join("");
+      const rowId = String(row?.__rowId || "");
+      const cells = columns.map((column) => (
+        `<td class="ds-editable-cell" contenteditable="true" data-row-id="${escapeHtml(rowId)}" data-column="${escapeHtml(column)}" data-original="${escapeHtml(String(row?.[column] ?? ""))}">${escapeHtml(String(row?.[column] ?? ""))}</td>`
+      )).join("");
       return `<tr>${cells}</tr>`;
     }).join("");
+    bindDataStudioTableEditors();
   }
 
   pageLabel.textContent = `Page ${dataStudioState.page} of ${dataStudioState.totalPages}`;
   prevBtn.disabled = dataStudioState.page <= 1;
   nextBtn.disabled = dataStudioState.page >= dataStudioState.totalPages;
+}
+
+function bindDataStudioTableEditors() {
+  const { tableBody } = dataStudioEls();
+  if (!tableBody) {
+    return;
+  }
+
+  tableBody.querySelectorAll(".ds-editable-cell").forEach((cell) => {
+    cell.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        cell.blur();
+      }
+    });
+
+    cell.addEventListener("blur", async () => {
+      const rowId = String(cell.getAttribute("data-row-id") || "").trim();
+      const column = String(cell.getAttribute("data-column") || "").trim();
+      const original = String(cell.getAttribute("data-original") || "");
+      const nextValue = String(cell.textContent || "");
+      if (!rowId || !column || nextValue === original) {
+        return;
+      }
+
+      try {
+        await patchDatasetRow(rowId, { [column]: nextValue });
+        cell.setAttribute("data-original", nextValue);
+        setDataStudioStatus("Cell updated", "success");
+      } catch (error) {
+        cell.textContent = original;
+        setDataStudioStatus(`⚠ ${error.message || "Failed to update cell"}`, "error");
+      }
+    });
+  });
 }
 
 async function loadDataStudioDatasets() {
@@ -4209,6 +4889,29 @@ async function loadDataStudioRows() {
   renderDataStudioTable();
 }
 
+async function mutateSelectedDataset(path, method, payload = undefined) {
+  if (!dataStudioState.selectedDatasetId) {
+    throw new Error("Select a dataset first");
+  }
+
+  const response = await fetch(
+    withActiveProjectQuery(`/api/data-studio/datasets/${encodeURIComponent(dataStudioState.selectedDatasetId)}/${path}`),
+    {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: payload == null ? undefined : JSON.stringify(payload),
+    },
+  );
+  return readApiResponse(response);
+}
+
+async function patchDatasetRow(rowId, updates) {
+  if (!rowId) {
+    throw new Error("Row id is required");
+  }
+  await mutateSelectedDataset(`rows/${encodeURIComponent(rowId)}`, "PATCH", { updates });
+}
+
 async function createDatasetFromInputs() {
   const {
     nameInput,
@@ -4217,6 +4920,10 @@ async function createDatasetFromInputs() {
     contentInput,
     urlInput,
     fileInput,
+    librarySelect,
+    remoteProvider,
+    remoteId,
+    remoteUrl,
   } = dataStudioEls();
 
   const sourceType = String(sourceSelect?.value || "paste");
@@ -4224,6 +4931,50 @@ async function createDatasetFromInputs() {
   const name = String(nameInput?.value || "").trim();
   let content = "";
   let url = "";
+
+  if (sourceType === "library") {
+    const resourceId = String(librarySelect?.value || "").trim();
+    if (!resourceId) {
+      throw new Error("Select a dataset resource from library");
+    }
+    const response = await fetch("/api/data-studio/datasets/import/library", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId: getActiveProjectIdOrDefault(),
+        resourceId,
+        name,
+        format,
+      }),
+    });
+    const payload = await readApiResponse(response);
+    dataStudioState.selectedDatasetId = payload?.dataset?.id || null;
+    return;
+  }
+
+  if (sourceType === "remote") {
+    const provider = String(remoteProvider?.value || "huggingface").trim();
+    const datasetId = String(remoteId?.value || "").trim();
+    const remoteDatasetUrl = String(remoteUrl?.value || "").trim();
+    if (!datasetId && !remoteDatasetUrl) {
+      throw new Error("Provide a dataset id or URL for remote import");
+    }
+    const response = await fetch("/api/data-studio/datasets/import/remote", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId: getActiveProjectIdOrDefault(),
+        provider,
+        datasetId,
+        url: remoteDatasetUrl,
+        name,
+        format,
+      }),
+    });
+    const payload = await readApiResponse(response);
+    dataStudioState.selectedDatasetId = payload?.dataset?.id || null;
+    return;
+  }
 
   if (sourceType === "url") {
     url = String(urlInput?.value || "").trim();
@@ -4305,6 +5056,7 @@ async function refreshDataStudioWorkspace() {
   }
   dataStudioState.loading = true;
   try {
+    await loadDataStudioLibraryResources();
     await loadDataStudioDatasets();
     await loadDataStudioDataset();
     await loadDataStudioRows();
@@ -4323,10 +5075,15 @@ function initDataStudioWorkspace() {
   const {
     refreshBtn,
     sourceSelect,
+    libraryRefreshBtn,
     createBtn,
     deleteBtn,
     searchBtn,
     clearSearchBtn,
+    addRowBtn,
+    addColBtn,
+    renameColBtn,
+    deleteColBtn,
     prevBtn,
     nextBtn,
     cleanBtn,
@@ -4354,7 +5111,7 @@ function initDataStudioWorkspace() {
     versionSelect,
   } = dataStudioEls();
 
-  if (!refreshBtn || !sourceSelect || !createBtn || !deleteBtn || !searchBtn || !clearSearchBtn || !prevBtn || !nextBtn || !cleanBtn || !chunkBtn || !tagBtn || !splitBtn || !versionBtn || !rollbackBtn) {
+  if (!refreshBtn || !sourceSelect || !createBtn || !deleteBtn || !searchBtn || !clearSearchBtn || !prevBtn || !nextBtn || !cleanBtn || !chunkBtn || !tagBtn || !splitBtn || !versionBtn || !rollbackBtn || !addRowBtn || !addColBtn || !renameColBtn || !deleteColBtn) {
     return;
   }
 
@@ -4365,6 +5122,17 @@ function initDataStudioWorkspace() {
   sourceSelect.addEventListener("change", () => {
     renderDataStudioSourceInputs();
   });
+
+  if (libraryRefreshBtn) {
+    libraryRefreshBtn.addEventListener("click", async () => {
+      try {
+        await loadDataStudioLibraryResources();
+        setDataStudioStatus("Library refreshed", "success");
+      } catch (error) {
+        setDataStudioStatus(`⚠ ${error.message || "Failed to refresh library"}`, "error");
+      }
+    });
+  }
 
   createBtn.addEventListener("click", async () => {
     try {
@@ -4403,6 +5171,81 @@ function initDataStudioWorkspace() {
     dataStudioState.search = "";
     dataStudioState.page = 1;
     await loadDataStudioRows();
+  });
+
+  addRowBtn.addEventListener("click", async () => {
+    try {
+      const raw = prompt("New row JSON (optional). Leave empty for a blank row.", "{}");
+      if (raw == null) {
+        return;
+      }
+      let row = {};
+      const trimmed = String(raw || "").trim();
+      if (trimmed) {
+        row = JSON.parse(trimmed);
+      }
+      await mutateSelectedDataset("rows", "POST", { row });
+      await loadDataStudioDataset();
+      await loadDataStudioRows();
+      setDataStudioStatus("Row added", "success");
+    } catch (error) {
+      setDataStudioStatus(`⚠ ${error.message || "Failed to add row"}`, "error");
+    }
+  });
+
+  addColBtn.addEventListener("click", async () => {
+    try {
+      const name = String(prompt("New column name") || "").trim();
+      if (!name) {
+        throw new Error("Column name is required");
+      }
+      const defaultValue = String(prompt("Default value for existing rows", "") || "");
+      await mutateSelectedDataset("columns", "POST", { name, defaultValue });
+      await loadDataStudioDataset();
+      await loadDataStudioRows();
+      setDataStudioStatus("Column added", "success");
+    } catch (error) {
+      setDataStudioStatus(`⚠ ${error.message || "Failed to add column"}`, "error");
+    }
+  });
+
+  renameColBtn.addEventListener("click", async () => {
+    try {
+      const available = getEditableDatasetColumns(dataStudioState.rows);
+      const sourceName = String(prompt(`Column to rename (${available.join(", ") || "none"})`) || "").trim();
+      if (!sourceName) {
+        throw new Error("Source column name is required");
+      }
+      const name = String(prompt("New column name") || "").trim();
+      if (!name) {
+        throw new Error("New column name is required");
+      }
+      await mutateSelectedDataset(`columns/${encodeURIComponent(sourceName)}`, "PATCH", { name });
+      await loadDataStudioDataset();
+      await loadDataStudioRows();
+      setDataStudioStatus("Column renamed", "success");
+    } catch (error) {
+      setDataStudioStatus(`⚠ ${error.message || "Failed to rename column"}`, "error");
+    }
+  });
+
+  deleteColBtn.addEventListener("click", async () => {
+    try {
+      const available = getEditableDatasetColumns(dataStudioState.rows);
+      const name = String(prompt(`Column to delete (${available.join(", ") || "none"})`) || "").trim();
+      if (!name) {
+        throw new Error("Column name is required");
+      }
+      if (!confirm(`Delete column "${name}" from all rows?`)) {
+        return;
+      }
+      await mutateSelectedDataset(`columns/${encodeURIComponent(name)}`, "DELETE");
+      await loadDataStudioDataset();
+      await loadDataStudioRows();
+      setDataStudioStatus("Column deleted", "success");
+    } catch (error) {
+      setDataStudioStatus(`⚠ ${error.message || "Failed to delete column"}`, "error");
+    }
   });
 
   prevBtn.addEventListener("click", async () => {
@@ -4498,6 +5341,7 @@ function initDataStudioWorkspace() {
   });
 
   renderDataStudioSourceInputs();
+  renderDataStudioLibraryResources();
   renderDataStudioHeader();
   renderDataStudioTable();
   dataStudioState.initialized = true;

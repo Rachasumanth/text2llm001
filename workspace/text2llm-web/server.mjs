@@ -12,6 +12,7 @@ import {
   normalizeGpuInstance,
   normalizeProviderAccount,
 } from "./gpu-phase2.mjs";
+
 // Using child_process instead of node-pty to avoid native addon issues
 
 const __filename = fileURLToPath(import.meta.url);
@@ -33,7 +34,7 @@ const workspaceConfig = (() => {
   return path.resolve(repoRoot, configuredPath);
 })();
 
-app.use(express.json({ limit: "1mb" }));
+app.use(express.json({ limit: "10mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
 function buildPrompt(payload) {
@@ -2099,6 +2100,188 @@ function ensureDataStudioState(config) {
   return config.dataStudio;
 }
 
+const DATA_STUDIO_REMOTE_LIMIT_BYTES = 5 * 1024 * 1024;
+
+function createDatasetRowId() {
+  return `dsr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function cloneDatasetRow(row) {
+  if (!row || typeof row !== "object" || Array.isArray(row)) {
+    return { text: String(row ?? "") };
+  }
+  return { ...row };
+}
+
+function ensureDatasetRowIds(rows, options = {}) {
+  const { forceNew = false } = options;
+  const seen = new Set();
+  return (Array.isArray(rows) ? rows : []).map((row) => {
+    const next = cloneDatasetRow(row);
+    const existing = String(next.__rowId || "").trim();
+    if (!forceNew && existing && !seen.has(existing)) {
+      seen.add(existing);
+      return next;
+    }
+    let generated = createDatasetRowId();
+    while (seen.has(generated)) {
+      generated = createDatasetRowId();
+    }
+    next.__rowId = generated;
+    seen.add(generated);
+    return next;
+  });
+}
+
+function hasCompleteDatasetRowIds(rows) {
+  const seen = new Set();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const id = String(row?.__rowId || "").trim();
+    if (!id || seen.has(id)) {
+      return false;
+    }
+    seen.add(id);
+  }
+  return true;
+}
+
+function pickDatasetRows(rows) {
+  return Array.isArray(rows) ? rows.map((row) => cloneDatasetRow(row)) : [];
+}
+
+function normalizeDatasetName(name, fallback = "New Dataset") {
+  return String(name || fallback).trim() || fallback;
+}
+
+function isBlockedDatasetUrl(rawUrl) {
+  try {
+    const parsed = new URL(String(rawUrl || ""));
+    if (!["http:", "https:"].includes(parsed.protocol)) {
+      return true;
+    }
+    const host = String(parsed.hostname || "").toLowerCase();
+    if (!host) {
+      return true;
+    }
+    const blockedHosts = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0"]);
+    if (blockedHosts.has(host)) {
+      return true;
+    }
+    if (host.startsWith("10.") || host.startsWith("192.168.") || host.startsWith("169.254.")) {
+      return true;
+    }
+    if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(host)) {
+      return true;
+    }
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+function inferDataFormatFromUrl(url, provided = "auto") {
+  const explicit = String(provided || "auto").toLowerCase();
+  if (explicit && explicit !== "auto") {
+    return explicit;
+  }
+  const raw = String(url || "").toLowerCase();
+  if (raw.endsWith(".jsonl")) return "jsonl";
+  if (raw.endsWith(".json")) return "json";
+  if (raw.endsWith(".csv")) return "csv";
+  if (raw.endsWith(".txt")) return "txt";
+  return "auto";
+}
+
+async function fetchRemoteTextContent(url, options = {}) {
+  const safeUrl = String(url || "").trim();
+  if (!safeUrl) {
+    throw new Error("Remote URL is required");
+  }
+  if (isBlockedDatasetUrl(safeUrl)) {
+    throw new Error("Remote URL is blocked");
+  }
+  const response = await fetch(safeUrl, {
+    signal: AbortSignal.timeout(Number(options.timeoutMs || 10000)),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch URL (${response.status})`);
+  }
+
+  const buffer = Buffer.from(await response.arrayBuffer());
+  if (buffer.length > DATA_STUDIO_REMOTE_LIMIT_BYTES) {
+    throw new Error(`Remote payload too large (max ${DATA_STUDIO_REMOTE_LIMIT_BYTES} bytes)`);
+  }
+  return buffer.toString("utf-8");
+}
+
+async function fetchHuggingFaceDatasetRows(datasetId, options = {}) {
+  const normalizedId = String(datasetId || "").trim();
+  if (!normalizedId) {
+    throw new Error("Hugging Face dataset id is required");
+  }
+
+  const splitResp = await fetch(
+    `https://datasets-server.huggingface.co/splits?dataset=${encodeURIComponent(normalizedId)}`,
+    { signal: AbortSignal.timeout(Number(options.timeoutMs || 10000)) },
+  );
+  if (!splitResp.ok) {
+    throw new Error(`Unable to load Hugging Face splits (${splitResp.status})`);
+  }
+  const splitPayload = await splitResp.json();
+  const splits = Array.isArray(splitPayload?.splits) ? splitPayload.splits : [];
+  if (splits.length === 0) {
+    throw new Error("No splits found for dataset");
+  }
+
+  const selectedConfig = String(options.config || splits[0]?.config || "").trim();
+  const selectedSplit = String(options.split || splits[0]?.split || "train").trim();
+  const rowsResp = await fetch(
+    `https://datasets-server.huggingface.co/first-rows?dataset=${encodeURIComponent(normalizedId)}&config=${encodeURIComponent(selectedConfig)}&split=${encodeURIComponent(selectedSplit)}`,
+    { signal: AbortSignal.timeout(Number(options.timeoutMs || 10000)) },
+  );
+  if (!rowsResp.ok) {
+    throw new Error(`Unable to load Hugging Face rows (${rowsResp.status})`);
+  }
+  const rowsPayload = await rowsResp.json();
+  const rows = Array.isArray(rowsPayload?.rows)
+    ? rowsPayload.rows.map((item) => item?.row).filter((item) => item && typeof item === "object")
+    : [];
+  return rows.map((row) => ({ ...row }));
+}
+
+async function fetchZenodoDatasetRows(recordId) {
+  const normalizedId = String(recordId || "").trim();
+  if (!normalizedId) {
+    throw new Error("Zenodo record id is required");
+  }
+
+  const response = await fetch(`https://zenodo.org/api/records/${encodeURIComponent(normalizedId)}`, {
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!response.ok) {
+    throw new Error(`Unable to load Zenodo record (${response.status})`);
+  }
+
+  const payload = await response.json();
+  const files = Array.isArray(payload?.files) ? payload.files : [];
+  const candidate = files.find((file) => {
+    const name = String(file?.key || "").toLowerCase();
+    return name.endsWith(".jsonl") || name.endsWith(".json") || name.endsWith(".csv") || name.endsWith(".txt");
+  });
+  if (!candidate?.links?.self) {
+    return [{ source: "zenodo", recordId: normalizedId, url: payload?.links?.self || "", note: "No text dataset file found in record" }];
+  }
+
+  const fileUrl = String(candidate.links.self || "").trim();
+  const content = await fetchRemoteTextContent(fileUrl);
+  const format = inferDataFormatFromUrl(candidate.key || "");
+  const rows = normalizeRowsFromInput({ content, format });
+  if (rows.length === 0) {
+    return [{ source: "zenodo", recordId: normalizedId, url: fileUrl, note: "No rows parsed from file" }];
+  }
+  return rows;
+}
+
 function parseCsvLine(line) {
   const result = [];
   let current = "";
@@ -2237,7 +2420,12 @@ function normalizeRowsFromInput({ content, format = "auto" }) {
 function getDatasetColumns(rows) {
   const keys = new Set();
   rows.forEach((row) => {
-    Object.keys(row || {}).forEach((key) => keys.add(String(key)));
+    Object.keys(row || {}).forEach((key) => {
+      const normalized = String(key || "");
+      if (normalized && !normalized.startsWith("__")) {
+        keys.add(normalized);
+      }
+    });
   });
   return Array.from(keys);
 }
@@ -2271,14 +2459,14 @@ function computeDatasetStats(rows) {
 
 function createDatasetRecord({ name, sourceType, format, rows, projectId = "default" }) {
   const now = nowIso();
-  const safeRows = Array.isArray(rows) ? rows : [];
+  const safeRows = ensureDatasetRowIds(pickDatasetRows(rows), { forceNew: true });
   const stats = computeDatasetStats(safeRows);
   const initialVersionId = `dsv-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
   return {
     id: `ds-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     projectId: String(projectId || "default").trim() || "default",
-    name: String(name || "New Dataset").trim() || "New Dataset",
+    name: normalizeDatasetName(name),
     sourceType: String(sourceType || "paste"),
     format: String(format || "auto"),
     rows: safeRows,
@@ -2383,6 +2571,7 @@ function applyDatasetChunk(rows, { field, chunkSize, overlap }) {
   const chunks = [];
 
   rows.forEach((row, rowIndex) => {
+    const { __rowId, ...rowWithoutId } = row || {};
     const text = String(row?.[targetField] ?? "");
     if (!text.trim()) {
       return;
@@ -2394,7 +2583,7 @@ function applyDatasetChunk(rows, { field, chunkSize, overlap }) {
         continue;
       }
       chunks.push({
-        ...row,
+        ...rowWithoutId,
         [targetField]: chunk,
         __sourceRow: rowIndex,
         __chunkIndex: Math.floor(offset / step),
@@ -2474,6 +2663,61 @@ function createDatasetVersion(dataset, label) {
     dataset.versions = dataset.versions.slice(0, 20);
   }
   dataset.currentVersionId = version.id;
+}
+
+function updateDatasetAfterMutation(dataset, operation) {
+  dataset.rows = ensureDatasetRowIds(pickDatasetRows(dataset.rows));
+  dataset.stats = computeDatasetStats(dataset.rows);
+  dataset.lastOperation = String(operation || "edit");
+  dataset.updatedAt = nowIso();
+}
+
+function findProjectDataset(dataStudio, projectId, datasetId) {
+  return dataStudio.datasets.find((item) => item.id === datasetId && recordProjectId(item) === projectId);
+}
+
+async function loadStoreResourcesByProject(projectId) {
+  const normalizedProjectId = String(projectId || "default").trim() || "default";
+  const raw = await readFile(workspaceConfig, "utf-8").catch(() => "{}");
+  const config = JSON.parse(raw);
+  const byProject =
+    config?.storeResourcesByProject && typeof config.storeResourcesByProject === "object"
+      ? config.storeResourcesByProject
+      : Array.isArray(config?.storeResources)
+        ? { default: config.storeResources }
+        : {};
+  return Array.isArray(byProject[normalizedProjectId]) ? byProject[normalizedProjectId] : [];
+}
+
+async function resolveRowsFromRemoteSource(params) {
+  const provider = String(params?.provider || "").trim().toLowerCase();
+  const datasetId = String(params?.datasetId || "").trim();
+  const sourceUrl = String(params?.url || "").trim();
+  const format = String(params?.format || "auto");
+
+  if (provider === "huggingface" || provider === "hf") {
+    let resolvedId = datasetId;
+    if (!resolvedId && sourceUrl) {
+      const parsed = /huggingface\.co\/datasets\/([^/?#]+)/i.exec(sourceUrl);
+      if (parsed?.[1]) {
+        resolvedId = parsed[1];
+      }
+    }
+    return fetchHuggingFaceDatasetRows(resolvedId);
+  }
+
+  if (provider === "zenodo") {
+    return fetchZenodoDatasetRows(datasetId || sourceUrl);
+  }
+
+  if (provider === "kaggle") {
+    const idOrUrl = datasetId || sourceUrl;
+    return [{ source: "kaggle", dataset: idOrUrl, note: "Dataset metadata imported. Add a direct file URL for row-level data." }];
+  }
+
+  const remoteUrl = sourceUrl || datasetId;
+  const content = await fetchRemoteTextContent(remoteUrl);
+  return normalizeRowsFromInput({ content, format: inferDataFormatFromUrl(remoteUrl, format) });
 }
 
 function summarizeObservability(config) {
@@ -4287,20 +4531,18 @@ app.post("/api/data-studio/datasets", async (req, res) => {
     const projectId = resolveRequestProjectId(req);
     const { name, sourceType, format, content, url } = req.body || {};
     let resolvedContent = String(content || "");
+    let effectiveFormat = String(format || "auto");
 
     if (String(sourceType || "").toLowerCase() === "url") {
       const safeUrl = String(url || "").trim();
       if (!safeUrl) {
         return res.status(400).json({ ok: false, error: "URL is required for URL source" });
       }
-      const fetched = await fetch(safeUrl);
-      if (!fetched.ok) {
-        return res.status(400).json({ ok: false, error: `Failed to fetch URL (${fetched.status})` });
-      }
-      resolvedContent = await fetched.text();
+      resolvedContent = await fetchRemoteTextContent(safeUrl);
+      effectiveFormat = inferDataFormatFromUrl(safeUrl, format);
     }
 
-    const rows = normalizeRowsFromInput({ content: resolvedContent, format });
+    const rows = normalizeRowsFromInput({ content: resolvedContent, format: effectiveFormat });
     if (rows.length === 0) {
       return res.status(400).json({ ok: false, error: "No rows could be parsed from the provided input" });
     }
@@ -4310,11 +4552,118 @@ app.post("/api/data-studio/datasets", async (req, res) => {
     const dataset = createDatasetRecord({
       name,
       sourceType,
-      format,
+      format: effectiveFormat,
       rows,
       projectId,
     });
 
+    dataStudio.datasets.unshift(dataset);
+    await saveWorkspaceConfig(config);
+    return res.json({ ok: true, dataset: normalizeDataset(dataset) });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error instanceof Error ? error.message : "Unknown error" });
+  }
+});
+
+app.get("/api/data-studio/library/resources", async (req, res) => {
+  try {
+    const projectId = resolveRequestProjectId(req);
+    const resources = await loadStoreResourcesByProject(projectId);
+    return res.json({ ok: true, resources });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error instanceof Error ? error.message : "Unknown error" });
+  }
+});
+
+app.post("/api/data-studio/datasets/import/library", async (req, res) => {
+  try {
+    const projectId = resolveRequestProjectId(req);
+    const { resourceId, name, format = "auto" } = req.body || {};
+    const normalizedResourceId = String(resourceId || "").trim();
+    if (!normalizedResourceId) {
+      return res.status(400).json({ ok: false, error: "resourceId is required" });
+    }
+
+    const resources = await loadStoreResourcesByProject(projectId);
+    const resource = resources.find((item) => String(item?.id || "").trim() === normalizedResourceId);
+    if (!resource) {
+      return res.status(404).json({ ok: false, error: "Library resource not found" });
+    }
+
+    let rows = [];
+    const source = String(resource?.source || "").toLowerCase();
+    if (source === "huggingface") {
+      const hfId = normalizedResourceId.startsWith("hf:dataset:")
+        ? normalizedResourceId.slice("hf:dataset:".length)
+        : String(resource?.name || "");
+      try {
+        rows = await fetchHuggingFaceDatasetRows(hfId);
+      } catch {
+        rows = [{ source: "huggingface", dataset: hfId, note: "Imported as metadata only; row sampling unavailable." }];
+      }
+    } else if (source === "zenodo") {
+      const zenodoId = String(resource?.name || "").split("/").at(-1) || normalizedResourceId;
+      rows = await fetchZenodoDatasetRows(zenodoId);
+    } else if (resource?.url) {
+      const text = await fetchRemoteTextContent(resource.url);
+      rows = normalizeRowsFromInput({
+        content: text,
+        format: inferDataFormatFromUrl(String(resource.url || ""), format),
+      });
+    } else {
+      rows = [{
+        source: String(resource?.source || "library"),
+        resourceId: normalizedResourceId,
+        name: String(resource?.name || ""),
+        url: String(resource?.url || ""),
+        note: "Imported as metadata only",
+      }];
+    }
+
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return res.status(400).json({ ok: false, error: "No rows could be imported from selected library resource" });
+    }
+
+    const config = ensureGpuConfigShape(await loadWorkspaceConfig());
+    const dataStudio = ensureDataStudioState(config);
+    const dataset = createDatasetRecord({
+      name: normalizeDatasetName(name, String(resource?.name || "Library Dataset")),
+      sourceType: "library",
+      format: String(format || "auto"),
+      rows,
+      projectId,
+    });
+
+    dataStudio.datasets.unshift(dataset);
+    await saveWorkspaceConfig(config);
+    return res.json({ ok: true, dataset: normalizeDataset(dataset) });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error instanceof Error ? error.message : "Unknown error" });
+  }
+});
+
+app.post("/api/data-studio/datasets/import/remote", async (req, res) => {
+  try {
+    const projectId = resolveRequestProjectId(req);
+    const { provider = "url", datasetId = "", url = "", name = "", format = "auto" } = req.body || {};
+    if (!String(datasetId || "").trim() && !String(url || "").trim()) {
+      return res.status(400).json({ ok: false, error: "datasetId or url is required" });
+    }
+
+    const rows = await resolveRowsFromRemoteSource({ provider, datasetId, url, format });
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return res.status(400).json({ ok: false, error: "No rows were imported from remote source" });
+    }
+
+    const config = ensureGpuConfigShape(await loadWorkspaceConfig());
+    const dataStudio = ensureDataStudioState(config);
+    const dataset = createDatasetRecord({
+      name: normalizeDatasetName(name, String(datasetId || "Remote Dataset")),
+      sourceType: "remote",
+      format: String(format || "auto"),
+      rows,
+      projectId,
+    });
     dataStudio.datasets.unshift(dataset);
     await saveWorkspaceConfig(config);
     return res.json({ ok: true, dataset: normalizeDataset(dataset) });
@@ -4329,11 +4678,16 @@ app.get("/api/data-studio/datasets/:datasetId", async (req, res) => {
     const datasetId = String(req.params.datasetId || "").trim();
     const config = ensureGpuConfigShape(await loadWorkspaceConfig());
     const dataStudio = ensureDataStudioState(config);
-    const dataset = dataStudio.datasets.find((item) => item.id === datasetId && recordProjectId(item) === projectId);
+    const dataset = findProjectDataset(dataStudio, projectId, datasetId);
     if (!dataset) {
       return res.status(404).json({ ok: false, error: "Dataset not found" });
     }
 
+    if (!hasCompleteDatasetRowIds(dataset.rows)) {
+      dataset.rows = ensureDatasetRowIds(dataset.rows, { forceNew: true });
+      dataset.updatedAt = nowIso();
+      await saveWorkspaceConfig(config);
+    }
     dataset.stats = computeDatasetStats(dataset.rows || []);
     return res.json({ ok: true, dataset: normalizeDataset(dataset) });
   } catch (error) {
@@ -4351,11 +4705,16 @@ app.get("/api/data-studio/datasets/:datasetId/rows", async (req, res) => {
 
     const config = ensureGpuConfigShape(await loadWorkspaceConfig());
     const dataStudio = ensureDataStudioState(config);
-    const dataset = dataStudio.datasets.find((item) => item.id === datasetId && recordProjectId(item) === projectId);
+    const dataset = findProjectDataset(dataStudio, projectId, datasetId);
     if (!dataset) {
       return res.status(404).json({ ok: false, error: "Dataset not found" });
     }
 
+    if (!hasCompleteDatasetRowIds(dataset.rows)) {
+      dataset.rows = ensureDatasetRowIds(dataset.rows, { forceNew: true });
+      dataset.updatedAt = nowIso();
+      await saveWorkspaceConfig(config);
+    }
     let rows = Array.isArray(dataset.rows) ? dataset.rows : [];
     if (query) {
       rows = rows.filter((row) => JSON.stringify(row).toLowerCase().includes(query));
@@ -4375,6 +4734,216 @@ app.get("/api/data-studio/datasets/:datasetId/rows", async (req, res) => {
       totalRows,
       totalPages,
     });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error instanceof Error ? error.message : "Unknown error" });
+  }
+});
+
+app.post("/api/data-studio/datasets/:datasetId/rows", async (req, res) => {
+  try {
+    const projectId = resolveRequestProjectId(req);
+    const datasetId = String(req.params.datasetId || "").trim();
+    const incomingRow = req.body?.row;
+    const row = incomingRow && typeof incomingRow === "object" && !Array.isArray(incomingRow)
+      ? { ...incomingRow }
+      : {};
+
+    const config = ensureGpuConfigShape(await loadWorkspaceConfig());
+    const dataStudio = ensureDataStudioState(config);
+    const dataset = findProjectDataset(dataStudio, projectId, datasetId);
+    if (!dataset) {
+      return res.status(404).json({ ok: false, error: "Dataset not found" });
+    }
+
+    dataset.rows = ensureDatasetRowIds([...(Array.isArray(dataset.rows) ? dataset.rows : []), row], { forceNew: false });
+    updateDatasetAfterMutation(dataset, "row:add");
+    await saveWorkspaceConfig(config);
+    return res.json({ ok: true, dataset: normalizeDataset(dataset) });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error instanceof Error ? error.message : "Unknown error" });
+  }
+});
+
+app.patch("/api/data-studio/datasets/:datasetId/rows/:rowId", async (req, res) => {
+  try {
+    const projectId = resolveRequestProjectId(req);
+    const datasetId = String(req.params.datasetId || "").trim();
+    const rowId = String(req.params.rowId || "").trim();
+    const updates = req.body?.updates && typeof req.body.updates === "object" && !Array.isArray(req.body.updates)
+      ? req.body.updates
+      : {};
+    if (!rowId) {
+      return res.status(400).json({ ok: false, error: "rowId is required" });
+    }
+
+    const config = ensureGpuConfigShape(await loadWorkspaceConfig());
+    const dataStudio = ensureDataStudioState(config);
+    const dataset = findProjectDataset(dataStudio, projectId, datasetId);
+    if (!dataset) {
+      return res.status(404).json({ ok: false, error: "Dataset not found" });
+    }
+
+    const rows = ensureDatasetRowIds(dataset.rows, { forceNew: false });
+    const index = rows.findIndex((row) => String(row?.__rowId || "") === rowId);
+    if (index === -1) {
+      return res.status(404).json({ ok: false, error: "Row not found" });
+    }
+
+    rows[index] = {
+      ...rows[index],
+      ...Object.fromEntries(
+        Object.entries(updates).map(([key, value]) => [String(key), value == null ? "" : value]),
+      ),
+      __rowId: rowId,
+    };
+    dataset.rows = rows;
+    updateDatasetAfterMutation(dataset, "row:update");
+    await saveWorkspaceConfig(config);
+    return res.json({ ok: true, dataset: normalizeDataset(dataset) });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error instanceof Error ? error.message : "Unknown error" });
+  }
+});
+
+app.delete("/api/data-studio/datasets/:datasetId/rows/:rowId", async (req, res) => {
+  try {
+    const projectId = resolveRequestProjectId(req);
+    const datasetId = String(req.params.datasetId || "").trim();
+    const rowId = String(req.params.rowId || "").trim();
+    if (!rowId) {
+      return res.status(400).json({ ok: false, error: "rowId is required" });
+    }
+
+    const config = ensureGpuConfigShape(await loadWorkspaceConfig());
+    const dataStudio = ensureDataStudioState(config);
+    const dataset = findProjectDataset(dataStudio, projectId, datasetId);
+    if (!dataset) {
+      return res.status(404).json({ ok: false, error: "Dataset not found" });
+    }
+
+    const before = Array.isArray(dataset.rows) ? dataset.rows.length : 0;
+    dataset.rows = ensureDatasetRowIds(dataset.rows, { forceNew: false }).filter(
+      (row) => String(row?.__rowId || "") !== rowId,
+    );
+    if (dataset.rows.length === before) {
+      return res.status(404).json({ ok: false, error: "Row not found" });
+    }
+
+    updateDatasetAfterMutation(dataset, "row:delete");
+    await saveWorkspaceConfig(config);
+    return res.json({ ok: true, dataset: normalizeDataset(dataset) });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error instanceof Error ? error.message : "Unknown error" });
+  }
+});
+
+app.post("/api/data-studio/datasets/:datasetId/columns", async (req, res) => {
+  try {
+    const projectId = resolveRequestProjectId(req);
+    const datasetId = String(req.params.datasetId || "").trim();
+    const name = String(req.body?.name || "").trim();
+    const defaultValue = req.body?.defaultValue ?? "";
+    if (!name) {
+      return res.status(400).json({ ok: false, error: "Column name is required" });
+    }
+
+    const config = ensureGpuConfigShape(await loadWorkspaceConfig());
+    const dataStudio = ensureDataStudioState(config);
+    const dataset = findProjectDataset(dataStudio, projectId, datasetId);
+    if (!dataset) {
+      return res.status(404).json({ ok: false, error: "Dataset not found" });
+    }
+
+    const rows = ensureDatasetRowIds(dataset.rows, { forceNew: false });
+    const exists = rows.some((row) => Object.prototype.hasOwnProperty.call(row, name));
+    if (exists) {
+      return res.status(400).json({ ok: false, error: "Column already exists" });
+    }
+
+    dataset.rows = rows.map((row) => ({ ...row, [name]: defaultValue }));
+    updateDatasetAfterMutation(dataset, "column:add");
+    await saveWorkspaceConfig(config);
+    return res.json({ ok: true, dataset: normalizeDataset(dataset) });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error instanceof Error ? error.message : "Unknown error" });
+  }
+});
+
+app.patch("/api/data-studio/datasets/:datasetId/columns/:columnName", async (req, res) => {
+  try {
+    const projectId = resolveRequestProjectId(req);
+    const datasetId = String(req.params.datasetId || "").trim();
+    const currentName = String(req.params.columnName || "").trim();
+    const nextName = String(req.body?.name || "").trim();
+    if (!currentName || !nextName) {
+      return res.status(400).json({ ok: false, error: "Current and new column names are required" });
+    }
+    if (currentName === nextName) {
+      return res.status(400).json({ ok: false, error: "New column name must differ from existing column name" });
+    }
+
+    const config = ensureGpuConfigShape(await loadWorkspaceConfig());
+    const dataStudio = ensureDataStudioState(config);
+    const dataset = findProjectDataset(dataStudio, projectId, datasetId);
+    if (!dataset) {
+      return res.status(404).json({ ok: false, error: "Dataset not found" });
+    }
+
+    const rows = ensureDatasetRowIds(dataset.rows, { forceNew: false });
+    const hasColumn = rows.some((row) => Object.prototype.hasOwnProperty.call(row, currentName));
+    if (!hasColumn) {
+      return res.status(404).json({ ok: false, error: "Column not found" });
+    }
+    const hasTarget = rows.some((row) => Object.prototype.hasOwnProperty.call(row, nextName));
+    if (hasTarget) {
+      return res.status(400).json({ ok: false, error: "Target column already exists" });
+    }
+
+    dataset.rows = rows.map((row) => {
+      if (!Object.prototype.hasOwnProperty.call(row, currentName)) {
+        return row;
+      }
+      const { [currentName]: value, ...rest } = row;
+      return { ...rest, [nextName]: value };
+    });
+    updateDatasetAfterMutation(dataset, "column:rename");
+    await saveWorkspaceConfig(config);
+    return res.json({ ok: true, dataset: normalizeDataset(dataset) });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error instanceof Error ? error.message : "Unknown error" });
+  }
+});
+
+app.delete("/api/data-studio/datasets/:datasetId/columns/:columnName", async (req, res) => {
+  try {
+    const projectId = resolveRequestProjectId(req);
+    const datasetId = String(req.params.datasetId || "").trim();
+    const columnName = String(req.params.columnName || "").trim();
+    if (!columnName) {
+      return res.status(400).json({ ok: false, error: "Column name is required" });
+    }
+
+    const config = ensureGpuConfigShape(await loadWorkspaceConfig());
+    const dataStudio = ensureDataStudioState(config);
+    const dataset = findProjectDataset(dataStudio, projectId, datasetId);
+    if (!dataset) {
+      return res.status(404).json({ ok: false, error: "Dataset not found" });
+    }
+
+    const rows = ensureDatasetRowIds(dataset.rows, { forceNew: false });
+    const hasColumn = rows.some((row) => Object.prototype.hasOwnProperty.call(row, columnName));
+    if (!hasColumn) {
+      return res.status(404).json({ ok: false, error: "Column not found" });
+    }
+
+    dataset.rows = rows.map((row) => {
+      const rest = { ...row };
+      delete rest[columnName];
+      return rest;
+    });
+    updateDatasetAfterMutation(dataset, "column:delete");
+    await saveWorkspaceConfig(config);
+    return res.json({ ok: true, dataset: normalizeDataset(dataset) });
   } catch (error) {
     return res.status(500).json({ ok: false, error: error instanceof Error ? error.message : "Unknown error" });
   }
@@ -4404,15 +4973,13 @@ app.post("/api/data-studio/datasets/:datasetId/clean", async (req, res) => {
     const datasetId = String(req.params.datasetId || "").trim();
     const config = ensureGpuConfigShape(await loadWorkspaceConfig());
     const dataStudio = ensureDataStudioState(config);
-    const dataset = dataStudio.datasets.find((item) => item.id === datasetId && recordProjectId(item) === projectId);
+    const dataset = findProjectDataset(dataStudio, projectId, datasetId);
     if (!dataset) {
       return res.status(404).json({ ok: false, error: "Dataset not found" });
     }
 
     dataset.rows = applyDatasetClean(dataset.rows || [], req.body || {});
-    dataset.stats = computeDatasetStats(dataset.rows);
-    dataset.lastOperation = `clean:${String(req.body?.operation || "trim-text")}`;
-    dataset.updatedAt = nowIso();
+    updateDatasetAfterMutation(dataset, `clean:${String(req.body?.operation || "trim-text")}`);
     await saveWorkspaceConfig(config);
 
     return res.json({ ok: true, dataset: normalizeDataset(dataset) });
@@ -4427,15 +4994,13 @@ app.post("/api/data-studio/datasets/:datasetId/chunk", async (req, res) => {
     const datasetId = String(req.params.datasetId || "").trim();
     const config = ensureGpuConfigShape(await loadWorkspaceConfig());
     const dataStudio = ensureDataStudioState(config);
-    const dataset = dataStudio.datasets.find((item) => item.id === datasetId && recordProjectId(item) === projectId);
+    const dataset = findProjectDataset(dataStudio, projectId, datasetId);
     if (!dataset) {
       return res.status(404).json({ ok: false, error: "Dataset not found" });
     }
 
     dataset.rows = applyDatasetChunk(dataset.rows || [], req.body || {});
-    dataset.stats = computeDatasetStats(dataset.rows);
-    dataset.lastOperation = "chunk";
-    dataset.updatedAt = nowIso();
+    updateDatasetAfterMutation(dataset, "chunk");
     await saveWorkspaceConfig(config);
 
     return res.json({ ok: true, dataset: normalizeDataset(dataset) });
@@ -4450,15 +5015,13 @@ app.post("/api/data-studio/datasets/:datasetId/tag", async (req, res) => {
     const datasetId = String(req.params.datasetId || "").trim();
     const config = ensureGpuConfigShape(await loadWorkspaceConfig());
     const dataStudio = ensureDataStudioState(config);
-    const dataset = dataStudio.datasets.find((item) => item.id === datasetId && recordProjectId(item) === projectId);
+    const dataset = findProjectDataset(dataStudio, projectId, datasetId);
     if (!dataset) {
       return res.status(404).json({ ok: false, error: "Dataset not found" });
     }
 
     dataset.rows = applyDatasetTag(dataset.rows || [], req.body || {});
-    dataset.stats = computeDatasetStats(dataset.rows);
-    dataset.lastOperation = "tag";
-    dataset.updatedAt = nowIso();
+    updateDatasetAfterMutation(dataset, "tag");
     await saveWorkspaceConfig(config);
 
     return res.json({ ok: true, dataset: normalizeDataset(dataset) });
@@ -4473,15 +5036,13 @@ app.post("/api/data-studio/datasets/:datasetId/split", async (req, res) => {
     const datasetId = String(req.params.datasetId || "").trim();
     const config = ensureGpuConfigShape(await loadWorkspaceConfig());
     const dataStudio = ensureDataStudioState(config);
-    const dataset = dataStudio.datasets.find((item) => item.id === datasetId && recordProjectId(item) === projectId);
+    const dataset = findProjectDataset(dataStudio, projectId, datasetId);
     if (!dataset) {
       return res.status(404).json({ ok: false, error: "Dataset not found" });
     }
 
     dataset.rows = applyDatasetSplit(dataset.rows || [], req.body || {});
-    dataset.stats = computeDatasetStats(dataset.rows);
-    dataset.lastOperation = "split";
-    dataset.updatedAt = nowIso();
+    updateDatasetAfterMutation(dataset, "split");
     await saveWorkspaceConfig(config);
 
     return res.json({ ok: true, dataset: normalizeDataset(dataset) });
@@ -4496,15 +5057,13 @@ app.post("/api/data-studio/datasets/:datasetId/version", async (req, res) => {
     const datasetId = String(req.params.datasetId || "").trim();
     const config = ensureGpuConfigShape(await loadWorkspaceConfig());
     const dataStudio = ensureDataStudioState(config);
-    const dataset = dataStudio.datasets.find((item) => item.id === datasetId && recordProjectId(item) === projectId);
+    const dataset = findProjectDataset(dataStudio, projectId, datasetId);
     if (!dataset) {
       return res.status(404).json({ ok: false, error: "Dataset not found" });
     }
 
     createDatasetVersion(dataset, req.body?.label);
-    dataset.updatedAt = nowIso();
-    dataset.lastOperation = "version";
-    dataset.stats = computeDatasetStats(dataset.rows || []);
+    updateDatasetAfterMutation(dataset, "version");
     await saveWorkspaceConfig(config);
 
     return res.json({ ok: true, dataset: normalizeDataset(dataset) });
@@ -4524,7 +5083,7 @@ app.post("/api/data-studio/datasets/:datasetId/rollback", async (req, res) => {
 
     const config = ensureGpuConfigShape(await loadWorkspaceConfig());
     const dataStudio = ensureDataStudioState(config);
-    const dataset = dataStudio.datasets.find((item) => item.id === datasetId && recordProjectId(item) === projectId);
+    const dataset = findProjectDataset(dataStudio, projectId, datasetId);
     if (!dataset) {
       return res.status(404).json({ ok: false, error: "Dataset not found" });
     }
@@ -4538,9 +5097,7 @@ app.post("/api/data-studio/datasets/:datasetId/rollback", async (req, res) => {
       ? version.rowsSnapshot.map((row) => ({ ...row }))
       : [];
     dataset.currentVersionId = version.id;
-    dataset.updatedAt = nowIso();
-    dataset.lastOperation = `rollback:${version.label}`;
-    dataset.stats = computeDatasetStats(dataset.rows);
+    updateDatasetAfterMutation(dataset, `rollback:${version.label}`);
     await saveWorkspaceConfig(config);
 
     return res.json({ ok: true, dataset: normalizeDataset(dataset) });
@@ -6263,11 +6820,31 @@ function parseArxivAtom(xml) {
   return entries;
 }
 
+function withResultMeta(items, meta = {}) {
+  const list = Array.isArray(items) ? items : [];
+  list._meta = meta;
+  return list;
+}
+
+function getResultMeta(items) {
+  if (Array.isArray(items) && items._meta && typeof items._meta === "object") {
+    return items._meta;
+  }
+  return {};
+}
+
+function parseArxivTotalResults(xml) {
+  const match = /<opensearch:totalResults[^>]*>(\d+)<\/opensearch:totalResults>/i.exec(xml || "");
+  return match ? Number(match[1]) : null;
+}
+
 /**
  * Search Hugging Face Hub for models and datasets.
  */
 async function searchHuggingFace(query, type, sort, page, limit) {
   const results = [];
+  let hasMoreAcrossTypes = false;
+  let totalGlobalCount = 0;
   const hfToken = process.env.HF_TOKEN;
   const headers = {};
   if (hfToken && hfToken !== "text2llm-web-local") {
@@ -6278,17 +6855,66 @@ async function searchHuggingFace(query, type, sort, page, limit) {
                       type === "model" ? ["model"] :
                       type === "dataset" ? ["dataset"] : [];
 
+  const resolveNextLink = (linkHeader) => {
+    if (!linkHeader) return null;
+    const parts = linkHeader.split(",");
+    for (const part of parts) {
+      const trimmed = part.trim();
+      if (!/rel=\"next\"/i.test(trimmed)) continue;
+      const match = trimmed.match(/<([^>]+)>/);
+      if (!match?.[1]) continue;
+      const href = match[1].trim();
+      if (/^https?:\/\//i.test(href)) return href;
+      return `https://huggingface.co${href.startsWith("/") ? "" : "/"}${href}`;
+    }
+    return null;
+  };
+
   for (const sType of searchTypes) {
     const endpoint = sType === "model" ? "models" : "datasets";
     const sortParam = sort === "downloads" ? "downloads" : sort === "stars" ? "likes" : sort === "recent" ? "lastModified" : "downloads";
-    const url = `https://huggingface.co/api/${endpoint}?search=${encodeURIComponent(query)}&sort=${sortParam}&direction=-1&limit=${limit}&offset=${(page - 1) * limit}`;
+
+    const baseUrl = new URL(`https://huggingface.co/api/${endpoint}`);
+    baseUrl.searchParams.set("search", query);
+    baseUrl.searchParams.set("sort", sortParam);
+    baseUrl.searchParams.set("direction", "-1");
+    baseUrl.searchParams.set("limit", String(limit));
+    let pageUrl = baseUrl.toString();
+    let pageItems = [];
+    let typeHasMore = false;
 
     try {
-      const resp = await fetch(url, { headers, signal: AbortSignal.timeout(3000) });
-      if (!resp.ok) continue;
-      const items = await resp.json();
+      for (let currentPage = 1; currentPage <= page; currentPage++) {
+        const resp = await fetch(pageUrl, { headers, signal: AbortSignal.timeout(4000) });
+        
+        if (currentPage === 1) {
+          const t = parseInt(resp.headers.get("x-total-count"), 10);
+          if (!isNaN(t)) totalGlobalCount += t;
+        }
 
-      for (const item of items) {
+        if (!resp.ok) {
+          pageItems = [];
+          break;
+        }
+        const items = await resp.json();
+        if (!Array.isArray(items)) {
+          pageItems = [];
+          break;
+        }
+        const nextLink = resolveNextLink(resp.headers.get("link"));
+        if (currentPage === page) {
+          pageItems = items;
+          typeHasMore = Boolean(nextLink);
+          break;
+        }
+        if (!nextLink) {
+          pageItems = [];
+          break;
+        }
+        pageUrl = nextLink;
+      }
+
+      for (const item of pageItems) {
         results.push({
           id: `hf:${sType}:${item.id || item.modelId}`,
           type: sType,
@@ -6310,12 +6936,18 @@ async function searchHuggingFace(query, type, sort, page, limit) {
           updatedAt: item.lastModified || item.updatedAt || "",
         });
       }
+      if (typeHasMore) {
+        hasMoreAcrossTypes = true;
+      }
     } catch (err) {
       console.error(`HF ${sType} search error:`, err.message);
     }
   }
 
-  return results;
+  return withResultMeta(results, {
+    hasMore: hasMoreAcrossTypes,
+    totalCount: totalGlobalCount > 0 ? totalGlobalCount : undefined,
+  });
 }
 
 /**
@@ -6337,8 +6969,8 @@ async function searchGitHub(query, sort, page, limit) {
     const resp = await fetch(url, { headers, signal: AbortSignal.timeout(3000) });
     if (!resp.ok) return [];
     const data = await resp.json();
-
-    return (data.items || []).map(repo => ({
+    const totalCount = Number(data.total_count || 0);
+    const mapped = (data.items || []).map(repo => ({
       id: `gh:${repo.full_name}`,
       type: "code",
       source: "github",
@@ -6355,6 +6987,10 @@ async function searchGitHub(query, sort, page, limit) {
       license: repo.license?.spdx_id || "",
       updatedAt: repo.updated_at || repo.pushed_at || "",
     }));
+    return withResultMeta(mapped, {
+      totalCount,
+      hasMore: page * limit < totalCount,
+    });
   } catch (err) {
     console.error("GitHub search error:", err.message);
     return [];
@@ -6379,7 +7015,13 @@ async function searchArxiv(query, sort, page, limit) {
     const xml = await resp.text();
     if (!xml || /rate\s+exceeded/i.test(xml)) return await searchArxivViaSemanticScholar(query, sort, page, limit);
     const parsed = parseArxivAtom(xml);
-    if (parsed.length > 0) return parsed;
+    if (parsed.length > 0) {
+      const totalCount = parseArxivTotalResults(xml);
+      return withResultMeta(parsed, {
+        totalCount: Number.isFinite(totalCount) ? totalCount : undefined,
+        hasMore: Number.isFinite(totalCount) ? page * limit < totalCount : parsed.length === limit,
+      });
+    }
     return await searchArxivViaSemanticScholar(query, sort, page, limit);
   } catch (err) {
     console.error("arXiv search error:", err.message);
@@ -6389,7 +7031,22 @@ async function searchArxiv(query, sort, page, limit) {
 
 async function searchArxivViaSemanticScholar(query, sort, page, limit) {
   try {
+    if (!process.env.SEMANTIC_SCHOLAR_API_KEY) {
+      const dblpFallback = await searchDBLP(query, page, limit);
+      const dblpMeta = getResultMeta(dblpFallback);
+      const mapped = dblpFallback.slice(0, limit).map((paper) => ({
+        ...paper,
+        id: `arxiv:dblp:${paper.id.replace(/^dblp:/, "")}`,
+        source: "arxiv",
+        license: paper.license || "arXiv",
+      }));
+      return withResultMeta(mapped, {
+        hasMore: Boolean(dblpMeta.hasMore) || mapped.length === limit,
+      });
+    }
+
     const s2Papers = await searchSemanticScholar(query, sort, page, Math.max(limit * 2, 20));
+    const s2Meta = getResultMeta(s2Papers);
     const fromArxiv = s2Papers
       .filter(paper => /arxiv\.org\/(abs|pdf)\//i.test(paper.url || ""))
       .slice(0, limit)
@@ -6403,14 +7060,21 @@ async function searchArxivViaSemanticScholar(query, sort, page, limit) {
           license: "arXiv",
         };
       });
-    if (fromArxiv.length > 0) return fromArxiv;
+    if (fromArxiv.length > 0) {
+      return withResultMeta(fromArxiv, {
+        hasMore: Boolean(s2Meta.hasMore) || fromArxiv.length === limit,
+      });
+    }
 
-    return s2Papers.slice(0, limit).map(paper => ({
+    const mapped = s2Papers.slice(0, limit).map(paper => ({
       ...paper,
       id: `arxiv:s2:${paper.id.replace(/^s2:/, "")}`,
       source: "arxiv",
       license: paper.license || "arXiv",
     }));
+    return withResultMeta(mapped, {
+      hasMore: Boolean(s2Meta.hasMore) || mapped.length === limit,
+    });
   } catch (err) {
     console.error("arXiv fallback search error:", err.message);
     return [];
@@ -6552,7 +7216,10 @@ async function searchPapersWithCode(query, page, limit) {
     });
 
     const start = (page - 1) * limit;
-    return results.slice(start, start + limit);
+    return withResultMeta(results.slice(start, start + limit), {
+      totalCount: results.length,
+      hasMore: start + limit < results.length,
+    });
   } catch (err) {
     console.error("Papers With Code search error:", err.message);
     return [];
@@ -6571,28 +7238,63 @@ async function searchSemanticScholar(query, sort, page, limit) {
   if (s2Key) headers["x-api-key"] = s2Key;
 
   try {
-    const resp = await fetch(url, { headers, signal: AbortSignal.timeout(4000) });
-    if (!resp.ok) return [];
-    const data = await resp.json();
-
-    return (data.data || []).map(paper => ({
-      id: `s2:${paper.paperId}`,
-      type: "paper",
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const resp = await fetch(url, { headers, signal: AbortSignal.timeout(8000) });
+      if (resp.status === 429) {
+        const retryAfter = Number(resp.headers.get("retry-after") || NaN);
+        const delayMs = Number.isFinite(retryAfter) ? Math.max(1000, retryAfter * 1000) : 5000 * (attempt + 1);
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        continue;
+      }
+      if (!resp.ok) return [];
+      const data = await resp.json();
+      const totalCount = Number(data.total ?? NaN);
+      const mapped = (data.data || []).map(paper => ({
+        id: `s2:${paper.paperId}`,
+        type: "paper",
+        source: "semanticscholar",
+        name: paper.title || "Untitled",
+        author: (paper.authors || []).slice(0, 3).map(a => a.name).join(", ") + ((paper.authors || []).length > 3 ? " et al." : ""),
+        description: (paper.abstract || "").slice(0, 300),
+        url: paper.url || `https://www.semanticscholar.org/paper/${paper.paperId}`,
+        metrics: {
+          citations: paper.citationCount || 0,
+        },
+        tags: (paper.fieldsOfStudy || []).slice(0, 4),
+        license: paper.openAccessPdf ? "Open Access" : "",
+        updatedAt: paper.publicationDate || (paper.year ? `${paper.year}-01-01` : ""),
+      }));
+      return withResultMeta(mapped, {
+        totalCount: Number.isFinite(totalCount) ? totalCount : undefined,
+        hasMore: Number.isFinite(totalCount) ? offset + mapped.length < totalCount : mapped.length === limit,
+      });
+    }
+    const dblpFallback = await searchDBLP(query, page, limit);
+    const dblpMeta = getResultMeta(dblpFallback);
+    const mapped = dblpFallback.map((paper) => ({
+      ...paper,
+      id: `s2:fallback:${paper.id.replace(/^dblp:/, "")}`,
       source: "semanticscholar",
-      name: paper.title || "Untitled",
-      author: (paper.authors || []).slice(0, 3).map(a => a.name).join(", ") + ((paper.authors || []).length > 3 ? " et al." : ""),
-      description: (paper.abstract || "").slice(0, 300),
-      url: paper.url || `https://www.semanticscholar.org/paper/${paper.paperId}`,
-      metrics: {
-        citations: paper.citationCount || 0,
-      },
-      tags: (paper.fieldsOfStudy || []).slice(0, 4),
-      license: paper.openAccessPdf ? "Open Access" : "",
-      updatedAt: paper.publicationDate || (paper.year ? `${paper.year}-01-01` : ""),
+      license: paper.license || "Open Access",
     }));
+    return withResultMeta(mapped, {
+      totalCount: dblpMeta.totalCount,
+      hasMore: Boolean(dblpMeta.hasMore),
+    });
   } catch (err) {
     console.error("Semantic Scholar search error:", err.message);
-    return [];
+    const dblpFallback = await searchDBLP(query, page, limit);
+    const dblpMeta = getResultMeta(dblpFallback);
+    const mapped = dblpFallback.map((paper) => ({
+      ...paper,
+      id: `s2:fallback:${paper.id.replace(/^dblp:/, "")}`,
+      source: "semanticscholar",
+      license: paper.license || "Open Access",
+    }));
+    return withResultMeta(mapped, {
+      totalCount: dblpMeta.totalCount,
+      hasMore: Boolean(dblpMeta.hasMore),
+    });
   }
 }
 
@@ -6601,15 +7303,38 @@ async function searchSemanticScholar(query, sort, page, limit) {
  */
 async function searchCivitai(query, sort, page, limit) {
   const sortParam = sort === "recent" ? "Newest" : sort === "downloads" ? "Most Downloaded" : "Highest Rated";
-  // Civitai API requires cursor-based pagination when using query; omit page param and use limit only
-  const url = `https://civitai.com/api/v1/models?query=${encodeURIComponent(query)}&limit=${limit}&sort=${encodeURIComponent(sortParam)}`;
 
   try {
-    const resp = await fetch(url, { signal: AbortSignal.timeout(3000) });
-    if (!resp.ok) return [];
-    const data = await resp.json();
+    let cursor = null;
+    let pageData = { items: [], metadata: {} };
+    for (let currentPage = 1; currentPage <= page; currentPage++) {
+      const url = new URL("https://civitai.com/api/v1/models");
+      url.searchParams.set("query", query);
+      url.searchParams.set("limit", String(limit));
+      url.searchParams.set("sort", sortParam);
+      if (cursor) {
+        url.searchParams.set("cursor", cursor);
+      }
+      const resp = await fetch(url.toString(), { signal: AbortSignal.timeout(6000) });
+      if (!resp.ok) return [];
+      const data = await resp.json();
+      pageData = data && typeof data === "object" ? data : { items: [], metadata: {} };
+      if (currentPage === page) {
+        break;
+      }
+      const nextCursor = pageData.metadata?.nextCursor;
+      if (!nextCursor) {
+        pageData = { items: [], metadata: pageData.metadata || {} };
+        break;
+      }
+      cursor = String(nextCursor);
+    }
 
-    return (data.items || []).map(item => ({
+    const items = Array.isArray(pageData.items) ? pageData.items : [];
+    const totalCount = Number(pageData.metadata?.totalItems ?? pageData.metadata?.total ?? NaN);
+    const hasMore = Boolean(pageData.metadata?.nextCursor) ||
+      (Number.isFinite(totalCount) ? page * limit < totalCount : items.length === limit);
+    const mapped = items.map(item => ({
       id: `civitai:${item.id}`,
       type: "model",
       source: "civitai",
@@ -6626,6 +7351,10 @@ async function searchCivitai(query, sort, page, limit) {
       license: item.allowCommercialUse || "",
       updatedAt: item.updatedAt || item.publishedAt || "",
     }));
+    return withResultMeta(mapped, {
+      totalCount: Number.isFinite(totalCount) ? totalCount : undefined,
+      hasMore,
+    });
   } catch (err) {
     console.error("Civitai search error:", err.message);
     return [];
@@ -6717,7 +7446,10 @@ async function searchKaggle(query, type, sort, page, limit) {
     }
   }
 
-  return results.slice(0, limit);
+  const pageItems = results.slice(0, limit);
+  return withResultMeta(pageItems, {
+    hasMore: results.length > limit || pageItems.length === limit,
+  });
 }
 
 /**
@@ -6728,11 +7460,25 @@ async function searchZenodo(query, sort, page, limit) {
   const url = `https://zenodo.org/api/records?q=${encodeURIComponent(query)}&size=${limit}&page=${page}&sort=${sortParam}`;
 
   try {
-    const resp = await fetch(url, { signal: AbortSignal.timeout(3000) });
-    if (!resp.ok) return [];
-    const data = await resp.json();
+    let data = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const resp = await fetch(url, { signal: AbortSignal.timeout(12000) });
+      if (resp.status === 429) {
+        await new Promise((resolve) => setTimeout(resolve, 1200 * (attempt + 1)));
+        continue;
+      }
+      if (!resp.ok) return [];
+      data = await resp.json();
+      break;
+    }
+    if (!data || typeof data !== "object") {
+      return [];
+    }
 
-    return (data.hits?.hits || []).map(item => {
+    const records = data.hits?.hits || [];
+    const rawTotal = data.hits?.total;
+    const totalCount = typeof rawTotal === "number" ? rawTotal : Number(rawTotal?.value ?? NaN);
+    const mapped = records.map(item => {
       const meta = item.metadata || {};
       return {
         id: `zenodo:${item.id}`,
@@ -6751,6 +7497,10 @@ async function searchZenodo(query, sort, page, limit) {
         updatedAt: meta.publication_date || item.updated || "",
       };
     });
+    return withResultMeta(mapped, {
+      totalCount: Number.isFinite(totalCount) ? totalCount : undefined,
+      hasMore: Number.isFinite(totalCount) ? page * limit < totalCount : mapped.length === limit,
+    });
   } catch (err) {
     console.error("Zenodo search error:", err.message);
     return [];
@@ -6765,12 +7515,19 @@ async function searchDBLP(query, page, limit) {
   const url = `https://dblp.org/search/publ/api?q=${encodeURIComponent(query)}&format=json&h=${limit}&f=${first}`;
 
   try {
-    const resp = await fetch(url, { signal: AbortSignal.timeout(4000) });
+    const resp = await fetch(url, {
+      signal: AbortSignal.timeout(10000),
+      headers: {
+        "Accept": "application/json",
+        "User-Agent": "text2llm-web/1.0 (+https://localhost)",
+      },
+    });
     if (!resp.ok) return [];
     const data = await resp.json();
+    const totalCount = Number(data.result?.hits?.["@total"] ?? NaN);
 
     const hits = data.result?.hits?.hit || [];
-    return hits.map(hit => {
+    const mapped = hits.map(hit => {
       const info = hit.info || {};
       const authors = info.authors?.author || [];
       const authorList = Array.isArray(authors) ? authors : [authors];
@@ -6787,6 +7544,10 @@ async function searchDBLP(query, page, limit) {
         license: "",
         updatedAt: info.year ? `${info.year}-01-01` : "",
       };
+    });
+    return withResultMeta(mapped, {
+      totalCount: Number.isFinite(totalCount) ? totalCount : undefined,
+      hasMore: Number.isFinite(totalCount) ? first + mapped.length < totalCount : mapped.length === limit,
     });
   } catch (err) {
     console.error("DBLP search error:", err.message);
@@ -6874,6 +7635,7 @@ async function searchOllama(query, page, limit) {
     if (models.length === 0) {
       models = [...allModels];
     }
+    const totalMatches = models.length;
 
     // Sort by relevance (exact name match first, then partial, then by pulls)
     models.sort((a, b) => {
@@ -6888,7 +7650,7 @@ async function searchOllama(query, page, limit) {
     const start = (page - 1) * limit;
     models = models.slice(start, start + limit);
 
-    return models.map(m => ({
+    const mapped = models.map(m => ({
       id: `ollama:${m.name}`,
       type: "model",
       source: "ollama",
@@ -6904,6 +7666,10 @@ async function searchOllama(query, page, limit) {
       license: "",
       updatedAt: "",
     }));
+    return withResultMeta(mapped, {
+      totalCount: totalMatches,
+      hasMore: start + mapped.length < totalMatches,
+    });
   } catch (err) {
     console.error("Ollama search error:", err.message);
     return [];
@@ -6980,7 +7746,7 @@ async function searchReplicate(query, page, limit) {
       });
       if (resp.ok) {
         const data = await resp.json();
-        return (data.results || []).slice(0, limit).map(model => ({
+        const models = (data.results || []).slice(0, limit).map(model => ({
           id: `replicate:${model.owner}/${model.name}`,
           type: "model",
           source: "replicate",
@@ -6996,6 +7762,9 @@ async function searchReplicate(query, page, limit) {
           license: model.license_url ? "Open" : "",
           updatedAt: model.latest_version?.created_at || "",
         }));
+        return withResultMeta(models, {
+          hasMore: Boolean(data.next),
+        });
       }
     }
 
@@ -7006,10 +7775,10 @@ async function searchReplicate(query, page, limit) {
     }
 
     // Final fallback: static catalog
-    return searchReplicateFromCatalog(query, limit);
+    return searchReplicateFromCatalog(query, page, limit);
   } catch (err) {
     console.error("Replicate search error:", err.message);
-    return searchReplicateFromCatalog(query, limit);
+    return searchReplicateFromCatalog(query, page, limit);
   }
 }
 
@@ -7024,9 +7793,10 @@ function searchReplicateFromDynamicCatalog(catalog, query, page, limit) {
 
   // If no query match, return all catalog items sorted by relevance
   if (matches.length === 0) matches = [...catalog];
+  const totalMatches = matches.length;
 
   const start = (page - 1) * limit;
-  return matches.slice(start, start + limit).map(m => ({
+  const mapped = matches.slice(start, start + limit).map(m => ({
     id: `replicate:${m.owner}/${m.name}`,
     type: "model",
     source: "replicate",
@@ -7039,9 +7809,13 @@ function searchReplicateFromDynamicCatalog(catalog, query, page, limit) {
     license: "",
     updatedAt: "",
   }));
+  return withResultMeta(mapped, {
+    totalCount: totalMatches,
+    hasMore: start + mapped.length < totalMatches,
+  });
 }
 
-function searchReplicateFromCatalog(query, limit) {
+function searchReplicateFromCatalog(query, page, limit) {
   // Curated catalog of popular Replicate models since their API requires auth
   const catalog = [
     { owner: "stability-ai", name: "stable-diffusion", desc: "A latent text-to-image diffusion model capable of generating photo-realistic images given any text input", tags: ["image-generation", "diffusion"] },
@@ -7071,8 +7845,10 @@ function searchReplicateFromCatalog(query, limit) {
 
   // If no matches, return all catalog items
   if (matches.length === 0) matches = catalog;
+  const totalMatches = matches.length;
 
-  return matches.slice(0, limit).map(m => ({
+  const start = Math.max(0, (page - 1) * limit);
+  const mapped = matches.slice(start, start + limit).map(m => ({
     id: `replicate:${m.owner}/${m.name}`,
     type: "model",
     source: "replicate",
@@ -7085,6 +7861,10 @@ function searchReplicateFromCatalog(query, limit) {
     license: "",
     updatedAt: "",
   }));
+  return withResultMeta(mapped, {
+    totalCount: totalMatches,
+    hasMore: start + mapped.length < totalMatches,
+  });
 }
 
 /**
@@ -7282,13 +8062,20 @@ app.get("/api/store/search", async (req, res) => {
     }
 
     const effectiveQuery = trimmedQuery || (
-      // When a specific source is selected with no query, use empty string
-      // so providers can return their full catalog (e.g., Ollama all models)
-      source !== "all" ? "" :
-      type === "paper" ? "large language model" :
-      type === "dataset" ? "machine learning dataset" :
-      type === "code" ? "llm framework" :
-      "machine learning"
+      source === "all"
+        ? (
+          type === "paper" ? "large language model" :
+          type === "dataset" ? "machine learning dataset" :
+          type === "code" ? "llm framework" :
+          "machine learning"
+        )
+        : (
+          // Keep true catalog-style browsing for sources with bounded/public catalogs.
+          source === "ollama" || source === "replicate" || source === "huggingface" || source === "civitai" || source === "kaggle"
+            ? ""
+            // Sources that reject blank query or degrade badly with blank input.
+            : "machine learning"
+        )
     );
 
     // Check cache
@@ -7305,6 +8092,8 @@ app.get("/api/store/search", async (req, res) => {
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
     const limitNum = Math.min(30, Math.max(1, parseInt(limit, 10) || 12));
 
+    const isSingleSourceQuery = source !== "all";
+
     // Decide which sources to query
     const shouldQueryHF = (source === "all" || source === "huggingface") && (type === "all" || type === "model" || type === "dataset");
     const shouldQueryGH = (source === "all" || source === "github") && (type === "all" || type === "code");
@@ -7318,19 +8107,24 @@ app.get("/api/store/search", async (req, res) => {
     const shouldQueryReplicate = (source === "all" || source === "replicate") && (type === "all" || type === "model");
     const shouldQueryKaggle = (source === "all" || source === "kaggle") && (type === "all" || type === "dataset" || type === "code");
 
+    const buildSourcePromises = (pageValue, limitValue) => {
+      const nextPromises = [];
+      if (shouldQueryHF) nextPromises.push(searchHuggingFace(effectiveQuery, type, sort, pageValue, limitValue));
+      if (shouldQueryGH) nextPromises.push(searchGitHub(effectiveQuery, sort, pageValue, limitValue));
+      if (shouldQueryArxiv) nextPromises.push(searchArxiv(effectiveQuery, sort, pageValue, limitValue));
+      if (shouldQueryPWC) nextPromises.push(searchPapersWithCode(effectiveQuery, pageValue, limitValue));
+      if (shouldQueryS2) nextPromises.push(searchSemanticScholar(effectiveQuery, sort, pageValue, limitValue));
+      if (shouldQueryCivitai) nextPromises.push(searchCivitai(effectiveQuery, sort, pageValue, limitValue));
+      if (shouldQueryZenodo) nextPromises.push(searchZenodo(effectiveQuery, sort, pageValue, limitValue));
+      if (shouldQueryDBLP) nextPromises.push(searchDBLP(effectiveQuery, pageValue, limitValue));
+      if (shouldQueryOllama) nextPromises.push(searchOllama(effectiveQuery, pageValue, limitValue));
+      if (shouldQueryReplicate) nextPromises.push(searchReplicate(effectiveQuery, pageValue, limitValue));
+      if (shouldQueryKaggle) nextPromises.push(searchKaggle(effectiveQuery, type, sort, pageValue, limitValue));
+      return nextPromises;
+    };
+
     // Fan out queries in parallel
-    const promises = [];
-    if (shouldQueryHF) promises.push(searchHuggingFace(effectiveQuery, type, sort, pageNum, limitNum));
-    if (shouldQueryGH) promises.push(searchGitHub(effectiveQuery, sort, pageNum, limitNum));
-    if (shouldQueryArxiv) promises.push(searchArxiv(effectiveQuery, sort, pageNum, limitNum));
-    if (shouldQueryPWC) promises.push(searchPapersWithCode(effectiveQuery, pageNum, limitNum));
-    if (shouldQueryS2) promises.push(searchSemanticScholar(effectiveQuery, sort, pageNum, limitNum));
-    if (shouldQueryCivitai) promises.push(searchCivitai(effectiveQuery, sort, pageNum, limitNum));
-    if (shouldQueryZenodo) promises.push(searchZenodo(effectiveQuery, sort, pageNum, limitNum));
-    if (shouldQueryDBLP) promises.push(searchDBLP(effectiveQuery, pageNum, limitNum));
-    if (shouldQueryOllama) promises.push(searchOllama(effectiveQuery, pageNum, limitNum));
-    if (shouldQueryReplicate) promises.push(searchReplicate(effectiveQuery, pageNum, limitNum));
-    if (shouldQueryKaggle) promises.push(searchKaggle(effectiveQuery, type, sort, pageNum, limitNum));
+    const promises = buildSourcePromises(pageNum, limitNum);
 
     // If no sources match the type filter, return empty
     if (promises.length === 0) {
@@ -7339,10 +8133,14 @@ app.get("/api/store/search", async (req, res) => {
 
     const allResults = await Promise.allSettled(promises);
     let merged = [];
+    let singleSourceMeta = {};
 
     for (const result of allResults) {
       if (result.status === "fulfilled" && Array.isArray(result.value)) {
         merged = merged.concat(result.value);
+        if (isSingleSourceQuery) {
+          singleSourceMeta = { ...getResultMeta(result.value) };
+        }
       }
     }
 
@@ -7426,10 +8224,35 @@ app.get("/api/store/search", async (req, res) => {
       merged.sort((a, b) => ((b.metrics?.citations || 0) - (a.metrics?.citations || 0)));
     }
 
-    // Paginate the merged results for the response
-    const totalCount = merged.length;
-    const totalPages = Math.ceil(totalCount / limitNum) || 1;
     const pageResults = merged.slice(0, limitNum);
+    let hasMore = typeof singleSourceMeta.hasMore === "boolean" ? singleSourceMeta.hasMore : false;
+    const knownTotalCount = Number(singleSourceMeta.totalCount ?? NaN);
+    if (
+      isSingleSourceQuery &&
+      !Number.isFinite(knownTotalCount) &&
+      pageResults.length === limitNum
+    ) {
+      const lookaheadPromises = buildSourcePromises(pageNum + 1, limitNum);
+      const lookaheadSettled = await Promise.allSettled(lookaheadPromises);
+      hasMore = lookaheadSettled.some(
+        (result) => result.status === "fulfilled" && Array.isArray(result.value) && result.value.length > 0,
+      );
+    }
+    const knownBeforePage = (pageNum - 1) * limitNum;
+
+    // For single-source queries, provider APIs often don't return exact totals.
+    // We expose a rolling lower-bound total + hasMore-driven next page so users can
+    // continue browsing the full upstream catalog without local storage growth.
+    const totalCount = isSingleSourceQuery
+      ? (
+        Number.isFinite(knownTotalCount)
+          ? knownTotalCount
+          : (hasMore ? knownBeforePage + pageResults.length + 1 : knownBeforePage + pageResults.length)
+      )
+      : merged.length;
+    const totalPages = isSingleSourceQuery
+      ? (hasMore ? Math.max(pageNum + 1, Math.ceil(totalCount / limitNum)) : Math.max(1, Math.ceil(totalCount / limitNum)))
+      : (Math.ceil(totalCount / limitNum) || 1);
 
     const responseData = {
       results: pageResults,
@@ -7577,6 +8400,9 @@ app.get("/api/store/project-resources", async (req, res) => {
     res.status(500).json({ error: "Failed to load resources", details: err.message });
   }
 });
+
+
+
 
 // Create HTTP server
 const server = app.listen(port, () => {

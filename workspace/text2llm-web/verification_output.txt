@@ -1,0 +1,17 @@
+﻿Testing Store API Providers...
+
+Checking Hugging Face...
+- Items returned: 1
+- Total Available: 2
+
+Checking GitHub...
+- Items returned: 1
+- Total Available: 57040
+PASS: GitHub seems to return valid total count.
+
+Checking Arxiv...
+- Items returned: 1
+- Total Available: 1160170
+PASS: Arxiv seems to return valid total count.
+
+Verification Complete.
