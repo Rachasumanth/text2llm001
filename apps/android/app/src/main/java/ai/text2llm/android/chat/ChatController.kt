@@ -351,9 +351,17 @@ class ChatController(
 
   private fun handleAgentEvent(payloadJson: String) {
     val payload = json.parseToJsonElement(payloadJson).asObjectOrNull() ?: return
+    val sessionKey = payload["sessionKey"].asStringOrNull()?.trim()
+    if (!sessionKey.isNullOrEmpty() && sessionKey != _sessionKey.value) return
+
     val runId = payload["runId"].asStringOrNull()
-    val sessionId = _sessionId.value
-    if (sessionId != null && runId != sessionId) return
+    if (runId != null) {
+      val shouldIgnore =
+        synchronized(pendingRuns) {
+          pendingRuns.isNotEmpty() && !pendingRuns.contains(runId)
+        }
+      if (shouldIgnore) return
+    }
 
     val stream = payload["stream"].asStringOrNull()
     val data = payload["data"].asObjectOrNull()
@@ -447,13 +455,25 @@ class ChatController(
       array.mapNotNull { item ->
         val obj = item.asObjectOrNull() ?: return@mapNotNull null
         val role = obj["role"].asStringOrNull() ?: return@mapNotNull null
-        val content = obj["content"].asArrayOrNull()?.mapNotNull(::parseMessageContent) ?: emptyList()
+        val toolCallId = obj["toolCallId"].asStringOrNull() ?: obj["tool_call_id"].asStringOrNull()
+        val toolName = obj["toolName"].asStringOrNull() ?: obj["tool_name"].asStringOrNull()
+        val content =
+          when (val rawContent = obj["content"]) {
+            is JsonArray -> rawContent.mapNotNull(::parseMessageContent)
+            is JsonPrimitive -> {
+              val text = rawContent.asStringOrNull()
+              if (text.isNullOrEmpty()) emptyList() else listOf(ChatMessageContent(type = "text", text = text))
+            }
+            else -> emptyList()
+          }
         val ts = obj["timestamp"].asLongOrNull()
         ChatMessage(
           id = UUID.randomUUID().toString(),
           role = role,
           content = content,
           timestampMs = ts,
+          toolCallId = toolCallId,
+          toolName = toolName,
         )
       }
 
@@ -463,16 +483,67 @@ class ChatController(
   private fun parseMessageContent(el: JsonElement): ChatMessageContent? {
     val obj = el.asObjectOrNull() ?: return null
     val type = obj["type"].asStringOrNull() ?: "text"
-    return if (type == "text") {
-      ChatMessageContent(type = "text", text = obj["text"].asStringOrNull())
-    } else {
-      ChatMessageContent(
+    val normalizedType = type.lowercase()
+
+    if (normalizedType == "text") {
+      return ChatMessageContent(type = "text", text = obj["text"].asStringOrNull())
+    }
+
+    if (normalizedType == "toolcall" ||
+      normalizedType == "tool_call" ||
+      normalizedType == "tooluse" ||
+      normalizedType == "tool_use") {
+      return ChatMessageContent(
         type = type,
-        mimeType = obj["mimeType"].asStringOrNull(),
-        fileName = obj["fileName"].asStringOrNull(),
-        base64 = obj["content"].asStringOrNull(),
+        name = obj["name"].asStringOrNull(),
+        arguments = obj["arguments"] ?: obj["args"],
       )
     }
+
+    if (normalizedType == "toolresult" || normalizedType == "tool_result") {
+      return ChatMessageContent(
+        type = type,
+        text = extractToolResultText(obj),
+        name = obj["name"].asStringOrNull(),
+      )
+    }
+
+    return ChatMessageContent(
+      type = type,
+      text = obj["text"].asStringOrNull(),
+      mimeType = obj["mimeType"].asStringOrNull(),
+      fileName = obj["fileName"].asStringOrNull(),
+      base64 = obj["content"].asStringOrNull(),
+    )
+  }
+
+  private fun extractToolResultText(obj: JsonObject): String? {
+    val text = obj["text"].asStringOrNull()?.trim()
+    if (!text.isNullOrEmpty()) return text
+
+    val content = obj["content"]
+    if (content is JsonPrimitive) {
+      val primitive = content.asStringOrNull()?.trim()
+      if (!primitive.isNullOrEmpty()) return primitive
+    }
+
+    if (content is JsonArray) {
+      val parts =
+        content.mapNotNull { entry ->
+          val item = entry.asObjectOrNull() ?: return@mapNotNull null
+          val kind = item["type"].asStringOrNull()?.lowercase()
+          if (kind == "text" || kind.isNullOrEmpty()) {
+            item["text"].asStringOrNull()?.trim()?.takeIf { it.isNotEmpty() }
+          } else {
+            null
+          }
+        }
+      if (parts.isNotEmpty()) {
+        return parts.joinToString("\n")
+      }
+    }
+
+    return null
   }
 
   private fun parseSessions(jsonString: String): List<ChatSessionEntry> {

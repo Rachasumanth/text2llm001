@@ -35,6 +35,30 @@
       "title": "Process",
       "detailKeys": ["sessionId"]
     },
+    "run_in_terminal": {
+      "icon": "terminal",
+      "title": "Terminal",
+      "label": "run_in_terminal",
+      "detailKeys": ["command"]
+    },
+    "run_notebook_cell": {
+      "icon": "fileText",
+      "title": "Notebook Cell",
+      "label": "run_notebook_cell",
+      "detailKeys": ["filePath", "cellId", "reason"]
+    },
+    "edit_notebook_file": {
+      "icon": "penLine",
+      "title": "Notebook Edit",
+      "label": "edit_notebook_file",
+      "detailKeys": ["filePath", "cellId", "editType"]
+    },
+    "read_notebook_cell_output": {
+      "icon": "fileText",
+      "title": "Notebook Output",
+      "label": "read_notebook_cell_output",
+      "detailKeys": ["filePath", "cellId"]
+    },
     "read": {
       "icon": "fileText",
       "title": "Read",

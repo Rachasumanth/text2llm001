@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -38,6 +39,7 @@ import ai.text2llm.android.tools.ToolDisplayRegistry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.compose.ui.platform.LocalContext
+import kotlinx.serialization.json.JsonObject
 
 @Composable
 fun ChatMessageBubble(message: ChatMessage) {
@@ -69,18 +71,101 @@ fun ChatMessageBubble(message: ChatMessage) {
 
 @Composable
 private fun ChatMessageBody(content: List<ChatMessageContent>, textColor: Color) {
+  val context = LocalContext.current
   Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
     for (part in content) {
-      when (part.type) {
+      when (part.type.lowercase()) {
         "text" -> {
           val text = part.text ?: continue
           ChatMarkdown(text = text, textColor = textColor)
         }
+        "toolcall", "tool_call", "tooluse", "tool_use" -> {
+          ToolCallCard(content = part)
+        }
+        "toolresult", "tool_result" -> {
+          ToolResultCard(content = part, textColor = textColor)
+        }
         else -> {
-          val b64 = part.base64 ?: continue
-          ChatBase64Image(base64 = b64, mimeType = part.mimeType)
+          val b64 = part.base64
+          if (b64 != null) {
+            ChatBase64Image(base64 = b64, mimeType = part.mimeType)
+          } else if (!part.name.isNullOrBlank()) {
+            val display =
+              ToolDisplayRegistry.resolve(
+                context,
+                part.name,
+                part.arguments as? JsonObject,
+              )
+            ToolSummaryCard(
+              title = "${display.emoji} ${display.title}",
+              detail = display.detailLine,
+              textColor = textColor,
+            )
+          } else if (!part.text.isNullOrBlank()) {
+            ChatMarkdown(text = part.text, textColor = textColor)
+          }
         }
       }
+    }
+  }
+}
+
+@Composable
+private fun ToolCallCard(content: ChatMessageContent) {
+  val context = LocalContext.current
+  val display =
+    ToolDisplayRegistry.resolve(
+      context,
+      content.name,
+      content.arguments as? JsonObject,
+    )
+  ToolSummaryCard(
+    title = "${display.emoji} ${display.title}",
+    detail = display.detailLine,
+    textColor = MaterialTheme.colorScheme.onSurface,
+  )
+}
+
+@Composable
+private fun ToolResultCard(content: ChatMessageContent, textColor: Color) {
+  val context = LocalContext.current
+  val display = ToolDisplayRegistry.resolve(context, content.name, null)
+  Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    ToolSummaryCard(
+      title = "${display.emoji} ${display.title}",
+      detail = null,
+      textColor = textColor,
+    )
+    val text = content.text?.trim().orEmpty()
+    if (text.isNotEmpty()) {
+      SelectionContainer {
+        Text(
+          text = text,
+          style = MaterialTheme.typography.bodySmall,
+          color = textColor,
+          fontFamily = FontFamily.Monospace,
+        )
+      }
+    }
+  }
+}
+
+@Composable
+private fun ToolSummaryCard(title: String, detail: String?, textColor: Color) {
+  Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    Text(
+      text = title,
+      style = MaterialTheme.typography.bodyMedium,
+      color = textColor,
+      fontFamily = FontFamily.Monospace,
+    )
+    if (!detail.isNullOrBlank()) {
+      Text(
+        text = detail,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        fontFamily = FontFamily.Monospace,
+      )
     }
   }
 }

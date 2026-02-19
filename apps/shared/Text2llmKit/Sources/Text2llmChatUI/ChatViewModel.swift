@@ -408,7 +408,7 @@ public final class Text2llmChatViewModel {
     }
 
     private func handleAgentEvent(_ evt: Text2llmAgentEventPayload) {
-        if let sessionId, evt.runId != sessionId {
+        if !self.pendingRuns.isEmpty, !self.pendingRuns.contains(evt.runId) {
             return
         }
 

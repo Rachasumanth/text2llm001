@@ -9,32 +9,7 @@ import { abortChatRun, loadChatHistory, sendChatMessage } from "./controllers/ch
 import { loadSessions } from "./controllers/sessions.ts";
 import { normalizeBasePath } from "./navigation.ts";
 import { generateUUID } from "./uuid.ts";
-
-export type ChatHost = {
-  connected: boolean;
-  chatMessage: string;
-  chatAttachments: ChatAttachment[];
-  chatQueue: ChatQueueItem[];
-  chatRunId: string | null;
-  chatSending: boolean;
-  sessionKey: string;
-  basePath: string;
-  hello: GatewayHelloOk | null;
-  chatAvatarUrl: string | null;
-  refreshSessionsAfterChat: Set<string>;
-};
-
-export const CHAT_SESSIimport type { TEXT2LLMApp } from "./app.ts";
-import type { GatewayHelloOk } from "./gateway.ts";
-import type { ChatAttachment, ChatQueueItem } from "./ui-types.ts";
-import { parseAgentSessionKey } from "../../../src/sessions/session-key-utils.js";
-import { scheduleChatScroll } from "./app-scroll.ts";
-import { setLastActiveSessionKey } from "./app-settings.ts";
-import { resetToolStream } from "./app-tool-stream.ts";
-import { abortChatRun, loadChatHistory, sendChatMessage } from "./controllers/chat.ts";
-import { loadSessions } from "./controllers/sessions.ts";
-import { normalizeBasePath } from "./navigation.ts";
-import { generateUUID } from "./uuid.ts";
+import { isWebProxyConfigured } from "./web-proxy-client.ts";
 
 export type ChatHost = {
   connected: boolean;
@@ -87,7 +62,7 @@ function isChatResetCommand(text: string) {
 }
 
 export async function handleAbortChat(host: ChatHost) {
-  if (!host.connected) {
+  if (!host.connected && !isWebProxyConfigured()) {
     return;
   }
   host.chatMessage = "";
@@ -161,7 +136,7 @@ async function sendChatMessageNow(
 }
 
 async function flushChatQueue(host: ChatHost) {
-  if (!host.connected || isChatBusy(host)) {
+  if ((!host.connected && !isWebProxyConfigured()) || isChatBusy(host)) {
     return;
   }
   const [next, ...rest] = host.chatQueue;
@@ -187,7 +162,7 @@ export async function handleSendChat(
   messageOverride?: string,
   opts?: { restoreDraft?: boolean },
 ) {
-  if (!host.connected) {
+  if (!host.connected && !isWebProxyConfigured()) {
     return;
   }
   const previousDraft = host.chatMessage;

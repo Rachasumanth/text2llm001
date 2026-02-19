@@ -5,6 +5,8 @@ data class ChatMessage(
   val role: String,
   val content: List<ChatMessageContent>,
   val timestampMs: Long?,
+  val toolCallId: String? = null,
+  val toolName: String? = null,
 )
 
 data class ChatMessageContent(
@@ -13,6 +15,8 @@ data class ChatMessageContent(
   val mimeType: String? = null,
   val fileName: String? = null,
   val base64: String? = null,
+  val name: String? = null,
+  val arguments: kotlinx.serialization.json.JsonElement? = null,
 )
 
 data class ChatPendingToolCall(

@@ -35,6 +35,30 @@
       "title": "Process",
       "detailKeys": ["sessionId"]
     },
+    "run_in_terminal": {
+      "emoji": "🖥️",
+      "title": "Terminal",
+      "label": "run_in_terminal",
+      "detailKeys": ["command"]
+    },
+    "run_notebook_cell": {
+      "emoji": "📓",
+      "title": "Notebook Cell",
+      "label": "run_notebook_cell",
+      "detailKeys": ["filePath", "cellId", "reason"]
+    },
+    "edit_notebook_file": {
+      "emoji": "✏️",
+      "title": "Notebook Edit",
+      "label": "edit_notebook_file",
+      "detailKeys": ["filePath", "cellId", "editType"]
+    },
+    "read_notebook_cell_output": {
+      "emoji": "📄",
+      "title": "Notebook Output",
+      "label": "read_notebook_cell_output",
+      "detailKeys": ["filePath", "cellId"]
+    },
     "read": {
       "emoji": "📖",
       "title": "Read",

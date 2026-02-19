@@ -2,6 +2,11 @@ import type { GatewayBrowserClient } from "../gateway.ts";
 import type { ChatAttachment } from "../ui-types.ts";
 import { extractText } from "../chat/message-extract.ts";
 import { generateUUID } from "../uuid.ts";
+import {
+  getWebProxyClient,
+  getWebProxyRuntimeConfig,
+  isWebProxyConfigured,
+} from "../web-proxy-client.ts";
 
 export type ChatState = {
   client: GatewayBrowserClient | null;
@@ -28,6 +33,11 @@ export type ChatEventPayload = {
 };
 
 export async function loadChatHistory(state: ChatState) {
+  if (!state.client && isWebProxyConfigured()) {
+    state.chatLoading = false;
+    state.lastError = null;
+    return;
+  }
   if (!state.client || !state.connected) {
     return;
   }
@@ -63,7 +73,10 @@ export async function sendChatMessage(
   message: string,
   attachments?: ChatAttachment[],
 ): Promise<string | null> {
-  if (!state.client || !state.connected) {
+  const proxyClient = getWebProxyClient();
+  const canUseGateway = Boolean(state.client && state.connected);
+  const canUseWebProxy = Boolean(proxyClient);
+  if (!canUseGateway && !canUseWebProxy) {
     return null;
   }
   const msg = message.trim();
@@ -123,13 +136,80 @@ export async function sendChatMessage(
     : undefined;
 
   try {
-    await state.client.request("chat.send", {
-      sessionKey: state.sessionKey,
-      message: msg,
-      deliver: false,
-      idempotencyKey: runId,
-      attachments: apiAttachments,
+    if (canUseGateway && state.client) {
+      await state.client.request("chat.send", {
+        sessionKey: state.sessionKey,
+        message: msg,
+        deliver: false,
+        idempotencyKey: runId,
+        attachments: apiAttachments,
+      });
+      return runId;
+    }
+
+    if (!proxyClient) {
+      throw new Error("web proxy is not configured");
+    }
+
+    const runtime = getWebProxyRuntimeConfig();
+    if (!runtime.providerKey) {
+      throw new Error(
+        "Missing web proxy provider key in localStorage key: text2llm.web.proxy.key",
+      );
+    }
+
+    const response = await proxyClient.chatCompletions({
+      provider: runtime.provider,
+      providerKey: runtime.providerKey,
+      accessToken: runtime.accessToken ?? undefined,
+      payload: {
+        model: runtime.model,
+        stream: false,
+        messages: [{ role: "user", content: msg }],
+      },
     });
+
+    const result = (await response.json()) as {
+      choices?: Array<{ message?: { content?: unknown } }>;
+      output_text?: unknown;
+    };
+
+    let assistantText = "";
+    const firstContent = result?.choices?.[0]?.message?.content;
+    if (typeof firstContent === "string") {
+      assistantText = firstContent;
+    } else if (Array.isArray(firstContent)) {
+      assistantText = firstContent
+        .map((entry) => {
+          if (typeof entry === "string") {
+            return entry;
+          }
+          if (
+            entry &&
+            typeof entry === "object" &&
+            "text" in entry &&
+            typeof (entry as { text?: unknown }).text === "string"
+          ) {
+            return (entry as { text: string }).text;
+          }
+          return "";
+        })
+        .join("");
+    } else if (typeof result?.output_text === "string") {
+      assistantText = result.output_text;
+    }
+
+    state.chatMessages = [
+      ...state.chatMessages,
+      {
+        role: "assistant",
+        content: [{ type: "text", text: assistantText || "(no response content)" }],
+        timestamp: Date.now(),
+      },
+    ];
+    state.chatRunId = null;
+    state.chatStream = null;
+    state.chatStreamStartedAt = null;
     return runId;
   } catch (err) {
     const error = String(err);
@@ -152,6 +232,12 @@ export async function sendChatMessage(
 }
 
 export async function abortChatRun(state: ChatState): Promise<boolean> {
+  if (!state.client && isWebProxyConfigured()) {
+    state.chatRunId = null;
+    state.chatStream = null;
+    state.chatStreamStartedAt = null;
+    return true;
+  }
   if (!state.client || !state.connected) {
     return false;
   }
