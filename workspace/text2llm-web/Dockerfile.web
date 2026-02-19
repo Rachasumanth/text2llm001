@@ -1,0 +1,18 @@
+FROM node:22-bookworm-slim
+
+WORKDIR /app
+
+# Install only the npm deps server.mjs actually imports
+RUN npm init -y && npm install --omit=dev express@^5.1.0 ws@^8.16.0
+
+# Copy application files
+COPY server.mjs ./server.mjs
+COPY gpu-phase2.mjs ./gpu-phase2.mjs
+COPY public ./public
+
+ENV NODE_ENV=production
+ENV TEXT2LLM_WEB_PORT=8787
+
+EXPOSE 8787
+
+CMD ["node", "server.mjs"]

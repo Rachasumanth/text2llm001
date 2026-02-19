@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: text2llm-web-proxy
+    runtime: docker
+    dockerfilePath: ./Dockerfile.proxy
+    autoDeploy: true
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PROXY_ENABLED
+        value: "true"
+      - key: PROXY_BODY_LIMIT
+        value: 128kb
+      - key: PROXY_RATE_LIMIT_RPM
+        value: "20"
+      - key: PROXY_DAILY_TOKEN_CAP
+        value: "100000"
+      - key: PROXY_UPSTREAM_TIMEOUT_MS
+        value: "120000"
+      - key: PROXY_SKIP_AUTH
+        value: "false"
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: PROXY_ALLOWED_ORIGIN
+        sync: false

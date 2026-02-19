@@ -1,0 +1,24 @@
+app = "text2llm-web-proxy"
+primary_region = "iad"
+
+[build]
+dockerfile = "Dockerfile.proxy"
+
+[env]
+NODE_ENV = "production"
+PROXY_ENABLED = "true"
+PROXY_BODY_LIMIT = "128kb"
+PROXY_RATE_LIMIT_RPM = "20"
+PROXY_DAILY_TOKEN_CAP = "100000"
+PROXY_UPSTREAM_TIMEOUT_MS = "120000"
+
+[http_service]
+internal_port = 8790
+force_https = true
+auto_stop_machines = false
+auto_start_machines = true
+min_machines_running = 1
+
+[[vm]]
+size = "shared-cpu-1x"
+memory = "512mb"
