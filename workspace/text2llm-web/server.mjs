@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
+import { existsSync, readFileSync, mkdirSync } from "node:fs";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { WebSocketServer } from "ws";
 import {
@@ -20,11 +21,27 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const port = process.env.TEXT2LLM_WEB_PORT ? Number(process.env.TEXT2LLM_WEB_PORT) : 8787;
-const repoRoot = path.resolve(__dirname, "..", "..");
+const repoRoot = (() => {
+  const expectedRoot = path.resolve(__dirname, "..", "..");
+  if (existsSync(path.join(expectedRoot, "workspace"))) {
+    return expectedRoot;
+  }
+  // Fallback for standalone/Azure deployments
+  return __dirname;
+})();
+
+const workspaceRoot = (() => {
+  const ws = path.join(repoRoot, "workspace");
+  if (!existsSync(ws)) {
+    try { mkdirSync(ws, { recursive: true }); } catch (e) {}
+  }
+  return ws;
+})();
+
 const workspaceConfig = (() => {
   const configuredPath = process.env.TEXT2LLM_CONFIG_PATH;
   if (!configuredPath || !configuredPath.trim()) {
-    return path.resolve(repoRoot, "workspace", "text2llm.json");
+    return path.join(workspaceRoot, "text2llm.json");
   }
 
   if (path.isAbsolute(configuredPath)) {
@@ -72,6 +89,7 @@ function runTEXT2LLMAgent(message) {
     const env = {
       ...process.env,
       TEXT2LLM_CONFIG_PATH: process.env.TEXT2LLM_CONFIG_PATH || workspaceConfig,
+      TEXT2LLM_SKIP_BUILD: process.env.TEXT2LLM_SKIP_BUILD || "1",
       RUNPOD_API_KEY: process.env.RUNPOD_API_KEY || "text2llm-web-local",
       VAST_API_KEY: process.env.VAST_API_KEY || "text2llm-web-local",
       WANDB_API_KEY: process.env.WANDB_API_KEY || "text2llm-web-local",
@@ -110,6 +128,7 @@ function runTEXT2LLMCommand(args, extraEnv = {}, options = {}) {
     const env = {
       ...process.env,
       TEXT2LLM_CONFIG_PATH: process.env.TEXT2LLM_CONFIG_PATH || workspaceConfig,
+      TEXT2LLM_SKIP_BUILD: process.env.TEXT2LLM_SKIP_BUILD || "1",
       RUNPOD_API_KEY: process.env.RUNPOD_API_KEY || "text2llm-web-local",
       VAST_API_KEY: process.env.VAST_API_KEY || "text2llm-web-local",
       WANDB_API_KEY: process.env.WANDB_API_KEY || "text2llm-web-local",
@@ -177,6 +196,49 @@ function normalizeProviderId(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function hasMainAgentOauthProfile(providerId) {
+  const normalized = normalizeProviderId(providerId);
+  if (!normalized) {
+    return false;
+  }
+
+  const homeDir = process.env.USERPROFILE || process.env.HOME;
+  if (!homeDir) {
+    return false;
+  }
+
+  const authStorePath = path.resolve(homeDir, ".text2llm", "agents", "main", "agent", "auth-profiles.json");
+  if (!existsSync(authStorePath)) {
+    return false;
+  }
+
+  try {
+    const raw = readFileSync(authStorePath, "utf-8");
+    const parsed = JSON.parse(raw);
+    const profiles = parsed?.profiles && typeof parsed.profiles === "object" ? parsed.profiles : {};
+    for (const profile of Object.values(profiles)) {
+      if (!profile || typeof profile !== "object") {
+        continue;
+      }
+      const provider = normalizeProviderId(profile.provider);
+      const mode = normalizeProviderId(profile.type || profile.mode);
+      if (provider !== normalized) {
+        continue;
+      }
+      if (!["oauth", "token", "api_key", "api-key"].includes(mode)) {
+        continue;
+      }
+      if (profile.token || profile.apiKey || profile.keyRef || profile.secretRef || mode === "oauth") {
+        return true;
+      }
+    }
+  } catch {
+    return false;
+  }
+
+  return false;
+}
+
 function isOAuthProviderConfigured(config, providerId) {
   const normalized = normalizeProviderId(providerId);
   if (!normalized) {
@@ -196,7 +258,7 @@ function isOAuthProviderConfigured(config, providerId) {
     const provider = normalizeProviderId(profile.provider);
     const mode = normalizeProviderId(profile.mode);
     if (provider === normalized && (mode === "oauth" || mode === "token")) {
-      return true;
+      return hasMainAgentOauthProfile(normalized);
     }
   }
 
@@ -237,6 +299,165 @@ app.post("/api/plan", async (req, res) => {
 });
 
 
+// ── Settings Config API ──
+app.get("/api/config", async (_req, res) => {
+  try {
+    const config = await loadWorkspaceConfig();
+    res.json({ ok: true, config });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: "Failed to load config" });
+  }
+});
+
+app.post("/api/config", async (req, res) => {
+  try {
+    const patch = req.body;
+    if (!patch || typeof patch !== "object") {
+      return res.status(400).json({ ok: false, error: "Invalid config payload" });
+    }
+    const config = await loadWorkspaceConfig();
+
+    // Recursive deep-merge: preserves existing nested keys
+    function deepMerge(target, source) {
+      for (const [key, value] of Object.entries(source)) {
+        if (
+          value && typeof value === "object" && !Array.isArray(value) &&
+          target[key] && typeof target[key] === "object" && !Array.isArray(target[key])
+        ) {
+          deepMerge(target[key], value);
+        } else {
+          target[key] = value;
+        }
+      }
+      return target;
+    }
+
+    deepMerge(config, patch);
+
+    await saveWorkspaceConfig(config);
+    res.json({ ok: true, config });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: "Failed to save config" });
+  }
+});
+
+// ── Account (Supabase proxy) ──────────────────────────────────────────────
+// GET /api/account  — returns profile + usage stats for the authenticated user
+// POST /api/account — upserts display name into user_settings
+app.get("/api/account", async (req, res) => {
+  const authHeader = (req.headers["authorization"] || "").trim();
+  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+  const supabaseUrl = process.env.SUPABASE_URL?.trim();
+  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY?.trim();
+  const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+
+  if (!token || !supabaseUrl || !supabaseAnonKey) {
+    return res.json({ ok: false, error: "supabase_not_configured" });
+  }
+
+  try {
+    // 1. Validate JWT and get user info
+    const userRes = await fetch(`${supabaseUrl}/auth/v1/user`, {
+      headers: { apikey: supabaseAnonKey, Authorization: `Bearer ${token}` },
+    });
+    if (!userRes.ok) return res.json({ ok: false, error: "invalid_token" });
+    const user = await userRes.json();
+    const userId = user?.id;
+    if (!userId) return res.json({ ok: false, error: "invalid_user" });
+
+    // 2. Fetch profile
+    const profileRes = await fetch(`${supabaseUrl}/rest/v1/profiles?user_id=eq.${userId}&select=display_name`, {
+      headers: { apikey: supabaseAnonKey, Authorization: `Bearer ${token}` },
+    });
+    const profiles = await profileRes.json();
+    const displayName = profiles?.[0]?.display_name ?? "";
+
+    // 3. Get this-month usage stats (requires service role for count)
+    let usage = null;
+    if (serviceRole) {
+      const now = new Date();
+      const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
+      
+      let allEvents = [];
+      let offset = 0;
+      const limit = 1000;
+      let hasMore = true;
+
+      while (hasMore) {
+        const usageRes = await fetch(
+          `${supabaseUrl}/rest/v1/usage_events?user_id=eq.${userId}&created_at=gte.${monthStart}&select=input_tokens,output_tokens,error&limit=${limit}&offset=${offset}`,
+          { headers: { apikey: serviceRole, Authorization: `Bearer ${serviceRole}` } }
+        );
+        const events = await usageRes.json();
+        if (Array.isArray(events) && events.length > 0) {
+          for (let i = 0; i < events.length; i++) {
+            allEvents.push(events[i]);
+          }
+          if (events.length < limit) {
+            hasMore = false;
+          } else {
+            offset += limit;
+          }
+        } else {
+          hasMore = false;
+        }
+      }
+
+      usage = {
+        requests: allEvents.length,
+        inputTokens: allEvents.reduce((s, e) => s + (e.input_tokens || 0), 0),
+        outputTokens: allEvents.reduce((s, e) => s + (e.output_tokens || 0), 0),
+        errors: allEvents.filter(e => e.error).length,
+      };
+    }
+
+    res.json({ ok: true, userId, email: user.email || "", displayName, usage });
+  } catch (err) {
+    res.json({ ok: false, error: err.message || "account_error" });
+  }
+});
+
+app.post("/api/account", async (req, res) => {
+  const authHeader = (req.headers["authorization"] || "").trim();
+  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+  const supabaseUrl = process.env.SUPABASE_URL?.trim();
+  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY?.trim();
+  const { displayName } = req.body || {};
+
+  if (!token || !supabaseUrl || !supabaseAnonKey) {
+    return res.json({ ok: false, error: "supabase_not_configured" });
+  }
+  try {
+    // Validate JWT
+    const userRes = await fetch(`${supabaseUrl}/auth/v1/user`, {
+      headers: { apikey: supabaseAnonKey, Authorization: `Bearer ${token}` },
+    });
+    if (!userRes.ok) return res.json({ ok: false, error: "invalid_token" });
+    const user = await userRes.json();
+    const userId = user?.id;
+    if (!userId) return res.json({ ok: false, error: "invalid_user" });
+
+    // Upsert display_name into profiles
+    const upsertRes = await fetch(`${supabaseUrl}/rest/v1/profiles`, {
+      method: "POST",
+      headers: {
+        apikey: supabaseAnonKey,
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+        Prefer: "resolution=merge-duplicates,return=minimal",
+      },
+      body: JSON.stringify({ user_id: userId, display_name: displayName || "" }),
+    });
+    if (!upsertRes.ok) {
+      const errText = await upsertRes.text();
+      return res.json({ ok: false, error: errText });
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    res.json({ ok: false, error: err.message || "account_save_error" });
+  }
+});
+
 // ── Provider Definitions ──
 const AI_PROVIDERS = [
   { 
@@ -244,6 +465,7 @@ const AI_PROVIDERS = [
     name: "Anthropic", 
     description: "Claude 4, Sonnet, Haiku", 
     icon: "/logos/arthopode.png",
+    url: "https://console.anthropic.com/settings/keys",
     options: [
       { id: "api", name: "Anthropic API Key", envKey: "ANTHROPIC_API_KEY", type: "password" }
     ]
@@ -253,6 +475,7 @@ const AI_PROVIDERS = [
     name: "OpenAI", 
     description: "GPT-4o, o3, o4-mini", 
     icon: "/logos/openai.png",
+    url: "https://platform.openai.com/api-keys",
     options: [
       { id: "api", name: "OpenAI API Key", envKey: "OPENAI_API_KEY", type: "password" },
       { id: "codex", name: "Codex OAuth (CLI)", envKey: "OPENAI_CODEX_TOKEN", type: "oauth", oauthProviderId: "openai-codex" }
@@ -263,6 +486,7 @@ const AI_PROVIDERS = [
     name: "Google Gemini", 
     description: "Gemini 2.5 Pro & Flash", 
     icon: "/logos/gemini.png",
+    url: "https://aistudio.google.com/app/apikey",
     options: [
       { id: "api", name: "Gemini API Key", envKey: "GEMINI_API_KEY", type: "password" },
       { id: "antigravity", name: "Antigravity OAuth", envKey: "GOOGLE_ANTIGRAVITY_TOKEN", type: "oauth", oauthProviderId: "google-antigravity" },
@@ -274,6 +498,7 @@ const AI_PROVIDERS = [
     name: "OpenRouter", 
     description: "Multi-provider gateway", 
     icon: "/logos/openrouter.png",
+    url: "https://openrouter.ai/keys",
     options: [
       { id: "api", name: "OpenRouter API Key", envKey: "OPENROUTER_API_KEY", type: "password" }
     ]
@@ -283,6 +508,7 @@ const AI_PROVIDERS = [
     name: "Groq", 
     description: "Ultra-fast inference", 
     icon: "/logos/groq.png",
+    url: "https://console.groq.com/keys",
     options: [
       { id: "api", name: "Groq API Key", envKey: "GROQ_API_KEY", type: "password" }
     ]
@@ -292,6 +518,7 @@ const AI_PROVIDERS = [
     name: "xAI", 
     description: "Grok models", 
     icon: "/logos/xai.png",
+    url: "https://console.x.ai/",
     options: [
       { id: "api", name: "xAI API Key", envKey: "XAI_API_KEY", type: "password" }
     ]
@@ -301,6 +528,7 @@ const AI_PROVIDERS = [
     name: "Mistral", 
     description: "Mistral & Codestral", 
     icon: "/logos/mistral.png",
+    url: "https://console.mistral.ai/api-keys/",
     options: [
       { id: "api", name: "Mistral API Key", envKey: "MISTRAL_API_KEY", type: "password" }
     ]
@@ -310,6 +538,7 @@ const AI_PROVIDERS = [
     name: "GitHub Copilot", 
     description: "Copilot-powered models", 
     icon: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.47 2 2 6.47 2 12c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.89 1.52 2.34 1.08 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.92 0-1.11.38-2 1.03-2.71-.1-.25-.45-1.29.1-2.64 0 0 .84-.27 2.75 1.02a9.68 9.68 0 0 1 2.5-.34c.85.01 1.7.11 2.5.34 1.91-1.29 2.75-1.02 2.75-1.02.55 1.35.2 2.39.1 2.64.65.71 1.03 1.6 1.03 2.71 0 3.82-2.34 4.66-4.57 4.91.36.31.69.92.69 1.85v2.74c0 .27.16.59.67.5C19.14 20.16 22 16.42 22 12A10 10 0 0 0 12 2z"/></svg>`,
+    url: "https://github.com/settings/tokens",
     options: [
       { id: "token", name: "Copilot Token", envKey: "GITHUB_TOKEN", type: "password" }
     ]
@@ -319,6 +548,7 @@ const AI_PROVIDERS = [
     name: "Amazon Bedrock", 
     description: "Claude via AWS", 
     icon: "/logos/amazonbedrock.png",
+    url: "https://console.aws.amazon.com/bedrock",
     options: [
       { id: "profile", name: "AWS Profile", envKey: "AWS_PROFILE", type: "text" }
     ]
@@ -328,6 +558,7 @@ const AI_PROVIDERS = [
     name: "Ollama", 
     description: "Local self-hosted models", 
     icon: "/logos/ollama.png",
+    url: "https://ollama.com/",
     options: [
       { id: "api", name: "Ollama API Key", envKey: "OLLAMA_API_KEY", type: "password" }
     ]
@@ -337,6 +568,7 @@ const AI_PROVIDERS = [
     name: "Together AI", 
     description: "Open-source model hosting", 
     icon: "/logos/togetherai.png",
+    url: "https://api.together.ai/settings/api-keys",
     options: [
       { id: "api", name: "Together API Key", envKey: "TOGETHER_API_KEY", type: "password" }
     ]
@@ -346,6 +578,7 @@ const AI_PROVIDERS = [
     name: "Cerebras", 
     description: "Fastest inference chip", 
     icon: "/logos/cerebras.png",
+    url: "https://cloud.cerebras.ai/platform/",
     options: [
       { id: "api", name: "Cerebras API Key", envKey: "CEREBRAS_API_KEY", type: "password" }
     ]
@@ -355,6 +588,7 @@ const AI_PROVIDERS = [
     name: "MiniMax", 
     description: "MiniMax M2 models", 
     icon: "/logos/minimax.png",
+    url: "https://platform.minimaxi.com/user-center/basic-information",
     options: [
       { id: "api", name: "MiniMax API Key", envKey: "MINIMAX_API_KEY", type: "password" },
       { id: "hosted", name: "Hosted", envKey: "MINIMAX_HOSTED_TOKEN", type: "password" }
@@ -365,6 +599,7 @@ const AI_PROVIDERS = [
     name: "Moonshot", 
     description: "Kimi K2.5", 
     icon: "/logos/moonshot.png",
+    url: "https://platform.moonshot.cn/console/api-keys",
     options: [
       { id: "api", name: "Moonshot API Key", envKey: "MOONSHOT_API_KEY", type: "password" }
     ]
@@ -374,6 +609,7 @@ const AI_PROVIDERS = [
     name: "Qwen", 
     description: "Qwen Coder & Vision", 
     icon: "/logos/qwen.png",
+    url: "https://bailian.console.aliyun.com/?apiKey=1",
     options: [
       { id: "api", name: "Qwen API Key", envKey: "QWEN_PORTAL_API_KEY", type: "password" }
     ]
@@ -383,6 +619,7 @@ const AI_PROVIDERS = [
     name: "Venice", 
     description: "Privacy-first AI", 
     icon: "/logos/venice.png",
+    url: "https://venice.ai/settings/api",
     options: [
       { id: "api", name: "Venice API Key", envKey: "VENICE_API_KEY", type: "password" }
     ]
@@ -392,6 +629,7 @@ const AI_PROVIDERS = [
     name: "Qianfan (Baidu)", 
     description: "ERNIE & DeepSeek", 
     icon: "/logos/deepseek.png",
+    url: "https://console.bce.baidu.com/iam/#/iam/apikey/list",
     options: [
       { id: "api", name: "Qianfan API Key", envKey: "QIANFAN_API_KEY", type: "password" }
     ]
@@ -401,6 +639,7 @@ const AI_PROVIDERS = [
     name: "Z.AI",
     description: "GLM 4.7 / 5 Models",
     icon: "/logos/z.png",
+    url: "https://bigmodel.cn/usercenter/apikeys",
     options: [
       { id: "api", name: "Z.AI API Key", envKey: "ZAI_API_KEY", type: "password" }
     ]
@@ -410,6 +649,7 @@ const AI_PROVIDERS = [
     name: "Vercel AI Gateway",
     description: "Unified AI interface",
     icon: "/logos/vercel.png",
+    url: "https://vercel.com/docs/ai-sdk/providers/ai-sdk-gateway",
     options: [
       { id: "api", name: "Vercel API Key", envKey: "VERCEL_AI_GATEWAY_API_KEY", type: "password" }
     ]
@@ -419,6 +659,7 @@ const AI_PROVIDERS = [
     name: "Cloudflare AI Gateway",
     description: "Edge AI proxy",
     icon: "/logos/cloudflare.png",
+    url: "https://dash.cloudflare.com/profile/api-tokens",
     options: [
       { id: "api", name: "Cloudflare API Key", envKey: "CLOUDFLARE_API_KEY", type: "password" }
     ]
@@ -428,6 +669,7 @@ const AI_PROVIDERS = [
     name: "OpenCode Zen",
     description: "Code generation suite",
     icon: "/logos/opencode.png",
+    url: "https://opencodezen.com/",
     options: [
       { id: "api", name: "OpenCode API Key", envKey: "OPENCODE_ZEN_API_KEY", type: "password" }
     ]
@@ -452,9 +694,190 @@ const AI_PROVIDERS = [
   }
 ];
 
+/**
+ * Static model catalog per provider.
+ * For OpenRouter, the list is fetched live from their API.
+ * Model IDs must match what the text2llm agent backend accepts.
+ */
+const PROVIDER_MODEL_CATALOG = {
+  anthropic: [
+    { id: "claude-opus-4-5", name: "Claude Opus 4.5", desc: "Most capable | 200k ctx", reasoning: false },
+    { id: "claude-sonnet-4-5", name: "Claude Sonnet 4.5", desc: "Balanced | 200k ctx", reasoning: false },
+    { id: "claude-haiku-4-5", name: "Claude Haiku 4.5", desc: "Fastest & cheapest | 200k ctx", reasoning: false },
+    { id: "claude-3-7-sonnet-20250219", name: "Claude 3.7 Sonnet", desc: "Extended thinking | 200k ctx", reasoning: true },
+    { id: "claude-3-5-sonnet-20241022", name: "Claude 3.5 Sonnet", desc: "Previous best | 200k ctx", reasoning: false },
+    { id: "claude-3-opus-20240229", name: "Claude 3 Opus", desc: "Most powerful Claude 3 | 200k ctx", reasoning: false },
+    { id: "claude-3-haiku-20240307", name: "Claude 3 Haiku", desc: "Ultra fast | 200k ctx", reasoning: false },
+  ],
+  openai: [
+    { id: "gpt-4o", name: "GPT-4o", desc: "Multimodal | 128k ctx", reasoning: false },
+    { id: "gpt-4o-mini", name: "GPT-4o Mini", desc: "Fast & affordable | 128k ctx", reasoning: false },
+    { id: "o3", name: "o3", desc: "Advanced reasoning | 200k ctx", reasoning: true },
+    { id: "o3-mini", name: "o3-mini", desc: "Fast reasoning | 200k ctx", reasoning: true },
+    { id: "o4-mini", name: "o4-mini", desc: "Latest reasoning | 200k ctx", reasoning: true },
+    { id: "gpt-4-turbo", name: "GPT-4 Turbo", desc: "Vision + JSON | 128k ctx", reasoning: false },
+    { id: "gpt-3.5-turbo", name: "GPT-3.5 Turbo", desc: "Fast & cheap | 16k ctx", reasoning: false },
+  ],
+  google: [
+    { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro", desc: "Best performance | 1M ctx", reasoning: true },
+    { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash", desc: "Fast & efficient | 1M ctx", reasoning: false },
+    { id: "gemini-2.0-flash", name: "Gemini 2.0 Flash", desc: "Next gen speed | 1M ctx", reasoning: false },
+    { id: "gemini-2.0-flash-lite", name: "Gemini 2.0 Flash Lite", desc: "Cost efficient | 1M ctx", reasoning: false },
+    { id: "gemini-1.5-pro", name: "Gemini 1.5 Pro", desc: "Stable | 2M ctx", reasoning: false },
+    { id: "gemini-1.5-flash", name: "Gemini 1.5 Flash", desc: "Fast & versatile | 1M ctx", reasoning: false },
+  ],
+  openrouter: [], // populated dynamically from https://openrouter.ai/api/v1/models
+  groq: [
+    { id: "llama-3.3-70b-versatile", name: "LLaMA 3.3 70B Versatile", desc: "Top open model | 128k ctx", reasoning: false },
+    { id: "llama-3.1-8b-instant", name: "LLaMA 3.1 8B Instant", desc: "Ultra fast | 128k ctx", reasoning: false },
+    { id: "mixtral-8x7b-32768", name: "Mixtral 8x7B", desc: "MoE model | 32k ctx", reasoning: false },
+    { id: "gemma2-9b-it", name: "Gemma 2 9B", desc: "Google open model | 8k ctx", reasoning: false },
+    { id: "qwen-qwq-32b", name: "Qwen QwQ 32B", desc: "Reasoning model | 128k ctx", reasoning: true },
+    { id: "deepseek-r1-distill-llama-70b", name: "DeepSeek R1 Distill 70B", desc: "Reasoning | 128k ctx", reasoning: true },
+  ],
+  xai: [
+    { id: "grok-3", name: "Grok 3", desc: "Latest Grok | 131k ctx", reasoning: false },
+    { id: "grok-3-mini", name: "Grok 3 Mini", desc: "Fast Grok | 131k ctx", reasoning: false },
+    { id: "grok-2-1212", name: "Grok 2", desc: "Stable | 131k ctx", reasoning: false },
+    { id: "grok-2-vision-1212", name: "Grok 2 Vision", desc: "Vision enabled | 8k ctx", reasoning: false },
+  ],
+  mistral: [
+    { id: "mistral-large-latest", name: "Mistral Large", desc: "Top capability | 128k ctx", reasoning: false },
+    { id: "mistral-medium-latest", name: "Mistral Medium", desc: "Balanced | 128k ctx", reasoning: false },
+    { id: "mistral-small-latest", name: "Mistral Small", desc: "Cost efficient | 32k ctx", reasoning: false },
+    { id: "codestral-latest", name: "Codestral", desc: "Code specialized | 256k ctx", reasoning: false },
+    { id: "mistral-nemo", name: "Mixtral Nemo", desc: "Open model | 128k ctx", reasoning: false },
+  ],
+  "github-copilot": [
+    { id: "gpt-4o", name: "GPT-4o", desc: "Via Copilot | 128k ctx", reasoning: false },
+    { id: "o3-mini", name: "o3-mini", desc: "Reasoning via Copilot | 200k ctx", reasoning: true },
+    { id: "claude-3.5-sonnet", name: "Claude 3.5 Sonnet", desc: "Via Copilot | 200k ctx", reasoning: false },
+    { id: "gemini-2.0-flash-001", name: "Gemini 2.0 Flash", desc: "Via Copilot | 1M ctx", reasoning: false },
+  ],
+  together: [
+    { id: "meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo", name: "LLaMA 3.1 405B Turbo", desc: "Largest open | 130k ctx", reasoning: false },
+    { id: "meta-llama/Llama-3.3-70B-Instruct-Turbo", name: "LLaMA 3.3 70B Instruct Turbo", desc: "Fast 70B | 131k ctx", reasoning: false },
+    { id: "deepseek-ai/DeepSeek-R1", name: "DeepSeek R1", desc: "Reasoning | 64k ctx", reasoning: true },
+    { id: "Qwen/Qwen2.5-72B-Instruct-Turbo", name: "Qwen 2.5 72B", desc: "Strong coder | 32k ctx", reasoning: false },
+    { id: "mistralai/Mixtral-8x7B-Instruct-v0.1", name: "Mixtral 8x7B", desc: "MoE | 32k ctx", reasoning: false },
+  ],
+  cerebras: [
+    { id: "llama3.1-8b", name: "LLaMA 3.1 8B", desc: "Ultra fast on Cerebras | 8k ctx", reasoning: false },
+    { id: "llama3.1-70b", name: "LLaMA 3.1 70B", desc: "Fast 70B on Cerebras | 8k ctx", reasoning: false },
+    { id: "llama3.3-70b", name: "LLaMA 3.3 70B", desc: "Latest 70B on Cerebras | 128k ctx", reasoning: false },
+    { id: "deepseek-r1-distill-llama-70b", name: "DeepSeek R1 Distill", desc: "Reasoning on Cerebras | 64k ctx", reasoning: true },
+  ],
+  ollama: [
+    { id: "llama3.2", name: "LLaMA 3.2", desc: "Meta latest | local", reasoning: false },
+    { id: "mistral", name: "Mistral 7B", desc: "Fast & capable | local", reasoning: false },
+    { id: "codellama", name: "Code Llama", desc: "Code generation | local", reasoning: false },
+    { id: "phi4", name: "Phi-4", desc: "Microsoft small model | local", reasoning: false },
+    { id: "deepseek-r1", name: "DeepSeek R1", desc: "Reasoning | local", reasoning: true },
+    { id: "gemma3", name: "Gemma 3", desc: "Google open model | local", reasoning: false },
+  ],
+  moonshot: [
+    { id: "moonshot-v1-8k", name: "Kimi v1 8k", desc: "Standard | 8k ctx", reasoning: false },
+    { id: "moonshot-v1-32k", name: "Kimi v1 32k", desc: "Standard | 32k ctx", reasoning: false },
+    { id: "moonshot-v1-128k", name: "Kimi v1 128k", desc: "Long context | 128k ctx", reasoning: false },
+    { id: "kimi-k2-0711-preview", name: "Kimi K2", desc: "Latest reasoning | 128k ctx", reasoning: true },
+  ],
+  "qwen-portal": [
+    { id: "qwen-max", name: "Qwen Max", desc: "Most capable | 32k ctx", reasoning: false },
+    { id: "qwen-plus", name: "Qwen Plus", desc: "Balanced | 128k ctx", reasoning: false },
+    { id: "qwen-turbo", name: "Qwen Turbo", desc: "Fast | 128k ctx", reasoning: false },
+    { id: "qwen2.5-coder-32b-instruct", name: "Qwen 2.5 Coder 32B", desc: "Code expert | 128k ctx", reasoning: false },
+    { id: "qwq-32b", name: "QwQ 32B", desc: "Reasoning | 32k ctx", reasoning: true },
+  ],
+};
 
-const PROJECTS_FILE = path.resolve(repoRoot, "workspace", "projects.json");
-const PROJECTS_DIR = path.resolve(repoRoot, "workspace", "projects");
+// Cache for OpenRouter model list
+let openRouterModelsCache = null;
+let openRouterModelsCacheAt = 0;
+const OPENROUTER_CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
+
+async function fetchOpenRouterModels(apiKey) {
+  const now = Date.now();
+  if (openRouterModelsCache && (now - openRouterModelsCacheAt) < OPENROUTER_CACHE_TTL_MS) {
+    return openRouterModelsCache;
+  }
+  try {
+    const headers = { "Content-Type": "application/json" };
+    if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
+    const res = await fetch("https://openrouter.ai/api/v1/models", {
+      headers,
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) throw new Error(`OpenRouter models HTTP ${res.status}`);
+    const data = await res.json();
+    const models = (Array.isArray(data?.data) ? data.data : []).map(m => ({
+      id: m.id,
+      name: m.name || m.id,
+      desc: [
+        m.context_length ? `${Math.round(m.context_length / 1000)}k ctx` : null,
+        m.pricing?.prompt ? `$${(parseFloat(m.pricing.prompt) * 1e6).toFixed(2)}/M` : null,
+      ].filter(Boolean).join(" · "),
+      reasoning: Boolean(m.id?.includes("think") || m.id?.includes("reason") || m.id?.includes("r1") || m.id?.includes("o1") || m.id?.includes("o3") || m.id?.includes("qwq")),
+    })).slice(0, 200); // cap at 200 to keep the dropdown manageable
+    openRouterModelsCache = models;
+    openRouterModelsCacheAt = now;
+    return models;
+  } catch (err) {
+    console.warn("[OpenRouter] model fetch failed:", err.message);
+    return openRouterModelsCache || [];
+  }
+}
+
+
+function ensureSelectedProviderOptionMap(config) {
+  if (!config.web || typeof config.web !== "object") {
+    config.web = {};
+  }
+  if (!config.web.providers || typeof config.web.providers !== "object") {
+    config.web.providers = {};
+  }
+  if (
+    !config.web.providers.selectedOptionByProvider ||
+    typeof config.web.providers.selectedOptionByProvider !== "object"
+  ) {
+    config.web.providers.selectedOptionByProvider = {};
+  }
+  return config.web.providers.selectedOptionByProvider;
+}
+
+function setDefaultModelForProviderSelection(config, providerId, optionId) {
+  const provider = String(providerId || "").trim().toLowerCase();
+  const option = String(optionId || "").trim().toLowerCase();
+  let primary = null;
+
+  if (provider === "google") {
+    if (option === "antigravity") {
+      primary = "google-antigravity/gemini-3-flash";
+    } else if (option === "cli") {
+      primary = "google-gemini-cli/gemini-3-pro-preview";
+    } else {
+      primary = "google/gemini-3-flash-preview";
+    }
+  }
+
+  if (!primary) {
+    return;
+  }
+
+  if (!config.agents || typeof config.agents !== "object") {
+    config.agents = {};
+  }
+  if (!config.agents.defaults || typeof config.agents.defaults !== "object") {
+    config.agents.defaults = {};
+  }
+  if (!config.agents.defaults.model || typeof config.agents.defaults.model !== "object") {
+    config.agents.defaults.model = {};
+  }
+  config.agents.defaults.model.primary = primary;
+}
+
+
+const PROJECTS_FILE = path.join(workspaceRoot, "projects.json");
+const PROJECTS_DIR = path.join(workspaceRoot, "projects");
 
 // ── Per-project user.md memory ──
 async function getProjectMemoryPath(projectId) {
@@ -2100,7 +2523,8 @@ function ensureDataStudioState(config) {
   return config.dataStudio;
 }
 
-const DATA_STUDIO_REMOTE_LIMIT_BYTES = 5 * 1024 * 1024;
+const DATA_STUDIO_REMOTE_LIMIT_BYTES = 8 * 1024 * 1024;
+const DATA_STUDIO_INLINE_ASSET_MAX_BYTES = 2 * 1024 * 1024;
 
 function createDatasetRowId() {
   return `dsr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -2188,8 +2612,126 @@ function inferDataFormatFromUrl(url, provided = "auto") {
   if (raw.endsWith(".jsonl")) return "jsonl";
   if (raw.endsWith(".json")) return "json";
   if (raw.endsWith(".csv")) return "csv";
+  if (raw.endsWith(".tsv")) return "tsv";
+  if (raw.endsWith(".md")) return "markdown";
+  if (raw.endsWith(".markdown")) return "markdown";
+  if (raw.endsWith(".yaml")) return "yaml";
+  if (raw.endsWith(".yml")) return "yaml";
+  if (raw.endsWith(".xml")) return "xml";
+  if (raw.endsWith(".html")) return "html";
+  if (raw.endsWith(".htm")) return "html";
+  if (raw.endsWith(".graphml")) return "graph";
+  if (raw.endsWith(".gexf")) return "graph";
+  if (raw.endsWith(".dot")) return "graph";
+  if (raw.endsWith(".gml")) return "graph";
   if (raw.endsWith(".txt")) return "txt";
   return "auto";
+}
+
+function inferDataFormatFromContentType(contentType, provided = "auto") {
+  const explicit = String(provided || "auto").toLowerCase();
+  if (explicit && explicit !== "auto") {
+    return explicit;
+  }
+  const normalized = String(contentType || "").toLowerCase();
+  if (normalized.includes("jsonl")) return "jsonl";
+  if (normalized.includes("application/json")) return "json";
+  if (normalized.includes("text/csv")) return "csv";
+  if (normalized.includes("text/tab-separated-values")) return "tsv";
+  if (normalized.includes("text/markdown")) return "markdown";
+  if (normalized.includes("application/xml") || normalized.includes("text/xml")) return "xml";
+  if (normalized.includes("text/html")) return "html";
+  if (normalized.includes("yaml")) return "yaml";
+  if (normalized.startsWith("text/")) return "txt";
+  return "auto";
+}
+
+function inferDataFormatFromUploadAsset(uploadAsset, provided = "auto") {
+  const explicit = String(provided || "auto").toLowerCase();
+  if (explicit && explicit !== "auto") {
+    return explicit;
+  }
+  const asset = uploadAsset && typeof uploadAsset === "object" ? uploadAsset : {};
+  const fromName = inferDataFormatFromUrl(String(asset.name || ""), "auto");
+  if (fromName !== "auto") {
+    return fromName;
+  }
+  return inferDataFormatFromContentType(String(asset.type || ""), "auto");
+}
+
+function isTextLikeContentType(contentType) {
+  const normalized = String(contentType || "").toLowerCase();
+  if (!normalized) return false;
+  return (
+    normalized.startsWith("text/") ||
+    normalized.includes("json") ||
+    normalized.includes("xml") ||
+    normalized.includes("yaml") ||
+    normalized.includes("csv")
+  );
+}
+
+function fileNameFromUrl(rawUrl, fallback = "asset") {
+  try {
+    const parsed = new URL(String(rawUrl || ""));
+    const pathname = String(parsed.pathname || "");
+    const base = pathname.split("/").filter(Boolean).at(-1);
+    return String(base || fallback);
+  } catch {
+    return fallback;
+  }
+}
+
+function inferAssetKind(contentType = "", fileName = "") {
+  const normalized = String(contentType || "").toLowerCase();
+  const lowerName = String(fileName || "").toLowerCase();
+  if (normalized.startsWith("image/")) return "image";
+  if (normalized.startsWith("audio/")) return "audio";
+  if (normalized.startsWith("video/")) return "video";
+  if (normalized.includes("pdf") || lowerName.endsWith(".pdf")) return "document";
+  if (lowerName.endsWith(".graphml") || lowerName.endsWith(".gexf") || lowerName.endsWith(".dot") || lowerName.endsWith(".gml")) {
+    return "graph";
+  }
+  if (normalized.includes("zip")) return "archive";
+  return "binary";
+}
+
+function buildDataUrl(contentType, buffer) {
+  const mime = String(contentType || "application/octet-stream").trim() || "application/octet-stream";
+  return `data:${mime};base64,${buffer.toString("base64")}`;
+}
+
+function createAssetRow({ source, contentType, fileName, sizeBytes, url, dataUrl }) {
+  const mime = String(contentType || "application/octet-stream").trim() || "application/octet-stream";
+  return {
+    source: String(source || "asset"),
+    asset_kind: inferAssetKind(mime, fileName),
+    asset_mime: mime,
+    asset_name: String(fileName || "asset"),
+    asset_size_bytes: Number(sizeBytes || 0),
+    asset_url: String(url || ""),
+    asset_data_url: String(dataUrl || ""),
+    text: `Asset ${String(fileName || "asset")} (${mime})`,
+  };
+}
+
+function rowsFromUploadAsset(uploadAsset, fallbackSource = "upload") {
+  const asset = uploadAsset && typeof uploadAsset === "object" ? uploadAsset : {};
+  const fileName = String(asset.name || "upload");
+  const contentType = String(asset.type || "application/octet-stream");
+  const sizeBytes = Number(asset.size || 0);
+  const dataUrl = String(asset.dataUrl || "");
+  const url = String(asset.url || "");
+  return [
+    createAssetRow({
+      source: String(asset.source || fallbackSource),
+      contentType,
+      fileName,
+      sizeBytes,
+      url,
+      dataUrl,
+    }),
+  ];
 }
 
 async function fetchRemoteTextContent(url, options = {}) {
@@ -2214,14 +2756,94 @@ async function fetchRemoteTextContent(url, options = {}) {
   return buffer.toString("utf-8");
 }
 
+async function fetchRemoteDatasetRows(url, options = {}) {
+  const safeUrl = String(url || "").trim();
+  if (!safeUrl) {
+    throw new Error("Remote URL is required");
+  }
+  if (isBlockedDatasetUrl(safeUrl)) {
+    throw new Error("Remote URL is blocked");
+  }
+
+  const response = await fetch(safeUrl, {
+    signal: AbortSignal.timeout(Number(options.timeoutMs || 10000)),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch URL (${response.status})`);
+  }
+
+  const contentType = String(response.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
+  const buffer = Buffer.from(await response.arrayBuffer());
+  if (buffer.length > DATA_STUDIO_REMOTE_LIMIT_BYTES) {
+    throw new Error(`Remote payload too large (max ${DATA_STUDIO_REMOTE_LIMIT_BYTES} bytes)`);
+  }
+
+  const formatFromUrl = inferDataFormatFromUrl(safeUrl, String(options.format || "auto"));
+  const format = inferDataFormatFromContentType(contentType, formatFromUrl);
+  const isTextLike = format !== "auto" || isTextLikeContentType(contentType);
+  if (isTextLike) {
+    const rows = normalizeRowsFromInput({ content: buffer.toString("utf-8"), format });
+    if (rows.length > 0) {
+      return rows;
+    }
+  }
+
+  const name = fileNameFromUrl(safeUrl);
+  const includeDataUrl = buffer.length <= DATA_STUDIO_INLINE_ASSET_MAX_BYTES;
+  return [
+    createAssetRow({
+      source: String(options.source || "url"),
+      contentType: contentType || "application/octet-stream",
+      fileName: name,
+      sizeBytes: buffer.length,
+      url: safeUrl,
+      dataUrl: includeDataUrl ? buildDataUrl(contentType || "application/octet-stream", buffer) : "",
+    }),
+  ];
+}
+
 async function fetchHuggingFaceDatasetRows(datasetId, options = {}) {
   const normalizedId = String(datasetId || "").trim();
   if (!normalizedId) {
     throw new Error("Hugging Face dataset id is required");
   }
 
+  const resolveCanonicalDatasetId = async (value) => {
+    const candidate = String(value || "").trim();
+    if (!candidate) {
+      return "";
+    }
+    if (candidate.includes("/")) {
+      return candidate;
+    }
+
+    try {
+      const response = await fetch(
+        `https://huggingface.co/api/datasets?search=${encodeURIComponent(candidate)}&limit=10`,
+        { signal: AbortSignal.timeout(Number(options.timeoutMs || 10000)) },
+      );
+      if (!response.ok) {
+        return candidate;
+      }
+      const payload = await response.json();
+      const items = Array.isArray(payload) ? payload : [];
+      if (items.length === 0) {
+        return candidate;
+      }
+
+      const exact = items.find((item) => {
+        const id = String(item?.id || "").trim().toLowerCase();
+        return id === candidate.toLowerCase() || id.endsWith(`/${candidate.toLowerCase()}`);
+      });
+      return String((exact || items[0])?.id || candidate).trim() || candidate;
+    } catch {
+      return candidate;
+    }
+  };
+
+  const resolvedDatasetId = await resolveCanonicalDatasetId(normalizedId);
   const splitResp = await fetch(
-    `https://datasets-server.huggingface.co/splits?dataset=${encodeURIComponent(normalizedId)}`,
+    `https://datasets-server.huggingface.co/splits?dataset=${encodeURIComponent(resolvedDatasetId)}`,
     { signal: AbortSignal.timeout(Number(options.timeoutMs || 10000)) },
   );
   if (!splitResp.ok) {
@@ -2236,7 +2858,7 @@ async function fetchHuggingFaceDatasetRows(datasetId, options = {}) {
   const selectedConfig = String(options.config || splits[0]?.config || "").trim();
   const selectedSplit = String(options.split || splits[0]?.split || "train").trim();
   const rowsResp = await fetch(
-    `https://datasets-server.huggingface.co/first-rows?dataset=${encodeURIComponent(normalizedId)}&config=${encodeURIComponent(selectedConfig)}&split=${encodeURIComponent(selectedSplit)}`,
+    `https://datasets-server.huggingface.co/first-rows?dataset=${encodeURIComponent(resolvedDatasetId)}&config=${encodeURIComponent(selectedConfig)}&split=${encodeURIComponent(selectedSplit)}`,
     { signal: AbortSignal.timeout(Number(options.timeoutMs || 10000)) },
   );
   if (!rowsResp.ok) {
@@ -2264,18 +2886,16 @@ async function fetchZenodoDatasetRows(recordId) {
 
   const payload = await response.json();
   const files = Array.isArray(payload?.files) ? payload.files : [];
-  const candidate = files.find((file) => {
-    const name = String(file?.key || "").toLowerCase();
-    return name.endsWith(".jsonl") || name.endsWith(".json") || name.endsWith(".csv") || name.endsWith(".txt");
-  });
+  const candidate = files[0];
   if (!candidate?.links?.self) {
     return [{ source: "zenodo", recordId: normalizedId, url: payload?.links?.self || "", note: "No text dataset file found in record" }];
   }
 
   const fileUrl = String(candidate.links.self || "").trim();
-  const content = await fetchRemoteTextContent(fileUrl);
-  const format = inferDataFormatFromUrl(candidate.key || "");
-  const rows = normalizeRowsFromInput({ content, format });
+  const rows = await fetchRemoteDatasetRows(fileUrl, {
+    source: "zenodo",
+    format: inferDataFormatFromUrl(candidate.key || ""),
+  });
   if (rows.length === 0) {
     return [{ source: "zenodo", recordId: normalizedId, url: fileUrl, note: "No rows parsed from file" }];
   }
@@ -2314,9 +2934,12 @@ function parseCsvLine(line) {
   return result.map((item) => item.trim());
 }
 
+function splitDatasetLines(text) {
+  return String(text || "").split(/\r\n|\n|\r/);
+}
+
 function parseCsvText(text) {
-  const lines = String(text || "")
-    .split(/\r?\n/)
+  const lines = splitDatasetLines(text)
     .map((line) => line.trim())
     .filter(Boolean);
 
@@ -2336,6 +2959,85 @@ function parseCsvText(text) {
     rows.push(row);
   }
 
+  return rows;
+}
+
+function parseDelimitedText(text, delimiter, fallbackPrefix = "column_") {
+  const lines = splitDatasetLines(text)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length === 0) {
+    return [];
+  }
+
+  const header = String(lines[0] || "")
+    .split(delimiter)
+    .map((part) => part.trim());
+  const rows = [];
+  for (let lineIndex = 1; lineIndex < lines.length; lineIndex += 1) {
+    const values = String(lines[lineIndex] || "")
+      .split(delimiter)
+      .map((part) => part.trim());
+    const row = {};
+    header.forEach((key, index) => {
+      row[key || `${fallbackPrefix}${index + 1}`] = values[index] ?? "";
+    });
+    rows.push(row);
+  }
+  return rows;
+}
+
+function parseSimpleYamlRows(text) {
+  const lines = splitDatasetLines(text);
+  const rows = [];
+  let current = null;
+
+  const commitCurrent = () => {
+    if (current && Object.keys(current).length > 0) {
+      rows.push(current);
+    }
+    current = null;
+  };
+
+  for (const rawLine of lines) {
+    const line = String(rawLine || "").trim();
+    if (!line || line.startsWith("#")) {
+      continue;
+    }
+
+    if (line.startsWith("- ")) {
+      commitCurrent();
+      current = {};
+      const body = line.slice(2).trim();
+      if (body.includes(":")) {
+        const splitAt = body.indexOf(":");
+        const key = body.slice(0, splitAt).trim();
+        const value = body.slice(splitAt + 1).trim();
+        if (key) {
+          current[key] = value;
+        }
+      } else if (body) {
+        current.text = body;
+      }
+      continue;
+    }
+
+    const splitAt = line.indexOf(":");
+    if (splitAt <= 0) {
+      if (!current) current = {};
+      current.text = current.text ? `${current.text}\n${line}` : line;
+      continue;
+    }
+
+    if (!current) current = {};
+    const key = line.slice(0, splitAt).trim();
+    const value = line.slice(splitAt + 1).trim();
+    if (key) {
+      current[key] = value;
+    }
+  }
+
+  commitCurrent();
   return rows;
 }
 
@@ -2364,33 +3066,49 @@ function normalizeRowsFromInput({ content, format = "auto" }) {
     }
   } else if (selectedFormat === "jsonl") {
     rows = raw
-      .split(/\r?\n/)
+      .split(/\r\n|\n|\r/)
       .map((line) => line.trim())
       .filter(Boolean)
       .map((line) => safeJsonParse(line))
       .filter((value) => value && typeof value === "object");
   } else if (selectedFormat === "csv") {
     rows = parseCsvText(raw);
+  } else if (selectedFormat === "tsv") {
+    rows = parseDelimitedText(raw, "\t");
   } else if (selectedFormat === "txt") {
     rows = raw
-      .split(/\r?\n/)
+      .split(/\r\n|\n|\r/)
       .map((line) => line.trim())
       .filter(Boolean)
       .map((text) => ({ text }));
+  } else if (selectedFormat === "markdown" || selectedFormat === "md") {
+    rows = raw
+      .split(/\r\n|\n|\r/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line, index) => ({ line_number: index + 1, markdown: line }));
+  } else if (selectedFormat === "yaml" || selectedFormat === "yml") {
+    rows = parseSimpleYamlRows(raw);
+  } else if (selectedFormat === "xml") {
+    rows = [{ xml: raw, text: raw.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() }];
+  } else if (selectedFormat === "html") {
+    rows = [{ html: raw, text: raw.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() }];
+  } else if (selectedFormat === "graph") {
+    rows = [{ graph_source: raw, text: "Graph file imported" }];
   } else {
     const parsed = safeJsonParse(raw);
     if (Array.isArray(parsed)) {
       rows = parsed;
     } else if (parsed && typeof parsed === "object") {
       rows = [parsed];
-    } else if (raw.split(/\r?\n/).every((line) => {
+    } else if (raw.split(/\r\n|\n|\r/).every((line) => {
       const clean = line.trim();
       if (!clean) return true;
       const obj = safeJsonParse(clean);
       return Boolean(obj && typeof obj === "object");
     })) {
       rows = raw
-        .split(/\r?\n/)
+        .split(/\r\n|\n|\r/)
         .map((line) => line.trim())
         .filter(Boolean)
         .map((line) => safeJsonParse(line))
@@ -2399,7 +3117,7 @@ function normalizeRowsFromInput({ content, format = "auto" }) {
       rows = parseCsvText(raw);
     } else {
       rows = raw
-        .split(/\r?\n/)
+        .split(/\r\n|\n|\r/)
         .map((line) => line.trim())
         .filter(Boolean)
         .map((text) => ({ text }));
@@ -2527,8 +3245,15 @@ function applyDatasetClean(rows, { operation, field, pattern }) {
 
   if (op === "dedupe") {
     const seen = new Set();
+    const hasTargetField = safeRows.some((row) => Object.prototype.hasOwnProperty.call(row, targetField));
     return safeRows.filter((row) => {
-      const key = JSON.stringify(row);
+      let key;
+      if (hasTargetField) {
+        key = JSON.stringify(row?.[targetField] ?? null);
+      } else {
+        const { __rowId, ...rowWithoutId } = row || {};
+        key = JSON.stringify(rowWithoutId);
+      }
       if (seen.has(key)) {
         return false;
       }
@@ -2673,7 +3398,16 @@ function updateDatasetAfterMutation(dataset, operation) {
 }
 
 function findProjectDataset(dataStudio, projectId, datasetId) {
-  return dataStudio.datasets.find((item) => item.id === datasetId && recordProjectId(item) === projectId);
+  const targetId = String(datasetId || "").trim();
+  const targetProjectId = String(projectId || "default").trim() || "default";
+  const scoped = dataStudio.datasets.find((item) => (
+    String(item?.id || "").trim() === targetId && recordProjectId(item) === targetProjectId
+  ));
+  if (scoped) {
+    return scoped;
+  }
+  // Dataset ids are generated as globally unique keys; fallback by id for robustness.
+  return dataStudio.datasets.find((item) => String(item?.id || "").trim() === targetId);
 }
 
 async function loadStoreResourcesByProject(projectId) {
@@ -2698,9 +3432,9 @@ async function resolveRowsFromRemoteSource(params) {
   if (provider === "huggingface" || provider === "hf") {
     let resolvedId = datasetId;
     if (!resolvedId && sourceUrl) {
-      const parsed = /huggingface\.co\/datasets\/([^/?#]+)/i.exec(sourceUrl);
+      const parsed = /huggingface\.co\/datasets\/([^?#]+)/i.exec(sourceUrl);
       if (parsed?.[1]) {
-        resolvedId = parsed[1];
+        resolvedId = String(parsed[1]).replace(/\/+$/, "");
       }
     }
     return fetchHuggingFaceDatasetRows(resolvedId);
@@ -2712,12 +3446,14 @@ async function resolveRowsFromRemoteSource(params) {
 
   if (provider === "kaggle") {
     const idOrUrl = datasetId || sourceUrl;
+    if (sourceUrl && /^https?:\/\//i.test(sourceUrl)) {
+      return fetchRemoteDatasetRows(sourceUrl, { source: "kaggle", format });
+    }
     return [{ source: "kaggle", dataset: idOrUrl, note: "Dataset metadata imported. Add a direct file URL for row-level data." }];
   }
 
   const remoteUrl = sourceUrl || datasetId;
-  const content = await fetchRemoteTextContent(remoteUrl);
-  return normalizeRowsFromInput({ content, format: inferDataFormatFromUrl(remoteUrl, format) });
+  return fetchRemoteDatasetRows(remoteUrl, { source: provider || "url", format });
 }
 
 function summarizeObservability(config) {
@@ -2855,6 +3591,7 @@ const STORAGE_PROVIDER_DEFINITIONS = [
     name: "S3 Compatible",
     authMode: "token",
     supportsOAuth: false,
+    url: "https://s3.console.aws.amazon.com/s3/home",
     authFields: [
       { key: "accessKeyId", label: "Access Key ID" },
       { key: "secretAccessKey", label: "Secret Access Key" },
@@ -2869,6 +3606,7 @@ const STORAGE_PROVIDER_DEFINITIONS = [
     name: "Google Drive",
     authMode: "oauth",
     supportsOAuth: true,
+    url: "https://drive.google.com/",
     authFields: [],
     quotaGb: 200,
     costPerGbMonthUsd: 0.02,
@@ -2878,6 +3616,7 @@ const STORAGE_PROVIDER_DEFINITIONS = [
     name: "Dropbox",
     authMode: "oauth",
     supportsOAuth: true,
+    url: "https://www.dropbox.com/",
     authFields: [],
     quotaGb: 200,
     costPerGbMonthUsd: 0.025,
@@ -2887,6 +3626,7 @@ const STORAGE_PROVIDER_DEFINITIONS = [
     name: "OneDrive",
     authMode: "oauth",
     supportsOAuth: true,
+    url: "https://onedrive.live.com/",
     authFields: [],
     quotaGb: 200,
     costPerGbMonthUsd: 0.021,
@@ -2896,6 +3636,7 @@ const STORAGE_PROVIDER_DEFINITIONS = [
     name: "MEGA",
     authMode: "oauth",
     supportsOAuth: true,
+    url: "https://mega.nz/",
     authFields: [],
     quotaGb: 400,
     costPerGbMonthUsd: 0.02,
@@ -3192,7 +3933,7 @@ function applyStorageRetention(storage, project, keepLast) {
   };
 }
 
-function summarizeStorageState(storage, project) {
+function summarizeStorageState(config, storage, project) {
   recomputeStorageProjectUsage(storage, project);
 
   const providers = STORAGE_PROVIDER_DEFINITIONS.map((provider) => {
@@ -3210,6 +3951,7 @@ function summarizeStorageState(storage, project) {
       mode: account.mode || provider.authMode,
       supportsOAuth: provider.supportsOAuth,
       authFields: provider.authFields,
+      url: provider.url,
       updatedAt: account.updatedAt || null,
       quota: {
         quotaGb: provider.quotaGb,
@@ -3220,6 +3962,7 @@ function summarizeStorageState(storage, project) {
       artifactCount: usage.artifactCount,
       estimatedMonthlyCostUsd,
       lowSpace: usageRatio >= 0.9,
+      isPrimary: config?.web?.primaryProviders?.storage === provider.id,
     };
   });
 
@@ -3238,6 +3981,11 @@ app.get("/api/instances/providers", async (req, res) => {
   try {
     const config = await loadWorkspaceConfig();
     const configEnv = config.env || {};
+    const selectedOptionByProvider =
+      config?.web?.providers?.selectedOptionByProvider &&
+      typeof config.web.providers.selectedOptionByProvider === "object"
+        ? config.web.providers.selectedOptionByProvider
+        : {};
 
     const providers = AI_PROVIDERS.map(p => {
       const processedOptions = p.options.map(opt => {
@@ -3252,11 +4000,24 @@ app.get("/api/instances/providers", async (req, res) => {
       });
 
       const isConfigured = processedOptions.some(opt => opt.configured);
+      const selectedOptionId = (() => {
+        const stored = selectedOptionByProvider[p.id];
+        if (typeof stored === "string" && processedOptions.some((opt) => opt.id === stored)) {
+          return stored;
+        }
+        const configured = processedOptions.filter((opt) => opt.configured);
+        const apiPreferred = configured.find((opt) => opt.type !== "oauth");
+        return apiPreferred?.id || configured[0]?.id || processedOptions[0]?.id || null;
+      })();
       
+      const isPrimary = config?.web?.primaryProviders?.ai === p.id;
+
       return {
         ...p,
         options: processedOptions,
+        selectedOptionId,
         configured: isConfigured,
+        isPrimary,
       };
     });
 
@@ -3309,6 +4070,9 @@ app.post("/api/instances/provider/oauth", async (req, res) => {
 
     const currentConfig = await loadWorkspaceConfig();
     const nextConfig = ensurePluginEnabled(currentConfig, mapped.pluginId);
+    const selectedOptionByProvider = ensureSelectedProviderOptionMap(nextConfig);
+    selectedOptionByProvider[provider.id] = option.id;
+    setDefaultModelForProviderSelection(nextConfig, provider.id, option.id);
     await writeFile(workspaceConfig, JSON.stringify(nextConfig, null, 2) + "\n", "utf-8");
 
     // Create a background job for the OAuth process
@@ -3329,6 +4093,8 @@ app.post("/api/instances/provider/oauth", async (req, res) => {
     const env = {
       ...process.env,
       TEXT2LLM_CONFIG_PATH: process.env.TEXT2LLM_CONFIG_PATH || workspaceConfig,
+      TEXT2LLM_ALLOW_HEADLESS_AUTH: "1",
+      CI: "1", // Hint to sub-processes to run non-interactively where possible
     };
 
     const child = spawn(process.execPath, args, {
@@ -3423,6 +4189,7 @@ app.post("/api/instances/provider/select", async (req, res) => {
     } catch { /* start fresh */ }
 
     if (!config.env) config.env = {};
+    const selectedOptionByProvider = ensureSelectedProviderOptionMap(config);
 
     // Set the API key if provided
     if (apiKey && apiKey.trim()) {
@@ -3430,6 +4197,9 @@ app.post("/api/instances/provider/select", async (req, res) => {
       // Also set it in the current process
       process.env[option.envKey] = apiKey.trim();
     }
+
+    selectedOptionByProvider[provider.id] = option.id;
+    setDefaultModelForProviderSelection(config, provider.id, option.id);
 
     await writeFile(workspaceConfig, JSON.stringify(config, null, 2) + "\n", "utf-8");
 
@@ -3439,28 +4209,253 @@ app.post("/api/instances/provider/select", async (req, res) => {
   }
 });
 
+app.post("/api/instances/primary", async (req, res) => {
+  try {
+    const { category, providerId } = req.body || {};
+    if (!category || !["ai", "gpu", "storage"].includes(category)) {
+      return res.status(400).json({ ok: false, error: "invalid category" });
+    }
+    if (!providerId) {
+      return res.status(400).json({ ok: false, error: "providerId is required" });
+    }
+
+    const config = await loadWorkspaceConfig();
+    if (!config.web) config.web = {};
+    if (!config.web.primaryProviders) config.web.primaryProviders = {};
+    
+    config.web.primaryProviders[category] = providerId;
+
+    await writeFile(workspaceConfig, JSON.stringify(config, null, 2) + "\n", "utf-8");
+
+    res.json({ ok: true, message: `Primary ${category} provider set to ${providerId}` });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+// ── Model catalog per provider ──────────────────────────────────────────────
+app.get("/api/instances/provider/:providerId/models", async (req, res) => {
+  try {
+    const { providerId } = req.params;
+    const provider = AI_PROVIDERS.find(p => p.id === providerId);
+    if (!provider) {
+      return res.status(404).json({ ok: false, error: "Unknown provider" });
+    }
+
+    let models = PROVIDER_MODEL_CATALOG[providerId] || [];
+
+    // For OpenRouter, fetch live from their API
+    if (providerId === "openrouter") {
+      const config = await loadWorkspaceConfig();
+      const apiKey = process.env.OPENROUTER_API_KEY || config?.env?.OPENROUTER_API_KEY || "";
+      models = await fetchOpenRouterModels(apiKey);
+    }
+
+    // Also read the currently selected model from config
+    const config = await loadWorkspaceConfig();
+    const currentModel = config?.agents?.defaults?.model?.primary || null;
+
+    res.json({ ok: true, models, currentModel });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+// ── Set a specific model (not just provider) ────────────────────────────────
+app.post("/api/instances/provider/set-model", async (req, res) => {
+  try {
+    const { modelId } = req.body || {};
+    if (!modelId || typeof modelId !== "string") {
+      return res.status(400).json({ ok: false, error: "modelId is required" });
+    }
+
+    const config = await loadWorkspaceConfig();
+    if (!config.agents) config.agents = {};
+    if (!config.agents.defaults) config.agents.defaults = {};
+    if (!config.agents.defaults.model) config.agents.defaults.model = {};
+    config.agents.defaults.model.primary = modelId.trim();
+
+    await writeFile(workspaceConfig, JSON.stringify(config, null, 2) + "\n", "utf-8");
+
+    res.json({ ok: true, message: `Model set to ${modelId}` });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
 app.post("/api/auth/test", async (req, res) => {
   try {
-    const { providerId } = req.body || {};
+    const { providerId, optionId } = req.body || {};
     if (!providerId) return res.status(400).json({ ok: false, error: "providerId required" });
 
-    // Test connection by listing models (lightweight operation)
-    const args = [
-      "scripts/run-node.mjs",
-      "models",
-      "list", 
-      "--provider", providerId
-    ];
+    const provider = AI_PROVIDERS.find((item) => item.id === providerId);
+    if (!provider) {
+      return res.status(404).json({ ok: false, error: "Unknown provider" });
+    }
+
+    const selectedOption = (() => {
+      if (optionId) {
+        return provider.options.find((item) => item.id === optionId) || null;
+      }
+      return provider.options[0] || null;
+    })();
+
+    if (!selectedOption) {
+      return res.status(400).json({ ok: false, error: "No testable auth option found" });
+    }
+
+    const targetProvider = selectedOption.type === "oauth"
+      ? (selectedOption.oauthProviderId || provider.id)
+      : provider.id;
+
+    const config = await loadWorkspaceConfig();
+    const configEnv = config?.env && typeof config.env === "object" ? config.env : {};
+
+    if (selectedOption.type === "oauth") {
+      if (!isOAuthProviderConfigured(config, selectedOption.oauthProviderId || provider.id)) {
+        return res.json({
+          ok: false,
+          error: `${selectedOption.name} is not connected yet. Complete OAuth first.`,
+        });
+      }
+    } else {
+      const value = process.env[selectedOption.envKey] || configEnv[selectedOption.envKey] || "";
+      if (!String(value).trim()) {
+        return res.json({
+          ok: false,
+          error: `${selectedOption.name} is empty. Save the key first.`,
+        });
+      }
+    }
+
+    const isGoogleProvider = provider.id === "google";
+    const args = isGoogleProvider
+      ? [
+          "scripts/run-node.mjs",
+          "agent",
+          "--agent",
+          "main",
+          "--local",
+          "--message",
+          "Reply with exactly OK.",
+        ]
+      : [
+          "scripts/run-node.mjs",
+          "models",
+          "list",
+          "--provider",
+          targetProvider,
+        ];
+
+    let probeConfigPath = null;
+    const commandEnv = { ...process.env };
+
+    if (isGoogleProvider) {
+      const probeConfig = JSON.parse(JSON.stringify(config || {}));
+      setDefaultModelForProviderSelection(probeConfig, provider.id, selectedOption.id);
+      probeConfigPath = path.resolve(
+        repoRoot,
+        "workspace",
+        `text2llm-web-auth-probe-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.json`,
+      );
+      await writeFile(probeConfigPath, JSON.stringify(probeConfig, null, 2) + "\n", "utf-8");
+      commandEnv.TEXT2LLM_CONFIG_PATH = probeConfigPath;
+      commandEnv.TEXT2LLM_SKIP_BUILD = "1";
+    }
 
     const start = Date.now();
-    const result = await runTEXT2LLMCommand(args, { ...process.env });
+    const result = await runTEXT2LLMCommand(args, commandEnv);
     const latency = Date.now() - start;
-    
-    if (result.code === 0) {
-      res.json({ ok: true, message: "Connection successful!", latency, details: result.stdout });
-    } else {
-      res.json({ ok: false, error: "Test failed", details: result.stderr || result.stdout });
+
+    if (probeConfigPath) {
+      try {
+        await import("node:fs/promises").then((mod) => mod.unlink(probeConfigPath));
+      } catch {
+        // ignore temp cleanup failure
+      }
     }
+    
+    const combinedOutput = `${result.stderr || ""}\n${result.stdout || ""}`;
+    const sanitizedDetails = sanitizeChatAgentText(combinedOutput) || combinedOutput;
+
+    if (result.code === 0) {
+      res.json({
+        ok: true,
+        message: isGoogleProvider
+          ? "Connection successful (live auth probe passed)!"
+          : "Connection successful!",
+        latency,
+        providerId,
+        optionId: selectedOption.id,
+        testedProvider: targetProvider,
+        details: sanitizedDetails,
+      });
+    } else {
+      res.json({
+        ok: false,
+        error: `Test failed for ${providerId}/${selectedOption.id}`,
+        testedProvider: targetProvider,
+        details: sanitizedDetails,
+      });
+    }
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});app.post("/api/auth/login", async (req, res) => {
+  try {
+    const { email, password, captchaToken } = req.body || {};
+    const supabaseUrl = process.env.SUPABASE_URL?.trim();
+    const supabaseAnonKey = process.env.SUPABASE_ANON_KEY?.trim();
+
+    if (!supabaseUrl || !supabaseAnonKey) {
+      return res.status(500).json({ ok: false, error: "Server missing Supabase credentials" });
+    }
+    
+    const response = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
+      method: "POST",
+      headers: {
+        "apikey": supabaseAnonKey,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ email, password, gotrue_meta_security: { captcha_token: captchaToken } })
+    });
+    
+    const data = await response.json();
+    if (!response.ok) {
+      return res.status(400).json({ ok: false, error: data.error_description || data.msg || data.error || "Login failed" });
+    }
+    
+    res.json({ ok: true, session: data });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+app.post("/api/auth/signup", async (req, res) => {
+  try {
+    const { email, password, captchaToken } = req.body || {};
+    const supabaseUrl = process.env.SUPABASE_URL?.trim();
+    const supabaseAnonKey = process.env.SUPABASE_ANON_KEY?.trim();
+
+    if (!supabaseUrl || !supabaseAnonKey) {
+      return res.status(500).json({ ok: false, error: "Server missing Supabase credentials" });
+    }
+    
+    const response = await fetch(`${supabaseUrl}/auth/v1/signup`, {
+      method: "POST",
+      headers: {
+        "apikey": supabaseAnonKey,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ email, password, gotrue_meta_security: { captcha_token: captchaToken } })
+    });
+    
+    const data = await response.json();
+    if (!response.ok) {
+      return res.status(400).json({ ok: false, error: data.error_description || data.msg || data.error || "Signup failed" });
+    }
+    
+    res.json({ ok: true, session: data });
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message });
   }
@@ -3492,7 +4487,7 @@ app.get("/api/instances/storage/state", async (_req, res) => {
       return res.status(500).json({ ok: false, error: "Active storage project missing" });
     }
 
-    const summary = summarizeStorageState(storage, project);
+    const summary = summarizeStorageState(config, storage, project);
     return res.json({ ok: true, ...summary });
   } catch (error) {
     return res.status(500).json({ ok: false, error: error instanceof Error ? error.message : "Unknown error" });
@@ -4148,6 +5143,7 @@ app.get("/api/instances/gpu/providers", async (_req, res) => {
         name: provider.name,
         description: provider.description,
         authFields: provider.authFields,
+        url: provider.url,
         regions: adapter.listRegions(),
         gpuTypes: adapter.listGpuTypes(),
         requiredPermissions: permissionTemplate,
@@ -4156,6 +5152,7 @@ app.get("/api/instances/gpu/providers", async (_req, res) => {
         credentialStatus: account?.status || "not-configured",
         lastValidatedAt: account?.lastValidatedAt || null,
         permissionsMissingCount: missingPermissions.length,
+        isPrimary: config?.web?.primaryProviders?.gpu === provider.id,
       };
     });
 
@@ -4529,20 +5526,32 @@ app.get("/api/data-studio/datasets", async (req, res) => {
 app.post("/api/data-studio/datasets", async (req, res) => {
   try {
     const projectId = resolveRequestProjectId(req);
-    const { name, sourceType, format, content, url } = req.body || {};
+    const { name, sourceType, format, content, url, uploadAsset } = req.body || {};
     let resolvedContent = String(content || "");
     let effectiveFormat = String(format || "auto");
+    let rows = [];
 
-    if (String(sourceType || "").toLowerCase() === "url") {
+    const normalizedSourceType = String(sourceType || "").toLowerCase();
+    if (normalizedSourceType === "url") {
       const safeUrl = String(url || "").trim();
       if (!safeUrl) {
         return res.status(400).json({ ok: false, error: "URL is required for URL source" });
       }
-      resolvedContent = await fetchRemoteTextContent(safeUrl);
+      rows = await fetchRemoteDatasetRows(safeUrl, { source: "url", format });
       effectiveFormat = inferDataFormatFromUrl(safeUrl, format);
+    } else if (normalizedSourceType === "upload") {
+      if (resolvedContent.trim()) {
+        effectiveFormat = inferDataFormatFromUploadAsset(uploadAsset, format);
+        rows = normalizeRowsFromInput({ content: resolvedContent, format: effectiveFormat });
+      } else if (uploadAsset && typeof uploadAsset === "object") {
+        rows = rowsFromUploadAsset(uploadAsset, "upload");
+      } else {
+        rows = [];
+      }
+    } else {
+      rows = normalizeRowsFromInput({ content: resolvedContent, format: effectiveFormat });
     }
 
-    const rows = normalizeRowsFromInput({ content: resolvedContent, format: effectiveFormat });
     if (rows.length === 0) {
       return res.status(400).json({ ok: false, error: "No rows could be parsed from the provided input" });
     }
@@ -4551,7 +5560,7 @@ app.post("/api/data-studio/datasets", async (req, res) => {
     const dataStudio = ensureDataStudioState(config);
     const dataset = createDatasetRecord({
       name,
-      sourceType,
+      sourceType: normalizedSourceType || "paste",
       format: effectiveFormat,
       rows,
       projectId,
@@ -4605,9 +5614,8 @@ app.post("/api/data-studio/datasets/import/library", async (req, res) => {
       const zenodoId = String(resource?.name || "").split("/").at(-1) || normalizedResourceId;
       rows = await fetchZenodoDatasetRows(zenodoId);
     } else if (resource?.url) {
-      const text = await fetchRemoteTextContent(resource.url);
-      rows = normalizeRowsFromInput({
-        content: text,
+      rows = await fetchRemoteDatasetRows(resource.url, {
+        source: "library",
         format: inferDataFormatFromUrl(String(resource.url || ""), format),
       });
     } else {
@@ -4680,7 +5688,7 @@ app.get("/api/data-studio/datasets/:datasetId", async (req, res) => {
     const dataStudio = ensureDataStudioState(config);
     const dataset = findProjectDataset(dataStudio, projectId, datasetId);
     if (!dataset) {
-      return res.status(404).json({ ok: false, error: "Dataset not found" });
+      return res.status(404).json({ ok: false, error: "Dataset not found (get)" });
     }
 
     if (!hasCompleteDatasetRowIds(dataset.rows)) {
@@ -5223,6 +6231,11 @@ app.post("/api/instances/gpu/instance/launch", async (req, res) => {
       model: profile.model,
     };
     let instance = adapter.deployRuntime(instanceSeed, instanceRuntime);
+    
+    // Actually call startInstance (missing in original code but implied by the flow, or deployRuntime might be enough? Wait, let's look at how it works. Actually the previous code didn't call startInstance at all here!)
+    // Oh, wait, the launch handler didn't call startInstance!
+    
+    // Let me check what the old code did line 6127-6137
     const hardware = estimateHardwareShape(gpuType, gpuCount);
     instance = {
       ...instance,
@@ -5235,9 +6248,12 @@ app.post("/api/instances/gpu/instance/launch", async (req, res) => {
       lastActivityAt: nowIso(),
     };
 
+    // Call startInstance before warmup
+    instance = await adapter.startInstance(instance, decryptedCredentials);
+
     const shouldWarmup = !Boolean(skipWarmup);
     if (shouldWarmup && typeof adapter.warmupRuntime === "function") {
-      instance = adapter.warmupRuntime(instance, { maxChecks: 3 });
+      instance = await adapter.warmupRuntime(instance, { maxChecks: 3 });
     }
 
     config.gpu.instances.push(instance);
@@ -5336,30 +6352,35 @@ app.post("/api/instances/gpu/instance/action", async (req, res) => {
       return res.status(404).json({ ok: false, error: "Provider adapter not found" });
     }
 
+    // Decrypt provider credentials so real API calls can authenticate
+    let decryptedCredentials = {};
+    try {
+      const account = getProviderAccount(config, current.providerId);
+      if (account?.credentialRef) {
+        const { key } = ensureGpuMasterKey(config);
+        decryptedCredentials = decryptCredentialEnvelope(account.credentialRef, key) || {};
+      }
+    } catch {
+      // Non-fatal: adapter will throw a clear error if creds are missing
+    }
+
     const normalizedAction = String(action).toLowerCase();
     let instance = current;
     if (normalizedAction === "start") {
       const policy = config.gpu.budgetPolicies[current.budgetPolicyId] || null;
       if (policy && isWithinStopWindow(policy)) {
-        pushGpuAuditLog(config, "instance.start_blocked_stop_window", {
-          instanceId,
-          policyId: policy.id,
-        });
+        pushGpuAuditLog(config, "instance.start_blocked_stop_window", { instanceId, policyId: policy.id });
         await saveWorkspaceConfig(config);
         return res.status(403).json({ ok: false, error: "Start blocked by scheduled stop window" });
       }
-      instance = adapter.startInstance(current);
+      instance = await adapter.startInstance(current, decryptedCredentials);
       if (typeof adapter.warmupRuntime === "function") {
-        instance = adapter.warmupRuntime({
-          ...instance,
-          status: "provisioning",
-          health: "warming",
-        }, { maxChecks: 2 });
+        instance = await adapter.warmupRuntime({ ...instance, status: "provisioning", health: "warming" }, { maxChecks: 2 });
       }
     } else if (normalizedAction === "stop") {
-      instance = adapter.stopInstance(current);
+      instance = await adapter.stopInstance(current, decryptedCredentials);
     } else if (normalizedAction === "terminate") {
-      instance = adapter.terminateInstance(current);
+      instance = await adapter.terminateInstance(current, decryptedCredentials);
     } else {
       return res.status(400).json({ ok: false, error: "Unsupported action" });
     }
@@ -5369,23 +6390,14 @@ app.post("/api/instances/gpu/instance/action", async (req, res) => {
       ...instance,
       status: status.status,
       endpoint: status.endpoint || instance.endpoint,
-      health: normalizedAction === "terminate" ? "terminated" : (normalizedAction === "stop" ? "idle" : "healthy"),
+      health: normalizedAction === "terminate" ? "terminated" : (normalizedAction === "stop" ? "idle" : instance.health || "healthy"),
       lastHealthCheckAt: nowIso(),
       updatedAt: status.updatedAt || new Date().toISOString(),
     };
 
-    if (normalizedAction === "start") {
-      instance.health = "ready";
-    }
-
     config.gpu.instances[index] = instance;
     observability.metrics.lastUpdatedAt = nowIso();
-    pushGpuAuditLog(config, "instance.action", {
-      instanceId,
-      action: normalizedAction,
-      status: instance.status,
-      health: instance.health,
-    });
+    pushGpuAuditLog(config, "instance.action", { instanceId, action: normalizedAction, status: instance.status, health: instance.health });
     await saveWorkspaceConfig(config);
 
     res.json({ ok: true, instance: normalizeGpuInstance(instance) });
@@ -5998,6 +7010,37 @@ function isChatDiagnosticLine(line) {
   if (!trimmed) {
     return true;
   }
+
+  const normalized = trimmed
+    .replace(/^â¹\s*/, "")
+    .replace(/^ℹ\s*/, "")
+    .trim();
+  const normalizedNoGlyph = normalized.replace(/^[^\p{L}\p{N}\[]+/u, "").trim();
+
+  const isToolchainNoise =
+    normalized.startsWith("tsdown v") ||
+    normalized.includes("powered by rolldown") ||
+    normalized.startsWith("config file:") ||
+    normalized.startsWith("entry:") ||
+    normalized.startsWith("target:") ||
+    normalized.startsWith("tsconfig:") ||
+    normalized.startsWith("Build start") ||
+    normalized.startsWith("Build error") ||
+    normalized.startsWith("Build complete") ||
+    normalized.startsWith("[unplugin-dts]") ||
+    normalized.startsWith("Error: Build failed") ||
+    normalized.startsWith("[vite]") ||
+    normalized.startsWith("vite v") ||
+    normalizedNoGlyph.startsWith("Build complete") ||
+    normalizedNoGlyph.startsWith("dist/") ||
+    normalizedNoGlyph.startsWith("dist\\") ||
+    /\bfiles?,\s*total:\s*\d/i.test(normalizedNoGlyph) ||
+    /\b(kB|MB)\b/i.test(normalizedNoGlyph) && normalizedNoGlyph.startsWith("dist");
+
+  if (isToolchainNoise) {
+    return true;
+  }
+
   return (
     trimmed.startsWith("[tools]") ||
     trimmed.startsWith("[agent/embedded]") ||
@@ -6082,6 +7125,78 @@ function normalizeStreamChunkText(text) {
     .trim();
 
   return compact;
+}
+
+function summarizeBuildFailure(text) {
+  const raw = String(text || "").replace(CHAT_ANSI_ESCAPE_REGEX, "");
+  if (!/Build failed with\s+\d+\s+errors?/i.test(raw) && !/\[PARSE_ERROR\]/.test(raw)) {
+    return null;
+  }
+
+  const findings = [];
+  const seen = new Set();
+  const regex = /\[PARSE_ERROR\]\s*Error:\s*([^\n]+)[\s\S]{0,220}?\[\s*(src[\\/][^:\]\n]+:\d+:\d+)\s*\]/g;
+  let match;
+  while ((match = regex.exec(raw)) !== null && findings.length < 5) {
+    const error = (match[1] || "Parse error").trim();
+    const location = (match[2] || "unknown").replace(/\\/g, "/").trim();
+    const signature = `${location}|${error}`;
+    if (seen.has(signature)) {
+      continue;
+    }
+    seen.add(signature);
+    findings.push({ location, error });
+  }
+
+  if (findings.length === 0) {
+    return "The local runtime failed to build before chat could start. Resolve TypeScript parse errors in src/ and retry.";
+  }
+
+  const detailLines = findings.map((item) => `- ${item.location}: ${item.error}`);
+  return [
+    "The local runtime failed to build before chat could start.",
+    "Fix these source errors and retry:",
+    ...detailLines,
+  ].join("\n");
+}
+
+function toUserFacingError(rawText, fallbackCode = 1) {
+  const raw = String(rawText || "").replace(CHAT_ANSI_ESCAPE_REGEX, "");
+
+  const providerMissing = raw.match(/No API key found for provider\s+"([^"]+)"/i);
+  if (providerMissing) {
+    const provider = providerMissing[1];
+    return {
+      code: "missing-provider-auth",
+      title: "Provider authentication required",
+      message: `The selected model provider (${provider}) is not connected for this runtime.`,
+      hints: [
+        "Open Settings and connect this provider, or switch to a connected model.",
+        "Send the message again after saving the provider settings.",
+      ],
+    };
+  }
+
+  const buildSummary = summarizeBuildFailure(raw);
+  if (buildSummary) {
+    return {
+      code: "build-failed",
+      title: "Runtime build failed",
+      message: buildSummary,
+      hints: [
+        "Fix the listed TypeScript errors.",
+        "Restart runtime and retry your message.",
+      ],
+    };
+  }
+
+  const debug = sanitizeChatAgentText(raw);
+  return {
+    code: "runtime-error",
+    title: "Runtime request failed",
+    message: debug || `Agent process exited with code ${fallbackCode}.`,
+    hints: ["Retry once. If it still fails, check runtime logs in terminal."],
+  };
 }
 
 function createProgressReporter(sendSSE) {
@@ -6264,6 +7379,27 @@ app.post("/api/chat", async (req, res) => {
 
   const sid = sessionId || `web-${Date.now()}`;
   const conversationHistory = Array.isArray(history) ? history : [];
+
+  try {
+    const config = await loadWorkspaceConfig();
+    const selectedMap =
+      config?.web?.providers?.selectedOptionByProvider &&
+      typeof config.web.providers.selectedOptionByProvider === "object"
+        ? config.web.providers.selectedOptionByProvider
+        : null;
+    const selectedGoogleOption =
+      selectedMap && typeof selectedMap.google === "string" ? selectedMap.google : null;
+    if (selectedGoogleOption) {
+      const before = config?.agents?.defaults?.model?.primary || null;
+      setDefaultModelForProviderSelection(config, "google", selectedGoogleOption);
+      const after = config?.agents?.defaults?.model?.primary || null;
+      if (after && after !== before) {
+        await saveWorkspaceConfig(config);
+      }
+    }
+  } catch (_) {
+    // non-blocking preflight; continue chat even if this sync fails
+  }
   
   // Only use project ID if explicitly provided; otherwise treat as ephemeral
   const activeProjectId = projectId ? String(projectId) : null;
@@ -6468,6 +7604,7 @@ app.post("/api/chat", async (req, res) => {
   const contextMessage = contextParts.join("\n");
   progress.done("prepare-context", "Context assembled");
   progress.start("launch-agent", "Launch agent", "Starting runtime process");
+  let currentPhase = "Starting agent";
 
   const args = [
     "scripts/run-node.mjs",
@@ -6480,6 +7617,7 @@ app.post("/api/chat", async (req, res) => {
   const env = {
     ...process.env,
     TEXT2LLM_CONFIG_PATH: process.env.TEXT2LLM_CONFIG_PATH || workspaceConfig,
+    TEXT2LLM_SKIP_BUILD: process.env.TEXT2LLM_SKIP_BUILD || "1",
     RUNPOD_API_KEY: process.env.RUNPOD_API_KEY || "text2llm-web-local",
     VAST_API_KEY: process.env.VAST_API_KEY || "text2llm-web-local",
     WANDB_API_KEY: process.env.WANDB_API_KEY || "text2llm-web-local",
@@ -6500,12 +7638,20 @@ app.post("/api/chat", async (req, res) => {
   let pendingChunkText = "";
   let pendingChunkTimer = null;
   let closed = false;
+  const startedAt = Date.now();
+  currentPhase = "Preparing request";
 
   const heartbeatInterval = setInterval(() => {
     if (closed || res.writableEnded) {
       return;
     }
-    sendSSE("heartbeat", { ts: Date.now() });
+    const elapsedSec = Math.max(1, Math.floor((Date.now() - startedAt) / 1000));
+    sendSSE("heartbeat", {
+      ts: Date.now(),
+      elapsedSec,
+      phase: currentPhase,
+      text: `${currentPhase} (${elapsedSec}s)`,
+    });
   }, 5000);
 
   const delayedStatusTimers = [
@@ -6526,6 +7672,8 @@ app.post("/api/chat", async (req, res) => {
     }, 30000),
   ];
 
+  let agentTimeoutTimer = null;
+
   const clearStreamingTimers = () => {
     clearInterval(heartbeatInterval);
     for (const timer of delayedStatusTimers) {
@@ -6534,6 +7682,10 @@ app.post("/api/chat", async (req, res) => {
     if (pendingChunkTimer) {
       clearTimeout(pendingChunkTimer);
       pendingChunkTimer = null;
+    }
+    if (agentTimeoutTimer) {
+      clearTimeout(agentTimeoutTimer);
+      agentTimeoutTimer = null;
     }
   };
 
@@ -6568,6 +7720,12 @@ app.post("/api/chat", async (req, res) => {
       streamStepStarted = true;
       progress.done("await-output", "First output received");
       progress.start("stream-output", "Stream response", "Delivering output to chat");
+      currentPhase = "Streaming response";
+      // Cancel the no-output timeout once we start receiving real chunks
+      if (agentTimeoutTimer) {
+        clearTimeout(agentTimeoutTimer);
+        agentTimeoutTimer = null;
+      }
     }
 
     pendingChunkText += pendingChunkText ? `\n${clean}` : clean;
@@ -6601,6 +7759,32 @@ app.post("/api/chat", async (req, res) => {
   console.log(`[chat] Session ${sid} started (PID ${child.pid})`);
   progress.done("launch-agent", `PID ${child.pid || "unknown"}`);
   progress.start("await-output", "Await model output", "Waiting for first response token");
+  currentPhase = "Waiting for model response";
+
+  // Timeout: kill the agent if no visible output after 120s
+  const CHAT_TIMEOUT_MS = 120_000;
+  agentTimeoutTimer = setTimeout(() => {
+    if (closed || emittedVisibleReply) return;
+    console.log(`[chat] Session ${sid} timed out after ${CHAT_TIMEOUT_MS / 1000}s with no visible output`);
+    progress.error("await-output", "Timed out waiting for model response");
+    progress.error("request", "Timed out");
+    sendSSE("error", {
+      code: "timeout",
+      title: "Response timed out",
+      message: `The model did not respond within ${CHAT_TIMEOUT_MS / 1000} seconds. This is usually caused by a slow provider or network issue.`,
+      hints: [
+        "Try again — the provider may be temporarily overloaded.",
+        "Switch to a faster model in Settings (e.g., Gemini Flash instead of Pro).",
+        "Check your internet connection.",
+      ],
+    });
+    sendSSE("done", { code: 1, reason: "timeout" });
+    clearStreamingTimers();
+    try { child.kill(); } catch (_) {}
+    activeSessions.delete(sid);
+    if (!res.writableEnded) res.end();
+    closed = true;
+  }, CHAT_TIMEOUT_MS);
   let streamStepStarted = false;
   let toolRunCounter = 0;
   const pendingToolRunIds = new Map();
@@ -6670,7 +7854,13 @@ app.post("/api/chat", async (req, res) => {
     progress.error("launch-agent", error.message || "Process error");
     progress.error("request", "Failed");
     clearStreamingTimers();
-    sendSSE("error", { message: error.message });
+    const userError = toUserFacingError(error.message, 1);
+    sendSSE("error", {
+      code: userError.code,
+      title: userError.title,
+      message: userError.message,
+      hints: userError.hints,
+    });
     activeSessions.delete(sid);
     res.end();
   });
@@ -6686,6 +7876,17 @@ app.post("/api/chat", async (req, res) => {
       sendSSE("chunk", { text: finalAnswer });
     }
 
+    if (code !== 0 && !finalAnswer) {
+      const rawDebug = stderrTail || stdoutTail;
+      const userError = toUserFacingError(rawDebug, code);
+      sendSSE("error", {
+        code: userError.code,
+        title: userError.title,
+        message: userError.message,
+        hints: userError.hints,
+      });
+    }
+
     if (!emittedVisibleReply) {
       if (code === 0) {
         sendSSE("chunk", {
@@ -6693,9 +7894,15 @@ app.post("/api/chat", async (req, res) => {
         });
       } else {
         const debug = sanitizeChatAgentText(stderrTail || stdoutTail);
-        sendSSE("error", {
-          message: debug || `Agent process exited with code ${code}. Check provider/auth settings in Settings.`,
-        });
+        if (finalAnswer) {
+          const userError = toUserFacingError(debug || stderrTail || stdoutTail, code);
+          sendSSE("error", {
+            code: userError.code,
+            title: userError.title,
+            message: userError.message,
+            hints: userError.hints,
+          });
+        }
       }
     }
     if (streamStepStarted) {
@@ -7216,9 +8423,11 @@ async function searchPapersWithCode(query, page, limit) {
     });
 
     const start = (page - 1) * limit;
+    const effectiveTotal = (Number.isFinite(s2Total) && s2Total > results.length ? s2Total : undefined);
+    
     return withResultMeta(results.slice(start, start + limit), {
-      totalCount: results.length,
-      hasMore: start + limit < results.length,
+      totalCount: effectiveTotal,
+      hasMore: s2Error || start + limit < (effectiveTotal || Infinity),
     });
   } catch (err) {
     console.error("Papers With Code search error:", err.message);
@@ -7447,8 +8656,9 @@ async function searchKaggle(query, type, sort, page, limit) {
   }
 
   const pageItems = results.slice(0, limit);
+  const hasMore = results.length > limit || pageItems.length === limit;
   return withResultMeta(pageItems, {
-    hasMore: results.length > limit || pageItems.length === limit,
+    hasMore,
   });
 }
 
@@ -8227,36 +9437,18 @@ app.get("/api/store/search", async (req, res) => {
     const pageResults = merged.slice(0, limitNum);
     let hasMore = typeof singleSourceMeta.hasMore === "boolean" ? singleSourceMeta.hasMore : false;
     const knownTotalCount = Number(singleSourceMeta.totalCount ?? NaN);
-    if (
-      isSingleSourceQuery &&
-      !Number.isFinite(knownTotalCount) &&
-      pageResults.length === limitNum
-    ) {
-      const lookaheadPromises = buildSourcePromises(pageNum + 1, limitNum);
-      const lookaheadSettled = await Promise.allSettled(lookaheadPromises);
-      hasMore = lookaheadSettled.some(
-        (result) => result.status === "fulfilled" && Array.isArray(result.value) && result.value.length > 0,
-      );
-    }
-    const knownBeforePage = (pageNum - 1) * limitNum;
-
-    // For single-source queries, provider APIs often don't return exact totals.
-    // We expose a rolling lower-bound total + hasMore-driven next page so users can
-    // continue browsing the full upstream catalog without local storage growth.
     const totalCount = isSingleSourceQuery
-      ? (
-        Number.isFinite(knownTotalCount)
-          ? knownTotalCount
-          : (hasMore ? knownBeforePage + pageResults.length + 1 : knownBeforePage + pageResults.length)
-      )
+      ? (Number.isFinite(knownTotalCount) ? knownTotalCount : null)
       : merged.length;
-    const totalPages = isSingleSourceQuery
-      ? (hasMore ? Math.max(pageNum + 1, Math.ceil(totalCount / limitNum)) : Math.max(1, Math.ceil(totalCount / limitNum)))
-      : (Math.ceil(totalCount / limitNum) || 1);
+
+    const totalPages = totalCount
+      ? Math.ceil(totalCount / limitNum)
+      : (hasMore ? pageNum + 1 : pageNum);
 
     const responseData = {
       results: pageResults,
       totalCount,
+      hasMore,
       totalPages,
       page: pageNum,
     };

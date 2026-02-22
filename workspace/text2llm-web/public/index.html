@@ -1,9 +1,9 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes" />
-    <title>Text2LLM — AI Virtual Lab</title>
+    <title>Text2LLM â€” AI Virtual Lab</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -14,6 +14,10 @@
     <link rel="stylesheet" href="/styles.css" />
     <!-- xterm.js CDN -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
+    <!-- Supabase Client -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- Cloudflare Turnstile -->
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
   </head>
   <body>
     <div class="app-layout">
@@ -187,7 +191,7 @@
             </a>
           </div>
 
-          <div class="user-profile">
+          <div class="user-profile" id="sidebar-user-profile" style="cursor: pointer;" title="Sign In / Account">
             <div class="avatar">
               <svg
                 width="20"
@@ -276,7 +280,7 @@
               <div class="chat-list-header">
                 <div class="chat-list-header-row">
                   <div class="chat-list-title">Project Sessions</div>
-                  <button type="button" class="chat-list-close-btn" id="chat-list-close-btn" title="Close chats" aria-label="Close chats">×</button>
+                  <button type="button" class="chat-list-close-btn" id="chat-list-close-btn" title="Close chats" aria-label="Close chats">Ã—</button>
                 </div>
                 <button type="button" class="chat-thread-new-btn" id="home-new-chat-btn">+ New Chat</button>
               </div>
@@ -301,27 +305,45 @@
               <div id="chat-messages" class="chat-messages"></div>
 
               <!-- Chat Input -->
-              <form id="idea-form" class="chat-input-area">
-                <button type="button" class="action-btn add-btn" title="Attach file">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <line x1="12" y1="5" x2="12" y2="19" />
-                    <line x1="5" y1="12" x2="19" y2="12" />
-                  </svg>
-                </button>
-
+                                          <form id="idea-form" class="chat-input-area gemini-style">
                 <textarea id="idea-input" placeholder="Ask anything about your project..." rows="1"></textarea>
+                
+                <div class="chat-input-toolbar">
+                  <div class="chat-input-tools-left">
+                    <button type="button" class="action-btn add-btn" title="Attach file">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="12" y1="5" x2="12" y2="19" />
+                        <line x1="5" y1="12" x2="19" y2="12" />
+                      </svg>
+                    </button>
+                  </div>
 
-                <button type="submit" class="action-btn submit-btn" id="send-btn" title="Send message">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <line x1="12" y1="19" x2="12" y2="5" />
-                    <polyline points="5 12 12 5 19 12" />
-                  </svg>
-                </button>
-                <button type="button" class="action-btn stop-btn" id="stop-btn" title="Stop generating" style="display:none;">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="6" y="6" width="12" height="12" rx="2" />
-                  </svg>
-                </button>
+                  <div class="chat-input-tools-right">
+                    <!-- Model Selector -->
+                    <div class="model-selector-wrapper" id="model-selector-wrapper">
+                      <button type="button" class="model-selector-btn" id="model-selector-btn" title="Select model">
+                        <span class="model-selector-icon" id="model-selector-icon">✦</span>
+                        <span class="model-selector-label" id="model-selector-label">Model</span>
+                        <span class="model-selector-chevron">▾</span>
+                      </button>
+                      <div class="model-selector-dropdown" id="model-selector-dropdown">
+                        <div class="model-selector-loading">Loading providers…</div>
+                      </div>
+                    </div>
+
+                    <button type="submit" class="action-btn submit-btn" id="send-btn" title="Send message">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="12" y1="19" x2="12" y2="5" />
+                        <polyline points="5 12 12 5 19 12" />
+                      </svg>
+                    </button>
+                    <button type="button" class="action-btn stop-btn" id="stop-btn" title="Stop generating" style="display:none;">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="6" y="6" width="12" height="12" rx="2" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
               </form>
             </section>
           </div>
@@ -684,7 +706,13 @@
                       <option value="json">JSON</option>
                       <option value="jsonl">JSONL</option>
                       <option value="csv">CSV</option>
+                      <option value="tsv">TSV</option>
                       <option value="txt">Text lines</option>
+                      <option value="markdown">Markdown</option>
+                      <option value="yaml">YAML</option>
+                      <option value="xml">XML</option>
+                      <option value="html">HTML</option>
+                      <option value="graph">Graph file</option>
                     </select>
                   </label>
                 </div>
@@ -854,7 +882,7 @@
           <div class="instances-container">
             <div class="instances-header">
               <h2 class="instances-title">Store</h2>
-              <p class="instances-subtitle">Discover AI resources — models, datasets, papers, code & tools</p>
+              <p class="instances-subtitle">Discover AI resources â€” models, datasets, papers, code & tools</p>
             </div>
 
             <!-- Search Bar -->
@@ -895,39 +923,39 @@
                 <span class="store-filter-label">Sources:</span>
                 <button class="store-source-chip active" data-store-source="all">All</button>
                 <button class="store-source-chip" data-store-source="huggingface">
-                  <span class="store-source-emoji">🤗</span> Hugging Face
+                  <span class="store-source-emoji">ðŸ¤—</span> Hugging Face
                 </button>
                 <button class="store-source-chip" data-store-source="github">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/></svg>
                   GitHub
                 </button>
                 <button class="store-source-chip" data-store-source="arxiv">
-                  <span class="store-source-emoji">📄</span> arXiv
+                  <span class="store-source-emoji">ðŸ“„</span> arXiv
                 </button>
                 <button class="store-source-chip" data-store-source="semanticscholar">
-                  <span class="store-source-emoji">🎓</span> Semantic Scholar
+                  <span class="store-source-emoji">ðŸŽ“</span> Semantic Scholar
                 </button>
                 <button class="store-source-chip" data-store-source="civitai">
-                  <span class="store-source-emoji">🎨</span> Civitai
+                  <span class="store-source-emoji">ðŸŽ¨</span> Civitai
                 </button>
                 <button class="store-source-chip" data-store-source="kaggle">
                   <img src="/logos/kaggle.svg" alt="Kaggle" width="13" height="13" style="vertical-align: -1px;" />
                   Kaggle
                 </button>
                 <button class="store-source-chip" data-store-source="paperswithcode">
-                  <span class="store-source-emoji">📝</span> Papers With Code
+                  <span class="store-source-emoji">ðŸ“</span> Papers With Code
                 </button>
                 <button class="store-source-chip" data-store-source="zenodo">
-                  <span class="store-source-emoji">🔬</span> Zenodo
+                  <span class="store-source-emoji">ðŸ”¬</span> Zenodo
                 </button>
                 <button class="store-source-chip" data-store-source="dblp">
-                  <span class="store-source-emoji">📚</span> DBLP
+                  <span class="store-source-emoji">ðŸ“š</span> DBLP
                 </button>
                 <button class="store-source-chip" data-store-source="ollama">
-                  <span class="store-source-emoji">🦙</span> Ollama
+                  <span class="store-source-emoji">ðŸ¦™</span> Ollama
                 </button>
                 <button class="store-source-chip" data-store-source="replicate">
-                  <span class="store-source-emoji">🔄</span> Replicate
+                  <span class="store-source-emoji">ðŸ”„</span> Replicate
                 </button>
               </div>
               <div class="store-sort-wrap">
@@ -1049,13 +1077,326 @@
               <h2 class="instances-title">Settings</h2>
               <p class="instances-subtitle">Configure your account and workspace preferences</p>
             </div>
-            <div class="coming-soon">
-              <h3>Settings</h3>
-              <p>Settings panel is coming soon.</p>
+            
+            <div class="settings-layout">
+              <!-- Sidebar Navigation -->
+              <div class="settings-sidebar">
+                <button class="settings-nav-btn active" data-settings-tab="agent">Text2LLM Agent</button>
+                <button class="settings-nav-btn" data-settings-tab="appearance">Appearance</button>
+                <button class="settings-nav-btn" data-settings-tab="account">Account</button>
+                <button class="settings-nav-btn" data-settings-tab="tools">Tools & Execution</button>
+                <button class="settings-nav-btn" data-settings-tab="skills">Skills & Extensions</button>
+                <button class="settings-nav-btn" data-settings-tab="diagnostics">Diagnostics</button>
+                <button class="settings-nav-btn" data-settings-tab="web-proxy">Web Proxy</button>
+              </div>
+
+              <!-- Content Area -->
+              <div class="settings-content-area">
+                
+                <!-- Text2LLM Agent Tab -->
+                <div class="settings-panel active" id="settings-panel-agent">
+                  <h3 class="settings-panel-title">Text2LLM Agent</h3>
+                  <div class="gpu-launch-form">
+                    <div class="gpu-form-row">
+                      <label class="gpu-form-label">
+                        <span>Primary Model</span>
+                        <input id="setting-agent-model" class="gpu-form-input" type="text" placeholder="e.g. google-gemini-cli/gemini-3-pro-preview" />
+                      </label>
+                      <label class="gpu-form-label">
+                        <span>Agent Workspace Directory</span>
+                        <input id="setting-agent-workspace" class="gpu-form-input" type="text" placeholder="e.g. c:/Users/.../workspace" />
+                      </label>
+                    </div>
+                    <div class="gpu-form-row">
+                      <label class="gpu-form-label">
+                        <span>Tool Profile</span>
+                        <select id="setting-tools-profile" class="gpu-form-select">
+                          <option value="coding">Coding</option>
+                          <option value="default">Default</option>
+                          <option value="minimal">Minimal</option>
+                        </select>
+                      </label>
+                      <label class="gpu-form-label">
+                        <span>Native Commands</span>
+                        <select id="setting-commands-native" class="gpu-form-select">
+                          <option value="auto">Auto</option>
+                          <option value="on">On</option>
+                          <option value="off">Off</option>
+                        </select>
+                      </label>
+                    </div>
+                    <label class="gpu-form-label">
+                      <span>Native Skills Commands</span>
+                      <select id="setting-commands-native-skills" class="gpu-form-select">
+                        <option value="auto">Auto</option>
+                        <option value="on">On</option>
+                        <option value="off">Off</option>
+                      </select>
+                    </label>
+
+                    <h4 style="margin-top: 24px; font-size: 0.9rem; color: var(--text);">Skills Pipeline</h4>
+                    <p style="font-size: 0.82rem; color: var(--text-dim); margin-bottom: 12px;">Enable or disable individual pipeline skills for the Text2LLM agent.</p>
+                    <div class="settings-skills-grid">
+                      <label class="settings-skill-toggle"><input type="checkbox" id="skill-data-pipeline" checked /><span>Data Pipeline</span></label>
+                      <label class="settings-skill-toggle"><input type="checkbox" id="skill-tokenizer-trainer" checked /><span>Tokenizer Trainer</span></label>
+                      <label class="settings-skill-toggle"><input type="checkbox" id="skill-model-architect" checked /><span>Model Architect</span></label>
+                      <label class="settings-skill-toggle"><input type="checkbox" id="skill-gpu-provisioner" checked /><span>GPU Provisioner</span></label>
+                      <label class="settings-skill-toggle"><input type="checkbox" id="skill-training-runner" checked /><span>Training Runner</span></label>
+                      <label class="settings-skill-toggle"><input type="checkbox" id="skill-wandb-tracker" checked /><span>W&amp;B Tracker</span></label>
+                      <label class="settings-skill-toggle"><input type="checkbox" id="skill-eval-bench" checked /><span>Eval Bench</span></label>
+                      <label class="settings-skill-toggle"><input type="checkbox" id="skill-model-publisher" checked /><span>Model Publisher</span></label>
+                      <label class="settings-skill-toggle"><input type="checkbox" id="skill-cloud-storage" checked /><span>Cloud Storage</span></label>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Appearance Tab -->
+                <div class="settings-panel" id="settings-panel-appearance">
+                  <h3 class="settings-panel-title">Appearance</h3>
+                  <p style="font-size:0.82rem;color:var(--text-dim);margin-bottom:16px;">Stored in your browser — applies to this device only.</p>
+                  <div class="gpu-launch-form">
+                    <label class="gpu-form-label">
+                      <span>UI Accent Color</span>
+                      <input id="setting-ui-seam" class="gpu-form-input" type="color" value="#00e5bf" style="height: 40px; padding: 4px;" />
+                    </label>
+                    <div class="gpu-form-row">
+                      <label class="gpu-form-label">
+                        <span>Assistant Name</span>
+                        <input id="setting-assistant-name" class="gpu-form-input" type="text" placeholder="e.g. Text2LLM" />
+                      </label>
+                      <label class="gpu-form-label">
+                        <span>Assistant Avatar URL</span>
+                        <input id="setting-assistant-avatar" class="gpu-form-input" type="url" placeholder="https://..." />
+                      </label>
+                    </div>
+
+                  </div>
+                </div>
+
+                <!-- Tools & Execution Tab -->
+                <div class="settings-panel" id="settings-panel-tools">
+                  <h3 class="settings-panel-title">Tools & Execution</h3>
+                  <div class="gpu-launch-form">
+                    <div class="gpu-form-row">
+                      <label class="gpu-form-label">
+                        <span>Shell Execution</span>
+                        <select id="setting-shell-enabled" class="gpu-form-select">
+                          <option value="true">Enabled</option>
+                          <option value="false">Disabled</option>
+                        </select>
+                      </label>
+                      <label class="gpu-form-label">
+                        <span>Shell Timeout (ms)</span>
+                        <input id="setting-shell-timeout" class="gpu-form-input" type="number" min="1000" placeholder="e.g. 120000" />
+                      </label>
+                    </div>
+                    <label class="gpu-form-label">
+                      <span>Tool Allowlist (comma separated)</span>
+                      <input id="setting-tools-allow" class="gpu-form-input" type="text" placeholder="* (All tools allowed)" />
+                    </label>
+                    <label class="gpu-form-label">
+                      <span>Tool Denylist (comma separated)</span>
+                      <input id="setting-tools-deny" class="gpu-form-input" type="text" placeholder="e.g. file_delete, format_drive" />
+                    </label>
+                    <h4 style="margin-top: 24px; font-size: 0.9rem; color: var(--text);">Browser Automation</h4>
+                    <div class="gpu-form-row">
+                      <label class="gpu-form-label">
+                        <span>Agent Browser</span>
+                        <select id="setting-browser-enabled" class="gpu-form-select">
+                          <option value="true">Enabled</option>
+                          <option value="false">Disabled</option>
+                        </select>
+                      </label>
+                      <label class="gpu-form-label">
+                        <span>Headless Mode</span>
+                        <select id="setting-browser-headless" class="gpu-form-select">
+                          <option value="true">Enabled (Hidden)</option>
+                          <option value="false">Disabled (Visible)</option>
+                        </select>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Skills & Extensions Tab -->
+                <div class="settings-panel" id="settings-panel-skills">
+                  <h3 class="settings-panel-title">Skills & Extensions</h3>
+                  <div class="gpu-launch-form">
+                    <label class="gpu-form-label">
+                      <span>Extra Skill Directories (comma separated paths)</span>
+                      <input id="setting-skills-dirs" class="gpu-form-input" type="text" placeholder="/path/to/custom/skills" />
+                    </label>
+                    <div class="gpu-form-row">
+                      <label class="gpu-form-label">
+                        <span>Live Reloading</span>
+                        <select id="setting-skills-watch" class="gpu-form-select">
+                          <option value="true">Enabled</option>
+                          <option value="false">Disabled</option>
+                        </select>
+                      </label>
+                      <label class="gpu-form-label">
+                        <span>Node Package Manager</span>
+                        <select id="setting-skills-npm" class="gpu-form-select">
+                          <option value="npm">npm</option>
+                          <option value="pnpm">pnpm</option>
+                          <option value="yarn">yarn</option>
+                          <option value="bun">bun</option>
+                        </select>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Diagnostics Tab -->
+                <div class="settings-panel" id="settings-panel-diagnostics">
+                  <h3 class="settings-panel-title">Diagnostics</h3>
+                  <div class="gpu-launch-form">
+                    <div class="gpu-form-row">
+                      <label class="gpu-form-label">
+                        <span>Log Level</span>
+                        <select id="setting-log-level" class="gpu-form-select">
+                          <option value="info">Info</option>
+                          <option value="debug">Debug</option>
+                          <option value="trace">Trace</option>
+                          <option value="warn">Warn</option>
+                          <option value="error">Error</option>
+                          <option value="silent">Silent</option>
+                        </select>
+                      </label>
+                      <label class="gpu-form-label">
+                        <span>Console Style</span>
+                        <select id="setting-log-style" class="gpu-form-select">
+                          <option value="pretty">Pretty</option>
+                          <option value="compact">Compact</option>
+                          <option value="json">JSON</option>
+                        </select>
+                      </label>
+                    </div>
+                    <label class="gpu-form-label">
+                      <span>Redact Sensitive Info</span>
+                      <select id="setting-log-redact" class="gpu-form-select">
+                        <option value="tools">Redact from tools</option>
+                        <option value="off">Off (Not recommended)</option>
+                      </select>
+                    </label>
+                    <h4 style="margin-top: 24px; font-size: 0.9rem; color: var(--text);">Telemetry (OTEL)</h4>
+                    <label class="gpu-form-label">
+                      <span>OpenTelemetry Provider</span>
+                      <select id="setting-otel-enabled" class="gpu-form-select">
+                        <option value="true">Enabled</option>
+                        <option value="false">Disabled</option>
+                      </select>
+                    </label>
+                  </div>
+                </div>
+
+                <!-- Account Tab -->
+                <div class="settings-panel" id="settings-panel-account">
+                  <h3 class="settings-panel-title">Account</h3>
+                  <p style="font-size:0.82rem;color:var(--text-dim);margin-bottom:16px;">Synced to the cloud via Supabase — available on all devices.</p>
+                  <div class="gpu-launch-form">
+                    <div class="gpu-form-row">
+                      <label class="gpu-form-label">
+                        <span>Display Name</span>
+                        <input id="setting-account-display-name" class="gpu-form-input" type="text" placeholder="Your name" />
+                      </label>
+                      <label class="gpu-form-label">
+                        <span>Email (read-only)</span>
+                        <input id="setting-account-email" class="gpu-form-input" type="email" placeholder="—" disabled style="opacity:0.6;cursor:not-allowed;" />
+                      </label>
+                    </div>
+                    <h4 style="margin-top:24px;font-size:0.9rem;color:var(--text);">Usage This Month</h4>
+                    <div class="settings-usage-grid">
+                      <div class="settings-usage-card">
+                        <span class="settings-usage-label">Requests</span>
+                        <span class="settings-usage-value" id="account-stat-requests">—</span>
+                      </div>
+                      <div class="settings-usage-card">
+                        <span class="settings-usage-label">Input Tokens</span>
+                        <span class="settings-usage-value" id="account-stat-input">—</span>
+                      </div>
+                      <div class="settings-usage-card">
+                        <span class="settings-usage-label">Output Tokens</span>
+                        <span class="settings-usage-value" id="account-stat-output">—</span>
+                      </div>
+                      <div class="settings-usage-card">
+                        <span class="settings-usage-label">Errors</span>
+                        <span class="settings-usage-value" id="account-stat-errors">—</span>
+                      </div>
+                    </div>
+                    <p id="account-load-status" style="font-size:0.8rem;color:var(--text-dim);margin-top:8px;"></p>
+                  </div>
+                </div>
+
+                <!-- Web Proxy Tab -->
+                <div class="settings-panel" id="settings-panel-web-proxy">
+                  <h3 class="settings-panel-title">Web Proxy</h3>
+                  <p style="font-size:0.82rem;color:var(--text-dim);margin-bottom:16px;">Stored in your browser — connects the frontend to the deployed proxy backend.</p>
+                  <div class="gpu-launch-form">
+                    <label class="gpu-form-label">
+                      <span>Proxy URL</span>
+                      <input id="setting-proxy-url" class="gpu-form-input" type="url" placeholder="https://your-proxy.fly.dev" />
+                    </label>
+                    <div class="gpu-form-row">
+                      <label class="gpu-form-label">
+                        <span>LLM Provider</span>
+                        <select id="setting-proxy-provider" class="gpu-form-select">
+                          <option value="openai">OpenAI</option>
+                          <option value="openrouter">OpenRouter</option>
+                          <option value="anthropic">Anthropic</option>
+                          <option value="google">Google</option>
+                        </select>
+                      </label>
+                      <label class="gpu-form-label">
+                        <span>Provider API Key</span>
+                        <input id="setting-proxy-api-key" class="gpu-form-input" type="password" placeholder="sk-..." autocomplete="off" />
+                      </label>
+                    </div>
+                    <label class="gpu-form-label">
+                      <span>Supabase Access Token</span>
+                      <input id="setting-proxy-supabase-token" class="gpu-form-input" type="password" placeholder="eyJ..." autocomplete="off" />
+                    </label>
+                    <label class="gpu-form-label">
+                      <span>Web Proxy Model</span>
+                      <input id="setting-proxy-model" class="gpu-form-input" type="text" placeholder="e.g. gpt-4.1-mini" />
+                    </label>
+                    <div style="margin-top:16px;display:flex;align-items:center;gap:12px;">
+                      <button id="settings-proxy-test-btn" class="ds-btn" type="button" style="min-width:140px;">Test Connection</button>
+                      <span id="proxy-test-status" style="font-size:0.82rem;"></span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Save Button Container -->
+                <div class="settings-actions">
+                    <button id="settings-save-btn" class="ds-btn ds-btn-primary" type="button">Save Preferences</button>
+                    <span id="settings-save-status" class="gpu-inline-status"></span>
+                </div>
+
+              </div>
             </div>
           </div>
         </div>
         <!-- /SETTINGS VIEW -->
+
+        <!-- Auth Modal -->
+        <div class="modal-overlay auth-modal" id="auth-modal" style="display:none; z-index: 9999;">
+          <div class="modal-content auth-modal-content" style="max-width: 400px; width: 100%; border-radius: 12px; border: 1px solid var(--border-color); background: var(--surface);">
+            <div class="modal-header">
+              <h3 style="margin: 0; font-size: 1.2rem; font-weight: 600;">Sign In / Sign Up</h3>
+              <button class="modal-close" id="auth-modal-close" style="background: none; border: none; font-size: 1.5rem; color: var(--text-dim); cursor: pointer;">&times;</button>
+            </div>
+            <div class="modal-body" style="display: flex; flex-direction: column; gap: 16px; padding: 24px;">
+              <input id="auth-email" class="gpu-form-input" type="email" placeholder="Email Address" style="width: 100%; box-sizing: border-box;" />
+              <input id="auth-password" class="gpu-form-input" type="password" placeholder="Password" style="width: 100%; box-sizing: border-box;" />
+              <div id="turnstile-widget" style="margin: 0 auto;"></div>
+              <button id="auth-signin-btn" class="ds-btn ds-btn-primary" style="width: 100%; justify-content: center; padding: 10px;">Sign In</button>
+              <button id="auth-signup-btn" class="ds-btn" style="width: 100%; justify-content: center; padding: 10px;">Sign Up</button>
+              <p id="auth-error-msg" class="gpu-inline-status" style="color: var(--danger, #ff4d4f); text-align: center; margin: 0; min-height: 20px;"></p>
+              <p id="auth-success-msg" class="gpu-inline-status" style="color: var(--success, #00e5bf); text-align: center; margin: 0; min-height: 20px;"></p>
+            </div>
+          </div>
+        </div>
 
       </main>
     </div>
@@ -1098,36 +1439,36 @@
         <div class="mobile-tools-sheet-subtitle">Open the rest of your workspace tools</div>
       </div>
       <button type="button" class="mobile-tools-sheet-item" data-view="notebook">
-        <span class="mobile-tools-sheet-icon">📓</span>
+        <span class="mobile-tools-sheet-icon">ðŸ““</span>
         <span class="mobile-tools-sheet-content">
           <span class="mobile-tools-sheet-label">Experiments</span>
           <span class="mobile-tools-sheet-hint">Notebook and execution</span>
         </span>
-        <span class="mobile-tools-sheet-chevron">›</span>
+        <span class="mobile-tools-sheet-chevron">â€º</span>
       </button>
       <button type="button" class="mobile-tools-sheet-item" data-view="projects">
-        <span class="mobile-tools-sheet-icon">📁</span>
+        <span class="mobile-tools-sheet-icon">ðŸ“</span>
         <span class="mobile-tools-sheet-content">
           <span class="mobile-tools-sheet-label">Project Vault</span>
           <span class="mobile-tools-sheet-hint">Manage projects</span>
         </span>
-        <span class="mobile-tools-sheet-chevron">›</span>
+        <span class="mobile-tools-sheet-chevron">â€º</span>
       </button>
       <button type="button" class="mobile-tools-sheet-item" data-view="store">
-        <span class="mobile-tools-sheet-icon">🧠</span>
+        <span class="mobile-tools-sheet-icon">ðŸ§ </span>
         <span class="mobile-tools-sheet-content">
           <span class="mobile-tools-sheet-label">Model Library</span>
           <span class="mobile-tools-sheet-hint">Browse models and resources</span>
         </span>
-        <span class="mobile-tools-sheet-chevron">›</span>
+        <span class="mobile-tools-sheet-chevron">â€º</span>
       </button>
       <button type="button" class="mobile-tools-sheet-item" data-view="settings">
-        <span class="mobile-tools-sheet-icon">⚙️</span>
+        <span class="mobile-tools-sheet-icon">âš™ï¸</span>
         <span class="mobile-tools-sheet-content">
           <span class="mobile-tools-sheet-label">Settings</span>
           <span class="mobile-tools-sheet-hint">Workspace preferences</span>
         </span>
-        <span class="mobile-tools-sheet-chevron">›</span>
+        <span class="mobile-tools-sheet-chevron">â€º</span>
       </button>
     </div>
 
@@ -1144,6 +1485,9 @@
           <span id="status-runtime">Runtime: Offline</span>
         </button>
         <div class="status-item">
+          <span id="status-active-view"></span>
+        </div>
+        <div class="status-item">
           <span id="status-stream">Agent: Ready</span>
         </div>
         <div class="status-item"><span id="status-project">No project</span></div>
@@ -1156,6 +1500,7 @@
           <span id="status-primary-action-label">Run</span>
         </button>
       </div>
+    </footer>
     </footer>
 
 

@@ -13,8 +13,6 @@ const CHAT_THREADS_STORAGE_KEY = "text2llm.chatThreads.v1";
 const CHAT_LIST_COLLAPSED_STORAGE_KEY = "text2llm.chatListCollapsed.v1";
 const ACTIVE_PROJECT_STORAGE_KEY = "text2llm.activeProject.v1";
 const ANSI_ESCAPE_REGEX = /\u001b\[[0-9;]*m/g;
-let thinkingTicker = null;
-let thinkingStartedAt = 0;
 let lastThinkingStatus = "Thinking...";
 let manualMissionStage = null;
 let runtimeSocketState = "idle";
@@ -154,7 +152,7 @@ async function readApiResponse(response) {
     }
   }
 
-  if (!response.ok) {
+  if (!response.ok && response.status !== 304) {
     const errorMessage =
       parsed?.error ||
       parsed?.details ||
@@ -1281,30 +1279,14 @@ function addThinkingIndicator() {
   bubble.innerHTML = `
     <div class="thinking-status">
       <div class="thinking-dots"><span></span><span></span><span></span></div>
-      Working...
+      Connecting...
     </div>
     <div class="thinking-actions"></div>
-    <div class="thinking-elapsed">0s</div>
   `;
 
   msg.appendChild(avatar);
   msg.appendChild(bubble);
   chatMessages.appendChild(msg);
-
-  thinkingStartedAt = Date.now();
-  if (thinkingTicker) {
-    clearInterval(thinkingTicker);
-  }
-  thinkingTicker = setInterval(() => {
-    const elapsedEl = document.querySelector("#thinking-msg .thinking-elapsed");
-    if (!elapsedEl || !thinkingStartedAt) return;
-    const seconds = Math.floor((Date.now() - thinkingStartedAt) / 1000);
-    if (seconds >= 60) {
-      elapsedEl.textContent = `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
-    } else {
-      elapsedEl.textContent = `${seconds}s`;
-    }
-  }, 1000);
 
   scrollToBottom();
 }
@@ -1325,37 +1307,102 @@ function updateThinkingIndicator(statusText) {
   }
 }
 
+function ensureActionContainer() {
+  let container = document.getElementById("action-stream-container");
+  if (!container) {
+    container = document.createElement("div");
+    container.id = "action-stream-container";
+    container.className = "action-stream-container";
+
+    const header = document.createElement("div");
+    header.className = "action-stream-header";
+    header.innerHTML = `
+      <div class="action-stream-title">
+        <span class="action-stream-spinner">⟳</span>
+        <span>Agent executing task</span>
+      </div>
+      <button class="action-stream-toggle">
+        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="18 15 12 9 6 15"></polyline>
+        </svg>
+      </button>
+    `;
+    
+    const body = document.createElement("ol");
+    body.className = "action-stream-body";
+
+    header.querySelector(".action-stream-toggle").addEventListener("click", () => {
+      container.classList.toggle("collapsed");
+    });
+
+    container.appendChild(header);
+    container.appendChild(body);
+    chatMessages.appendChild(container);
+  }
+  return container.querySelector(".action-stream-body");
+}
+
+function deactivatePreviousSteps(bodyContainer) {
+  const activeSteps = bodyContainer.querySelectorAll(".action-step.active");
+  activeSteps.forEach(step => {
+    step.classList.remove("active");
+  });
+}
+
+function syncWorkspacesWithAgent(tool) {
+  if (!tool) return;
+  const t = String(tool).toLowerCase();
+  
+  // Terminal tools
+  if (t === "bash" || t === "powershell" || t === "python_script" || t === "run_command" || t === "send_command_input") {
+    // Add a subtle indicator or just write to terminal in background
+    if (window.terminal) {
+      window.terminal.write(`\r\n\x1b[35m[Agent Action]\x1b[0m Executing ${tool}...\r\n`);
+    }
+  }
+  // Notebook tools
+  else if (t.includes("notebook") || t.includes("cell") || t.includes("jupyter") || t.includes("multi_replace_file_content") || t.includes("write_to_file") || t.includes("replace_file_content")) {
+    // Sync data in background without forcing a tab switch
+    try { if (typeof nbLoadCells === "function") nbLoadCells(); } catch (e) {}
+  }
+  // Dataset tools
+  else if (t.includes("dataset") || t.includes("data_studio") || t.includes("clean") || t.includes("chunk")) {
+    // Sync data in background without forcing a tab switch
+    try { if (typeof refreshDataStudioWorkspace === "function") refreshDataStudioWorkspace(); } catch (e) {}
+  }
+}
+
 function handleThinkingEvent(data) {
-  const actionsEl = document.querySelector("#thinking-msg .thinking-actions");
-  if (!actionsEl) return;
+  const body = ensureActionContainer();
 
   if (data.phase === "start" && data.tool) {
-    const row = document.createElement("div");
-    row.className = "thinking-action running";
+    syncWorkspacesWithAgent(data.tool);
+    deactivatePreviousSteps(body);
+    const row = document.createElement("li");
+    row.className = "action-step active running";
     row.dataset.tool = data.tool;
     row.innerHTML = `
-      <span class="thinking-action-icon">${getToolIcon(data.tool)}</span>
-      <span class="thinking-action-label">${getToolLabel(data.tool, data.meta)}</span>
-      <span class="thinking-action-status">⟳</span>
+      <div class="action-step-content">
+        <span class="action-label">Running ${getToolLabel(data.tool, data.meta)}</span>
+        <span class="action-spinner">⟳</span>
+      </div>
     `;
-    actionsEl.appendChild(row);
-    actionsEl.scrollTop = actionsEl.scrollHeight;
-
-    // Update thinking status header with action count
-    const count = actionsEl.querySelectorAll(".thinking-action").length;
-    updateThinkingIndicator(`${count} action${count !== 1 ? "s" : ""}`);
+    body.appendChild(row);
     scrollToBottom();
   }
 
   if (data.phase === "end" && data.tool) {
-    // Find the last running action with this tool name
-    const rows = actionsEl.querySelectorAll(`.thinking-action.running[data-tool="${data.tool}"]`);
+    const rows = body.querySelectorAll(`.action-step.running[data-tool="${data.tool}"]`);
     const row = rows[rows.length - 1];
     if (row) {
       row.classList.remove("running");
       row.classList.add("done");
-      const statusIcon = row.querySelector(".thinking-action-status");
-      if (statusIcon) statusIcon.textContent = "✓";
+      const spinner = row.querySelector(".action-spinner");
+      if (spinner) spinner.textContent = "✓";
+      const label = row.querySelector(".action-label");
+      if (label && label.textContent.startsWith("Running ")) {
+        label.textContent = label.textContent.replace("Running ", "Finished ");
+      }
     }
   }
 
@@ -1364,24 +1411,8 @@ function handleThinkingEvent(data) {
   }
 }
 
-function updateProgressSummary() {
-  const actionsEl = document.querySelector("#thinking-msg .thinking-actions");
-  if (!actionsEl) return;
-  const total = actionsEl.querySelectorAll(".thinking-action").length;
-  if (total === 0) return;
-  const done = actionsEl.querySelectorAll(".thinking-action.done").length;
-  const running = actionsEl.querySelectorAll(".thinking-action.running").length;
-  if (running > 0) {
-    updateThinkingIndicator(`${done}/${total} steps complete`);
-  } else {
-    updateThinkingIndicator(`${done}/${total} steps complete`);
-  }
-}
-
 function handleProgressEvent(data) {
-  const actionsEl = document.querySelector("#thinking-msg .thinking-actions");
-  if (!actionsEl) return;
-
+  const body = ensureActionContainer();
   const stepId = String(data.id || "").trim();
   const labelText = sanitizeAgentText(data.label || data.detail || stepId || "Working");
   const detailText = sanitizeAgentText(data.detail || "");
@@ -1389,55 +1420,60 @@ function handleProgressEvent(data) {
   const state = String(data.state || "running").toLowerCase();
 
   if (!stepId) {
-    if (label) {
-      updateThinkingIndicator(label);
-    }
+    if (label) updateThinkingIndicator(label);
     return;
   }
 
-  let row = actionsEl.querySelector(`.thinking-action[data-progress-id="${stepId}"]`);
+  let row = body.querySelector(`.action-step[data-progress-id="${stepId}"]`);
   if (!row) {
-    row = document.createElement("div");
-    row.className = "thinking-action running";
+    deactivatePreviousSteps(body);
+    row = document.createElement("li");
+    row.className = "action-step active running";
     row.dataset.progressId = stepId;
     row.innerHTML = `
-      <span class="thinking-action-icon">⚙️</span>
-      <span class="thinking-action-label"></span>
-      <span class="thinking-action-status">⟳</span>
+      <div class="action-step-content">
+        <span class="action-label"></span>
+        <span class="action-spinner">⟳</span>
+      </div>
     `;
-    actionsEl.appendChild(row);
+    body.appendChild(row);
   }
 
-  const labelEl = row.querySelector(".thinking-action-label");
-  if (labelEl) {
-    labelEl.textContent = label || stepId;
-  }
+  const labelEl = row.querySelector(".action-label");
+  if (labelEl) labelEl.textContent = label || stepId;
 
-  const statusEl = row.querySelector(".thinking-action-status");
+  const spinner = row.querySelector(".action-spinner");
   row.classList.remove("running", "done", "error");
+  
   if (state === "done") {
     row.classList.add("done");
-    if (statusEl) statusEl.textContent = "✓";
+    if (spinner) spinner.textContent = "✓";
   } else if (state === "error") {
     row.classList.add("error");
-    if (statusEl) statusEl.textContent = "!";
+    if (spinner) spinner.textContent = "!";
   } else {
     row.classList.add("running");
-    if (statusEl) statusEl.textContent = "⟳";
+    if (spinner) spinner.textContent = "⟳";
   }
 
-  updateProgressSummary();
-  actionsEl.scrollTop = actionsEl.scrollHeight;
   scrollToBottom();
 }
 
-function removeThinkingIndicator() {
-  if (thinkingTicker) {
-    clearInterval(thinkingTicker);
-    thinkingTicker = null;
+function finalizeActionContainer() {
+  const container = document.getElementById("action-stream-container");
+  if (container) {
+    container.removeAttribute("id");
+    container.classList.add("action-stream-finalized", "collapsed");
+    const title = container.querySelector(".action-stream-title span:last-child");
+    if (title) title.textContent = "Agent completed runtime tasks";
+    const headerSpinner = container.querySelector(".action-stream-spinner");
+    if (headerSpinner) headerSpinner.textContent = "✓";
+    deactivatePreviousSteps(container.querySelector(".action-stream-body"));
   }
-  thinkingStartedAt = 0;
-  lastThinkingStatus = "Working...";
+}
+
+function removeThinkingIndicator() {
+  lastThinkingStatus = "Connecting...";
   const el = document.getElementById("thinking-msg");
   if (el) el.remove();
 }
@@ -1449,20 +1485,47 @@ function scrollToBottom() {
 }
 
 function renderMarkdown(text) {
+  let processed = text;
+  const openCount = (processed.match(/<think>/g) || []).length;
+  const closedCount = (processed.match(/<\/think>/g) || []).length;
+  if (openCount > closedCount) {
+    processed += "\n</think>";
+  }
+
   if (typeof marked !== "undefined" && marked.parse) {
     try {
-      return marked.parse(text, { breaks: true, gfm: true });
+      return marked.parse(processed, { breaks: true, gfm: true });
     } catch (_) {
-      return escapeHtml(text);
+      return escapeHtml(processed);
     }
   }
-  return escapeHtml(text).replace(/\n/g, "<br>");
+  return escapeHtml(processed).replace(/\n/g, "<br>");
 }
 
 function escapeHtml(text) {
   const div = document.createElement("div");
   div.textContent = text;
   return div.innerHTML;
+}
+
+function renderChatErrorHTML(data) {
+  const title = sanitizeAgentText(data?.title || "Request failed");
+  const message = sanitizeAgentText(data?.message || "An error occurred");
+  const hints = Array.isArray(data?.hints) ? data.hints.map((item) => sanitizeAgentText(item)).filter(Boolean) : [];
+
+  let html = `<div class="error-message"><div><strong>⚠ ${escapeHtml(title)}</strong></div>`;
+  html += `<div>${escapeHtml(message).replace(/\n/g, "<br>")}</div>`;
+
+  if (hints.length > 0) {
+    html += "<ul class=\"error-hints\">";
+    for (const hint of hints) {
+      html += `<li>${escapeHtml(hint)}</li>`;
+    }
+    html += "</ul>";
+  }
+
+  html += "</div>";
+  return html;
 }
 
 function setStreamingState(streaming) {
@@ -1754,27 +1817,22 @@ async function sendMessage(prompt) {
               {
               const cleanStatus = sanitizeAgentText(data.text);
               if (!cleanStatus) break;
-              if (!botBubble) {
-                updateThinkingIndicator(cleanStatus);
-              }
+              updateThinkingIndicator(cleanStatus);
               break;
               }
 
             case "thinking":
-              if (!botBubble) {
-                handleThinkingEvent(data);
-              }
+              handleThinkingEvent(data);
               break;
 
             case "progress":
-              if (!botBubble) {
-                handleProgressEvent(data);
-              }
+              handleProgressEvent(data);
               break;
 
             case "heartbeat":
               if (!botBubble) {
-                updateThinkingIndicator(lastThinkingStatus || "Still working...");
+                const heartbeatText = sanitizeAgentText(data.text || "");
+                updateThinkingIndicator(heartbeatText || lastThinkingStatus || "Still working...");
               }
               break;
 
@@ -1783,7 +1841,7 @@ async function sendMessage(prompt) {
               if (!botBubble) {
                 botBubble = addMessage("bot", "");
               }
-              botBubble.innerHTML = `<div class="error-message">⚠ ${escapeHtml(data.message || "An error occurred")}</div>`;
+              botBubble.innerHTML = renderChatErrorHTML(data);
               break;
 
             case "done":
@@ -1819,6 +1877,9 @@ async function sendMessage(prompt) {
     if (fullText) {
       chatHistory.push({ role: "assistant", content: fullText });
     }
+
+    // Clean up temporary action stream container explicitly so the next message creates a new one
+    finalizeActionContainer();
 
     // If no text was received and no bubble created, show generic message
     if (!botBubble && !document.getElementById("thinking-msg")) {
@@ -2354,6 +2415,7 @@ function createProviderCard(provider) {
     <div class="provider-card-body">
       <h4 class="provider-name">${provider.name}</h4>
       <p class="provider-desc">${provider.description}</p>
+      ${provider.url ? `<a href="${provider.url}" target="_blank" class="provider-creds-link" onclick="event.stopPropagation()">Get Credentials ↗</a>` : ""}
     </div>
     <div class="provider-card-footer">
       <button class="provider-configure-btn" data-provider-id="${provider.id}">
@@ -2363,6 +2425,16 @@ function createProviderCard(provider) {
         <button class="provider-test-btn" data-provider-id="${provider.id}" style="margin-left: 8px; background: transparent; border: 1px solid var(--border); color: var(--text-muted); cursor: pointer; padding: 6px 12px; border-radius: 4px; font-size: 12px;">
           Test
         </button>` : ""}
+      ${provider.isPrimary ? `
+        <div style="margin-left: auto; font-size: 12px; font-weight: 500; color: var(--primary); display: flex; align-items: center; gap: 4px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          Primary
+        </div>
+      ` : (provider.configured ? `
+        <button class="provider-primary-btn" data-provider-id="${provider.id}" style="margin-left: 8px; background: transparent; border: 1px solid var(--primary); color: var(--primary); cursor: pointer; padding: 6px 12px; border-radius: 4px; font-size: 12px; transition: all 0.2s;">
+          Make Primary
+        </button>
+      ` : "")}
     </div>
   `;
 
@@ -2384,7 +2456,10 @@ function createProviderCard(provider) {
         const res = await fetch("/api/auth/test", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ providerId: provider.id })
+          body: JSON.stringify({
+            providerId: provider.id,
+            optionId: provider.selectedOptionId || undefined,
+          })
         });
         const data = await res.json();
         
@@ -2436,6 +2511,35 @@ function createProviderCard(provider) {
              }, 3000);
           }
         }, 1000);
+      }
+    });
+  }
+
+  const primaryBtn = card.querySelector(".provider-primary-btn");
+  if (primaryBtn) {
+    primaryBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const originalText = primaryBtn.textContent;
+      primaryBtn.textContent = "Setting...";
+      primaryBtn.disabled = true;
+
+      try {
+        const res = await fetch("/api/instances/primary", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ category: "ai", providerId: provider.id })
+        });
+        const data = await res.json();
+        
+        if (data.ok) {
+           loadProviders(); // Refresh list to update UI
+        } else {
+           throw new Error(data.error);
+        }
+      } catch (err) {
+        primaryBtn.textContent = originalText;
+        primaryBtn.disabled = false;
+        alert("Failed to set primary provider: " + err.message);
       }
     });
   }
@@ -2519,7 +2623,7 @@ function showApiKeyModal(provider) {
             <span>Connect via Browser</span>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
           </button>
-          <div id="oauth-logs" class="oauth-logs" style="display:none; margin-top:12px; background:#111; padding:8px; border-radius:4px; font-family:monospace; font-size:11px; color:#aaa; max-height:150px; overflow-y:auto; white-space:pre-wrap;"></div>
+          <div id="oauth-logs" class="oauth-logs" style="display:none; margin-top:12px; padding:12px; border-radius:6px; font-size:13px; line-height:1.4;"></div>
         </div>
       `;
       saveBtn.style.display = "none";
@@ -2530,8 +2634,8 @@ function showApiKeyModal(provider) {
         
         oauthBtn.disabled = true;
         oauthBtn.textContent = "Starting...";
-        logsEl.style.display = "block";
-        logsEl.textContent = "Requesting OAuth session...";
+        logsEl.style.display = "none";
+        logsEl.textContent = "";
 
         try {
           const res = await fetch("/api/instances/provider/oauth", {
@@ -2560,21 +2664,12 @@ function showApiKeyModal(provider) {
 
               const job = statusData.job;
               
-              // Update logs
-              if (job.logs && job.logs.length > 0) {
-                 logsEl.innerHTML = job.logs.map(log => {
-                   const color = log.level === "error" ? "#f85149" : (log.level === "warn" ? "#d29922" : "#8b949e");
-                   // Detect URLs and make them clickable
-                   const text = escapeHtml(log.message).replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" style="color:#58a6ff;text-decoration:underline;">$1</a>');
-                   return `<div style="color:${color}; margin-bottom:2px;">${text}</div>`;
-                 }).join("");
-                 logsEl.scrollTop = logsEl.scrollHeight;
-              }
-
+              // We no longer stream raw terminal logs to the user UI
               if (job.status === "completed") {
                 clearInterval(pollInterval);
                 oauthBtn.textContent = "✓ Connected";
                 oauthBtn.classList.add("success");
+                logsEl.style.display = "none";
                 setTimeout(() => {
                   closeModal();
                   loadProviders();
@@ -2583,7 +2678,24 @@ function showApiKeyModal(provider) {
                 clearInterval(pollInterval);
                 oauthBtn.textContent = "Retry Connection";
                 oauthBtn.disabled = false;
-                logsEl.innerHTML += `<div style="color:#f85149; font-weight:bold; margin-top:4px;">PRO TIP: If you see a URL above, click it to authenticate!</div>`;
+                
+                // Show clean error message
+                logsEl.style.display = "block";
+                logsEl.style.background = "#ffebe9";
+                logsEl.style.color = "#cf222e";
+                logsEl.style.border = "1px solid rgba(255,129,130,0.4)";
+                
+                // Find the first actual error in the logs, or use a generic one
+                const mainErr = job.logs?.find(l => l.level === "error")?.message || "Authentication process failed or timed out.";
+                const cleanErr = mainErr.split("\\n")[0].replace(/Process error: /i, "");
+                
+                logsEl.innerHTML = `
+                  <div style="font-weight:600; margin-bottom:4px;">Connection Failed</div>
+                  <div>${escapeHtml(cleanErr)}</div>
+                  <div style="margin-top:8px; font-size:12px; color:#666;">
+                    <strong>Solution:</strong> Check your local system terminal for detailed logs or <a href="#" style="color:#0969da; text-decoration:underline;" onclick="alert('Running text2llm doctor can diagnose local configuration issues.')">run the diagnostic tool</a>.
+                  </div>
+                `;
               }
             } catch (err) {
               console.error("Poll error", err);
@@ -3496,10 +3608,23 @@ function createGpuProviderCard(provider) {
     <div class="gpu-prov-info">
       <h4 class="gpu-prov-name">${provider.name}</h4>
       <p class="gpu-prov-desc">${provider.description}</p>
+      ${provider.url ? `<a href="${provider.url}" target="_blank" class="provider-creds-link" onclick="event.stopPropagation()">Get Credentials ↗</a>` : ""}
     </div>
-    <button class="gpu-prov-action" data-provider-id="${provider.id}">
-      ${isConfigured ? "Update Credentials" : "Configure"}
-    </button>
+    <div style="display: flex; gap: 8px; margin-top: 12px; width: 100%;">
+      <button class="gpu-prov-action" data-provider-id="${provider.id}" style="flex: 1;">
+        ${isConfigured ? "Update Credentials" : "Configure"}
+      </button>
+      ${provider.isPrimary ? `
+        <div style="font-size: 12px; font-weight: 500; color: var(--primary); display: flex; align-items: center; justify-content: center; gap: 4px; border: 1px solid var(--primary); padding: 0 12px; border-radius: 6px; background: transparent;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          Primary
+        </div>
+      ` : (isConfigured ? `
+        <button class="gpu-prov-primary-btn" data-provider-id="${provider.id}" style="background: transparent; border: 1px solid var(--primary); color: var(--primary); cursor: pointer; padding: 0 12px; border-radius: 6px; font-size: 12px; font-weight: 500; transition: all 0.2s;">
+          Make Primary
+        </button>
+      ` : "")}
+    </div>
   `;
 
   const configBtn = card.querySelector(".gpu-prov-action");
@@ -3513,6 +3638,35 @@ function createGpuProviderCard(provider) {
   card.addEventListener("click", () => {
     setActiveGpuProvider(provider.id);
   });
+
+  const primaryBtn = card.querySelector(".gpu-prov-primary-btn");
+  if (primaryBtn) {
+    primaryBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const originalText = primaryBtn.textContent;
+      primaryBtn.textContent = "Setting...";
+      primaryBtn.disabled = true;
+
+      try {
+        const res = await fetch("/api/instances/primary", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ category: "gpu", providerId: provider.id })
+        });
+        const data = await res.json();
+        
+        if (data.ok) {
+           loadGpuProviders(); // Refresh list to update UI
+        } else {
+           throw new Error(data.error);
+        }
+      } catch (err) {
+        primaryBtn.textContent = originalText;
+        primaryBtn.disabled = false;
+        alert("Failed to set primary GPU provider: " + err.message);
+      }
+    });
+  }
 
   return card;
 }
@@ -3790,10 +3944,24 @@ function renderStorageProviderGrid() {
       <div class="gpu-prov-info">
         <h4 class="gpu-prov-name">${escapeHtml(provider.name)}</h4>
         <p class="gpu-prov-desc">${modeLabel}${isConfigured ? ` · ${usedText} used` : ""}</p>
+        ${provider.url ? `<a href="${provider.url}" target="_blank" class="provider-creds-link" onclick="event.stopPropagation()">Get Credentials ↗</a>` : ""}
       </div>
-      <button class="gpu-prov-action" data-provider-id="${provider.id}">
-        ${isConfigured ? "Settings" : (provider.supportsOAuth ? "Connect OAuth" : "Configure")}
-      </button>
+      </div>
+      <div style="display: flex; gap: 8px; margin-top: 12px; width: 100%;">
+        <button class="gpu-prov-action" data-provider-id="${provider.id}" style="flex: 1;">
+          ${isConfigured ? "Settings" : (provider.supportsOAuth ? "Connect OAuth" : "Configure")}
+        </button>
+        ${provider.isPrimary ? `
+          <div style="font-size: 12px; font-weight: 500; color: var(--primary); display: flex; align-items: center; justify-content: center; gap: 4px; border: 1px solid var(--primary); padding: 0 12px; border-radius: 6px; background: transparent;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            Primary
+          </div>
+        ` : (isConfigured ? `
+          <button class="gpu-prov-primary-btn" data-provider-id="${provider.id}" style="background: transparent; border: 1px solid var(--primary); color: var(--primary); cursor: pointer; padding: 0 12px; border-radius: 6px; font-size: 12px; font-weight: 500; transition: all 0.2s;">
+            Make Primary
+          </button>
+        ` : "")}
+      </div>
     `;
 
     const configBtn = card.querySelector(".gpu-prov-action");
@@ -3801,6 +3969,35 @@ function renderStorageProviderGrid() {
       e.stopPropagation();
       showStorageProviderModal(provider);
     });
+
+    const primaryBtn = card.querySelector(".gpu-prov-primary-btn");
+    if (primaryBtn) {
+      primaryBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const originalText = primaryBtn.textContent;
+        primaryBtn.textContent = "Setting...";
+        primaryBtn.disabled = true;
+
+        try {
+          const res = await fetch("/api/instances/primary", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ category: "storage", providerId: provider.id })
+          });
+          const data = await res.json();
+          
+          if (data.ok) {
+             loadStorageState(); // Refresh list to update UI
+          } else {
+             throw new Error(data.error);
+          }
+        } catch (err) {
+          primaryBtn.textContent = originalText;
+          primaryBtn.disabled = false;
+          alert("Failed to set primary Storage provider: " + err.message);
+        }
+      });
+    }
 
     providerGrid.appendChild(card);
   });
@@ -4649,6 +4846,117 @@ function setDataStudioStatus(message, level = "") {
   }
 }
 
+const DATA_STUDIO_INLINE_UPLOAD_MAX_BYTES = 2 * 1024 * 1024;
+
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Failed to read file"));
+    reader.readAsDataURL(file);
+  });
+}
+
+function isTextLikeUpload(file, selectedFormat = "auto") {
+  const explicitFormat = String(selectedFormat || "auto").toLowerCase();
+  if (explicitFormat !== "auto") {
+    return ["json", "jsonl", "csv", "tsv", "txt", "markdown", "yaml", "xml", "html", "graph"].includes(explicitFormat);
+  }
+
+  const mime = String(file?.type || "").toLowerCase();
+  const name = String(file?.name || "").toLowerCase();
+  if (mime.startsWith("text/")) return true;
+  if (mime.includes("json") || mime.includes("xml") || mime.includes("yaml") || mime.includes("csv")) return true;
+  return (
+    name.endsWith(".json") ||
+    name.endsWith(".jsonl") ||
+    name.endsWith(".csv") ||
+    name.endsWith(".tsv") ||
+    name.endsWith(".txt") ||
+    name.endsWith(".md") ||
+    name.endsWith(".markdown") ||
+    name.endsWith(".yaml") ||
+    name.endsWith(".yml") ||
+    name.endsWith(".xml") ||
+    name.endsWith(".html") ||
+    name.endsWith(".htm") ||
+    name.endsWith(".graphml") ||
+    name.endsWith(".gexf") ||
+    name.endsWith(".dot") ||
+    name.endsWith(".gml")
+  );
+}
+
+function safePreviewSrc(url) {
+  const value = String(url || "").trim();
+  if (!value) return "";
+  if (/^data:/i.test(value)) return value;
+  if (/^https?:\/\//i.test(value)) return value;
+  return "";
+}
+
+function renderDataStudioCellValue(row, column) {
+  const value = row?.[column];
+  if (value == null) {
+    return { html: "", editable: true, raw: "" };
+  }
+
+  if (typeof value === "number" || typeof value === "boolean") {
+    return { html: escapeHtml(String(value)), editable: true, raw: String(value) };
+  }
+
+  if (typeof value === "object") {
+    const serialized = JSON.stringify(value);
+    return { html: `<code>${escapeHtml(serialized)}</code>`, editable: false, raw: serialized };
+  }
+
+  const raw = String(value);
+  const source = safePreviewSrc(raw);
+  const isImage = /^data:image\//i.test(source) || /^https?:\/\/.+\.(png|jpg|jpeg|gif|webp|svg)(\?|#|$)/i.test(source);
+  const isAudio = /^data:audio\//i.test(source) || /^https?:\/\/.+\.(mp3|wav|ogg|m4a|flac)(\?|#|$)/i.test(source);
+  const isVideo = /^data:video\//i.test(source) || /^https?:\/\/.+\.(mp4|webm|mov|mkv)(\?|#|$)/i.test(source);
+  const isDoc = /^data:application\/pdf/i.test(source) || /^https?:\/\/.+\.(pdf)(\?|#|$)/i.test(source);
+
+  if (isImage) {
+    return {
+      html: `<img class="ds-cell-preview-image" src="${escapeHtml(source)}" alt="image preview" />`,
+      editable: false,
+      raw,
+    };
+  }
+  if (isAudio) {
+    return {
+      html: `<audio class="ds-cell-preview-audio" controls src="${escapeHtml(source)}"></audio>`,
+      editable: false,
+      raw,
+    };
+  }
+  if (isVideo) {
+    return {
+      html: `<video class="ds-cell-preview-video" controls src="${escapeHtml(source)}"></video>`,
+      editable: false,
+      raw,
+    };
+  }
+  if (isDoc) {
+    return {
+      html: `<a class="ds-cell-preview-doc" href="${escapeHtml(source)}" target="_blank" rel="noopener noreferrer">Open document</a>`,
+      editable: false,
+      raw,
+    };
+  }
+
+  if (/^https?:\/\//i.test(raw)) {
+    return {
+      html: `<a href="${escapeHtml(raw)}" target="_blank" rel="noopener noreferrer">${escapeHtml(raw)}</a>`,
+      editable: false,
+      raw,
+    };
+  }
+
+  return { html: escapeHtml(raw), editable: true, raw };
+}
+
 function getSelectedDatasetSummary() {
   return dataStudioState.datasets.find((item) => item.id === dataStudioState.selectedDatasetId) || null;
 }
@@ -4788,7 +5096,13 @@ function renderDataStudioTable() {
     tableBody.innerHTML = rows.map((row) => {
       const rowId = String(row?.__rowId || "");
       const cells = columns.map((column) => (
-        `<td class="ds-editable-cell" contenteditable="true" data-row-id="${escapeHtml(rowId)}" data-column="${escapeHtml(column)}" data-original="${escapeHtml(String(row?.[column] ?? ""))}">${escapeHtml(String(row?.[column] ?? ""))}</td>`
+        (() => {
+          const rendered = renderDataStudioCellValue(row, column);
+          const editableClass = rendered.editable ? "ds-editable-cell" : "";
+          const editableAttr = rendered.editable ? 'contenteditable="true"' : "";
+          const originalAttr = rendered.editable ? ` data-original="${escapeHtml(rendered.raw)}"` : "";
+          return `<td class="${editableClass}" ${editableAttr} data-row-id="${escapeHtml(rowId)}" data-column="${escapeHtml(column)}"${originalAttr}>${rendered.html}</td>`;
+        })()
       )).join("");
       return `<tr>${cells}</tr>`;
     }).join("");
@@ -4931,6 +5245,7 @@ async function createDatasetFromInputs() {
   const name = String(nameInput?.value || "").trim();
   let content = "";
   let url = "";
+  let uploadAsset = null;
 
   if (sourceType === "library") {
     const resourceId = String(librarySelect?.value || "").trim();
@@ -4986,7 +5301,19 @@ async function createDatasetFromInputs() {
     if (!file) {
       throw new Error("Please choose a file to upload");
     }
-    content = await file.text();
+    uploadAsset = {
+      name: String(file.name || "upload"),
+      type: String(file.type || "application/octet-stream"),
+      size: Number(file.size || 0),
+      source: "upload",
+      dataUrl: "",
+    };
+    if (isTextLikeUpload(file, format)) {
+      content = await file.text();
+    } else {
+      const includeDataUrl = Number(file.size || 0) <= DATA_STUDIO_INLINE_UPLOAD_MAX_BYTES;
+      uploadAsset.dataUrl = includeDataUrl ? await fileToDataUrl(file) : "";
+    }
   } else {
     content = String(contentInput?.value || "").trim();
     if (!content) {
@@ -5004,6 +5331,7 @@ async function createDatasetFromInputs() {
       format,
       content,
       url,
+      uploadAsset,
     }),
   });
   const payload = await readApiResponse(response);
@@ -5674,7 +6002,8 @@ const storeState = {
   sort: "trending",
   page: 1,
   totalPages: 1,
-  totalCount: 0,
+  totalCount: null,
+  hasMore: false,
   results: [],
   projectResources: [],
   loading: false,
@@ -5827,14 +6156,27 @@ function storeRenderGrid() {
   empty.style.display = "none";
   grid.innerHTML = storeState.results.map(r => storeRenderCard(r)).join("");
   summary.style.display = "flex";
-  document.getElementById("store-results-count").textContent = `${formatNumber(storeState.totalCount)} results`;
+  // Result count text
+  if (storeState.totalCount != null) {
+    document.getElementById("store-results-count").textContent = `${formatNumber(storeState.totalCount)} results`;
+  } else {
+    document.getElementById("store-results-count").textContent = `${storeState.results.length}${storeState.hasMore ? "+" : ""} results`;
+  }
   document.getElementById("store-results-query").textContent = storeState.query ? `for "${storeState.query}"` : "";
 
   // Pagination
-  pagination.style.display = storeState.totalPages > 1 ? "flex" : "none";
-  document.getElementById("store-page-label").textContent = `Page ${storeState.page} of ${storeState.totalPages}`;
+  // Show if multi-page OR if explicit next page available
+  const showPagination = storeState.totalPages > 1 || storeState.hasMore || storeState.page > 1;
+  pagination.style.display = showPagination ? "flex" : "none";
+  
+  if (storeState.totalCount != null) {
+    document.getElementById("store-page-label").textContent = `Page ${storeState.page} of ${storeState.totalPages}`;
+  } else {
+    document.getElementById("store-page-label").textContent = `Page ${storeState.page}`;
+  }
+  
   document.getElementById("store-prev-btn").disabled = storeState.page <= 1;
-  document.getElementById("store-next-btn").disabled = storeState.page >= storeState.totalPages;
+  document.getElementById("store-next-btn").disabled = !storeState.hasMore && storeState.page >= storeState.totalPages;
 }
 
 /**
@@ -5987,12 +6329,13 @@ async function storeSearch() {
     const data = await readApiResponse(response);
 
     storeState.results = data.results || [];
-    storeState.totalCount = data.totalCount || 0;
+    storeState.totalCount = data.totalCount; // can be null
+    storeState.hasMore = data.hasMore || false;
     storeState.totalPages = data.totalPages || 1;
   } catch (err) {
     console.error("Store search failed:", err);
     storeState.results = [];
-    storeState.totalCount = 0;
+    storeState.totalCount = null;
     storeState.totalPages = 1;
   } finally {
     storeState.loading = false;
@@ -6346,3 +6689,887 @@ document.addEventListener("DOMContentLoaded", () => {
     activateStore();
   }
 });
+
+/* ── Settings — 3-Tier Field Maps ── */
+
+// tier: "config"  → saved to text2llm.json via POST /api/config
+// tier: "local"   → saved to localStorage (Appearance + Web Proxy)
+// Supabase account fields are handled separately (no map needed, see loadAccountFromSupabase)
+
+const SETTINGS_FIELD_MAP = {
+  // ── Tier: config (text2llm.json) ─────────────────────────────────────
+  // Text2LLM Agent
+  "setting-agent-model":           { tier: "config", path: ["agents", "defaults", "model", "primary"], type: "text" },
+  "setting-agent-workspace":       { tier: "config", path: ["agents", "defaults", "workspace"], type: "text" },
+  "setting-tools-profile":         { tier: "config", path: ["tools", "profile"], type: "text" },
+  "setting-commands-native":       { tier: "config", path: ["commands", "native"], type: "text" },
+  "setting-commands-native-skills":{ tier: "config", path: ["commands", "nativeSkills"], type: "text" },
+  // Tools & Execution
+  "setting-shell-enabled":         { tier: "config", path: ["env", "shellEnv", "enabled"], type: "bool" },
+  "setting-shell-timeout":         { tier: "config", path: ["env", "shellEnv", "timeoutMs"], type: "number" },
+  "setting-tools-allow":           { tier: "config", path: ["tools", "alsoAllow"], type: "csv" },
+  "setting-tools-deny":            { tier: "config", path: ["tools", "deny"], type: "csv" },
+  "setting-browser-enabled":       { tier: "config", path: ["browser", "enabled"], type: "bool" },
+  "setting-browser-headless":      { tier: "config", path: ["browser", "headless"], type: "bool" },
+  // Skills & Extensions
+  "setting-skills-dirs":           { tier: "config", path: ["skills", "load", "extraDirs"], type: "csv" },
+  "setting-skills-watch":          { tier: "config", path: ["skills", "load", "watch"], type: "bool" },
+  "setting-skills-npm":            { tier: "config", path: ["skills", "install", "nodeManager"], type: "text" },
+  // Diagnostics
+  "setting-log-level":             { tier: "config", path: ["logging", "level"], type: "text" },
+  "setting-log-style":             { tier: "config", path: ["logging", "consoleStyle"], type: "text" },
+  "setting-log-redact":            { tier: "config", path: ["logging", "redactSensitive"], type: "text" },
+  "setting-otel-enabled":          { tier: "config", path: ["diagnostics", "otel", "enabled"], type: "bool" },
+
+  // ── Tier: local (localStorage) ─────────────────────────────────────
+  // Appearance
+  "setting-ui-seam":               { tier: "local", lsKey: "text2llm.ui.accentColor", type: "color" },
+  "setting-assistant-name":        { tier: "local", lsKey: "text2llm.ui.assistantName", type: "text" },
+  "setting-assistant-avatar":      { tier: "local", lsKey: "text2llm.ui.assistantAvatar", type: "text" },
+  // Web Proxy
+  "setting-proxy-url":             { tier: "local", lsKey: "text2llm.web.proxy.url", type: "text" },
+  "setting-proxy-provider":        { tier: "local", lsKey: "text2llm.web.proxy.provider", type: "text" },
+  "setting-proxy-api-key":         { tier: "local", lsKey: "text2llm.web.proxy.key", type: "text" },
+  "setting-proxy-supabase-token":  { tier: "local", lsKey: "text2llm.web.supabase.access_token", type: "text" },
+  "setting-proxy-model":           { tier: "local", lsKey: "text2llm.web.proxy.model", type: "text" },
+};
+
+// Skill toggle checkboxes mapped to skills.entries keys (config tier)
+const SKILL_TOGGLES = {
+  "skill-data-pipeline":    "data-pipeline",
+  "skill-tokenizer-trainer":"tokenizer-trainer",
+  "skill-model-architect":  "model-architect",
+  "skill-gpu-provisioner":  "gpu-provisioner",
+  "skill-training-runner":  "training-runner",
+  "skill-wandb-tracker":    "wandb-tracker",
+  "skill-eval-bench":       "eval-bench",
+  "skill-model-publisher":  "model-publisher",
+  "skill-cloud-storage":    "cloud-storage",
+};
+
+
+function getNestedValue(obj, pathArr) {
+  let current = obj;
+  for (const key of pathArr) {
+    if (!current || typeof current !== "object") return undefined;
+    current = current[key];
+  }
+  return current;
+}
+
+function setNestedValue(obj, pathArr, value) {
+  let current = obj;
+  for (let i = 0; i < pathArr.length - 1; i++) {
+    const key = pathArr[i];
+    if (!current[key] || typeof current[key] !== "object") {
+      current[key] = {};
+    }
+    current = current[key];
+  }
+  current[pathArr[pathArr.length - 1]] = value;
+}
+
+
+/* ─────────────────────────────────────────
+   Settings Panel — Full Functionality
+   ───────────────────────────────────────── */
+let _settingsInitialized = false;
+let _settingsDirty = false;
+
+function _markSettingsDirty() {
+  _settingsDirty = true;
+  const saveBtn = document.getElementById("settings-save-btn");
+  const statusEl = document.getElementById("settings-save-status");
+  if (saveBtn && !saveBtn.disabled) {
+    saveBtn.textContent = "Save Preferences ●";
+    saveBtn.style.opacity = "1";
+  }
+  if (statusEl) statusEl.textContent = "";
+}
+
+function _markSettingsClean() {
+  _settingsDirty = false;
+  const saveBtn = document.getElementById("settings-save-btn");
+  if (saveBtn) saveBtn.textContent = "Save Preferences";
+}
+
+/** Apply accent color to all CSS custom properties that use --primary */
+function _applyAccentColor(hex) {
+  if (!hex || !/^#[0-9a-fA-F]{6}$/.test(hex)) return;
+  document.documentElement.style.setProperty("--primary", hex);
+  // Derive a dimmer version (50% opacity approximation)
+  document.documentElement.style.setProperty("--primary-glow", hex + "40");
+}
+
+/** Populate a <select> correctly — set value then reflect via option */
+function _setSelect(el, value) {
+  el.value = value;
+  // If no option matched, try case-insensitive
+  if (el.value !== String(value)) {
+    const lower = String(value).toLowerCase();
+    for (const opt of el.options) {
+      if (opt.value.toLowerCase() === lower) { opt.selected = true; break; }
+    }
+  }
+}
+
+function populateSettingsFromConfig(data) {
+  // data.config = backend text2llm.json config
+  const config = data.config || {};
+
+  for (const [elementId, meta] of Object.entries(SETTINGS_FIELD_MAP)) {
+    const el = document.getElementById(elementId);
+    if (!el) continue;
+
+    let raw;
+    if (meta.tier === "local") {
+      raw = localStorage.getItem(meta.lsKey) ?? undefined;
+    } else {
+      raw = getNestedValue(config, meta.path);
+    }
+    if (raw === undefined || raw === null) continue;
+
+    if (meta.type === "bool") {
+      _setSelect(el, raw === true || raw === "true" ? "true" : "false");
+    } else if (meta.type === "number") {
+      el.value = String(raw);
+    } else if (meta.type === "csv") {
+      el.value = Array.isArray(raw) ? raw.join(", ") : String(raw);
+    } else if (meta.type === "color") {
+      el.value = String(raw);
+      _applyAccentColor(String(raw));
+    } else {
+      if (el.tagName === "SELECT") {
+        _setSelect(el, String(raw));
+      } else {
+        el.value = String(raw);
+      }
+    }
+  }
+
+  // Populate skill toggles (always config tier)
+  const skillEntries = config?.skills?.entries;
+  if (skillEntries && typeof skillEntries === "object") {
+    for (const [checkboxId, skillKey] of Object.entries(SKILL_TOGGLES)) {
+      const el = document.getElementById(checkboxId);
+      if (!el) continue;
+      const entry = skillEntries[skillKey];
+      el.checked = entry ? !!entry.enabled : false;
+    }
+  }
+}
+
+function collectSettingsToConfig() {
+  const configPatch = {};   // → POST /api/config (text2llm.json)
+
+  for (const [elementId, meta] of Object.entries(SETTINGS_FIELD_MAP)) {
+    const el = document.getElementById(elementId);
+    if (!el) continue;
+    const rawValue = el.value.trim();
+    if (!rawValue && meta.type !== "bool") continue;
+
+    let parsed;
+    if (meta.type === "bool") {
+      parsed = rawValue === "true";
+    } else if (meta.type === "number") {
+      parsed = rawValue ? Number(rawValue) : undefined;
+      if (parsed !== undefined && isNaN(parsed)) continue;
+    } else if (meta.type === "csv") {
+      parsed = rawValue ? rawValue.split(",").map(s => s.trim()).filter(Boolean) : [];
+    } else {
+      parsed = rawValue || undefined;
+    }
+    if (parsed === undefined) continue;
+
+    if (meta.tier === "local") {
+      // Save to localStorage immediately when collecting
+      localStorage.setItem(meta.lsKey, String(parsed));
+    } else {
+      // tier === "config" → accumulate in patch for the backend
+      setNestedValue(configPatch, meta.path, parsed);
+    }
+  }
+
+  // Collect skill toggles (always config tier)
+  for (const [checkboxId, skillKey] of Object.entries(SKILL_TOGGLES)) {
+    const el = document.getElementById(checkboxId);
+    if (!el) continue;
+    setNestedValue(configPatch, ["skills", "entries", skillKey, "enabled"], el.checked);
+  }
+
+  return configPatch;
+}
+
+/* ── Account (Supabase tier) ── */
+async function loadAccountFromSupabase() {
+  const statusEl = document.getElementById("account-load-status");
+  const token = localStorage.getItem("text2llm.web.supabase.access_token");
+  if (!statusEl) return;
+
+  if (!token) {
+    statusEl.textContent = "ⓘ Set your Supabase Access Token in the Web Proxy tab to sync account data.";
+    statusEl.style.color = "var(--text-dim)";
+    return;
+  }
+
+  statusEl.textContent = "Loading account…";
+  statusEl.style.color = "var(--text-dim)";
+
+  try {
+    const res = await fetch("/api/account", {
+      headers: { "Authorization": "Bearer " + token }
+    });
+    const data = await res.json();
+    if (data.ok) {
+      const el = document.getElementById("setting-account-display-name");
+      if (el && data.displayName) el.value = data.displayName;
+      const emailEl = document.getElementById("setting-account-email");
+      if (emailEl && data.email) emailEl.value = data.email;
+      // Populate usage stats
+      if (data.usage) {
+        const set = (id, val) => { const e = document.getElementById(id); if (e) e.textContent = val ?? "—"; };
+        set("account-stat-requests", data.usage.requests?.toLocaleString());
+        set("account-stat-input", data.usage.inputTokens?.toLocaleString());
+        set("account-stat-output", data.usage.outputTokens?.toLocaleString());
+        set("account-stat-errors", data.usage.errors?.toLocaleString());
+      }
+      statusEl.textContent = "";
+    } else {
+      statusEl.textContent = "⚠ " + (data.error || "Failed to load account");
+      statusEl.style.color = "var(--accent)";
+    }
+  } catch (err) {
+    statusEl.textContent = "⚠ Account unavailable (offline or no proxy configured)";
+    statusEl.style.color = "var(--text-dim)";
+  }
+}
+
+async function saveAccountDisplayName() {
+  const nameEl = document.getElementById("setting-account-display-name");
+  const statusEl = document.getElementById("account-load-status");
+  const token = localStorage.getItem("text2llm.web.supabase.access_token");
+  if (!nameEl || !token) return;
+  try {
+    const res = await fetch("/api/account", {
+      method: "POST",
+      headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
+      body: JSON.stringify({ displayName: nameEl.value.trim() })
+    });
+    const data = await res.json();
+    if (statusEl) {
+      statusEl.textContent = data.ok ? "✓ Saved" : "✗ " + (data.error || "Save failed");
+      statusEl.style.color = data.ok ? "var(--primary)" : "var(--accent)";
+      if (data.ok) setTimeout(() => { if (statusEl) statusEl.textContent = ""; }, 3000);
+    }
+  } catch (err) {
+    if (statusEl) { statusEl.textContent = "⚠ Save failed"; statusEl.style.color = "var(--accent)"; }
+  }
+}
+
+/* ── Web Proxy test connection ── */
+async function testProxyConnection() {
+  const testBtn = document.getElementById("settings-proxy-test-btn");
+  const statusEl = document.getElementById("proxy-test-status");
+  const proxyUrl = (document.getElementById("setting-proxy-url")?.value || "").trim();
+
+  if (!proxyUrl) {
+    if (statusEl) { statusEl.textContent = "⚠ Enter a Proxy URL first"; statusEl.style.color = "var(--accent)"; }
+    return;
+  }
+
+  if (testBtn) testBtn.disabled = true;
+  if (statusEl) { statusEl.textContent = "Testing…"; statusEl.style.color = "var(--text-dim)"; }
+
+  try {
+    const res = await fetch(proxyUrl.replace(/\/$/, "") + "/health", { signal: AbortSignal.timeout(8000) });
+    const data = await res.json();
+    if (statusEl) {
+      if (data.ok) {
+        statusEl.textContent = `✓ Connected (${data.authMode || "unknown"} auth)`;
+        statusEl.style.color = "var(--primary)";
+      } else {
+        statusEl.textContent = "✗ Proxy returned error";
+        statusEl.style.color = "var(--accent)";
+      }
+    }
+  } catch (err) {
+    if (statusEl) {
+      statusEl.textContent = "✗ " + (err.name === "TimeoutError" ? "Timed out" : "Unreachable");
+      statusEl.style.color = "var(--accent)";
+    }
+  } finally {
+    if (testBtn) testBtn.disabled = false;
+  }
+}
+
+let settingsLoaded = false;
+
+async function loadSettingsConfig() {
+  const statusEl = document.getElementById("settings-save-status");
+  if (statusEl) { statusEl.textContent = "Loading…"; statusEl.style.color = "var(--text-dim)"; }
+  try {
+    const response = await fetch("/api/config");
+    const data = await readApiResponse(response);
+    // Pass the full response object so we can route config vs localStorage
+    populateSettingsFromConfig(data);
+    settingsLoaded = true;
+    _markSettingsClean();
+    if (statusEl) statusEl.textContent = "";
+    // Also load account if on the account tab or lazily
+    loadAccountFromSupabase().catch(() => {});
+  } catch (err) {
+    console.error("Failed to load settings config:", err);
+    if (statusEl) { statusEl.textContent = "⚠ Could not load config"; statusEl.style.color = "var(--accent)"; }
+  }
+}
+
+async function saveSettingsConfig() {
+  const statusEl = document.getElementById("settings-save-status");
+  const saveBtn = document.getElementById("settings-save-btn");
+  if (statusEl) { statusEl.textContent = "Saving…"; statusEl.style.color = "var(--text-dim)"; }
+  if (saveBtn) saveBtn.disabled = true;
+
+  try {
+    // collectSettingsToConfig() already writes local-tier fields to localStorage
+    const configPatch = collectSettingsToConfig();
+
+    // Save config-tier fields to backend (text2llm.json)
+    const response = await fetch("/api/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(configPatch),
+    });
+    await readApiResponse(response);
+
+    // Also save Account display name if on account tab
+    const accountTab = document.querySelector(".settings-nav-btn.active[data-settings-tab='account']");
+    if (accountTab) await saveAccountDisplayName();
+
+    _markSettingsClean();
+    if (statusEl) {
+      statusEl.textContent = "✓ Saved";
+      statusEl.style.color = "var(--primary)";
+      setTimeout(() => { if (statusEl) statusEl.textContent = ""; }, 3000);
+    }
+    // Re-apply accent in case it changed
+    const accentEl = document.getElementById("setting-ui-seam");
+    if (accentEl) _applyAccentColor(accentEl.value);
+  } catch (err) {
+    console.error("Failed to save settings:", err);
+    if (statusEl) {
+      statusEl.textContent = "✗ " + (err.message || "Save failed");
+      statusEl.style.color = "var(--accent)";
+    }
+  } finally {
+    if (saveBtn) saveBtn.disabled = false;
+  }
+}
+
+
+function _attachSettingsLiveListeners() {
+  // ── Live accent color preview ──
+  const accentInput = document.getElementById("setting-ui-seam");
+  if (accentInput) {
+    accentInput.addEventListener("input", () => {
+      _applyAccentColor(accentInput.value);
+      _markSettingsDirty();
+    });
+  }
+
+  // ── Mark dirty on any input/select/checkbox change ──
+  const allInputs = document.querySelectorAll(
+    "#settings-view input, #settings-view select, #settings-view textarea"
+  );
+  allInputs.forEach(el => {
+    const evtName = el.type === "checkbox" ? "change" : "input";
+    if (el === accentInput) return; // already hooked
+    el.addEventListener(evtName, _markSettingsDirty);
+  });
+
+  // ── Warn on unsaved changes before navigating away ──
+  document.querySelectorAll(".nav-item[data-view]").forEach(item => {
+    item.addEventListener("click", () => {
+      const view = item.getAttribute("data-view");
+      if (view !== "settings" && _settingsDirty) {
+        // Auto-save silently when navigating away
+        saveSettingsConfig().catch(() => {});
+      }
+    });
+  });
+}
+
+function initSettingsPanel() {
+  // Tab navigation
+  const navButtons = document.querySelectorAll(".settings-nav-btn[data-settings-tab]");
+  const panels = document.querySelectorAll(".settings-panel[id^='settings-panel-']");
+
+  navButtons.forEach(btn => {
+    btn.addEventListener("click", () => {
+      const tabId = btn.getAttribute("data-settings-tab");
+      navButtons.forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      panels.forEach(panel => {
+        panel.classList.toggle("active", panel.id === `settings-panel-${tabId}`);
+      });
+    });
+  });
+
+  // Save button
+  const saveBtn = document.getElementById("settings-save-btn");
+  if (saveBtn && !saveBtn._hooked) {
+    saveBtn.addEventListener("click", saveSettingsConfig);
+    saveBtn._hooked = true;
+  }
+
+  // Proxy test button
+  const proxyTestBtn = document.getElementById("settings-proxy-test-btn");
+  if (proxyTestBtn && !proxyTestBtn._hooked) {
+    proxyTestBtn.addEventListener("click", testProxyConnection);
+    proxyTestBtn._hooked = true;
+  }
+
+  // Load account data when Account tab is clicked
+  const accountNavBtn = document.querySelector(".settings-nav-btn[data-settings-tab='account']");
+  if (accountNavBtn && !accountNavBtn._accountHooked) {
+    accountNavBtn.addEventListener("click", () => loadAccountFromSupabase().catch(() => {}));
+    accountNavBtn._accountHooked = true;
+  }
+
+  // Attach live listeners once
+  if (!_settingsInitialized) {
+    _attachSettingsLiveListeners();
+    _settingsInitialized = true;
+  }
+
+  // Load from backend on first visit
+  if (!settingsLoaded) {
+    loadSettingsConfig();
+  }
+}
+
+// Hook settings init into the existing view navigation
+(function patchNavForSettings() {
+  function maybeInitSettings(view) {
+    if (view === "settings") initSettingsPanel();
+  }
+  document.querySelectorAll(".nav-item[data-view]").forEach(item => {
+    item.addEventListener("click", () => maybeInitSettings(item.getAttribute("data-view")));
+  });
+  document.querySelectorAll(".mobile-tool-btn[data-view], .mobile-tools-sheet-item[data-view]").forEach(item => {
+    item.addEventListener("click", () => maybeInitSettings(item.getAttribute("data-view")));
+  });
+})();
+
+/* ── Model Selector (chat input bar) ── */
+(function initModelSelector() {
+  const btn      = document.getElementById("model-selector-btn");
+  const dropzone = document.getElementById("model-selector-dropdown");
+  const label    = document.getElementById("model-selector-label");
+  const iconEl   = document.getElementById("model-selector-icon");
+
+  if (!btn || !dropzone) return;
+
+  const esc = s => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+  const EMOJI = {
+    anthropic:"🔶", openai:"⬛", google:"🌀", openrouter:"🔀",
+    groq:"⚡", xai:"𝕏", mistral:"🌪", "github-copilot":"🐙",
+    "amazon-bedrock":"☁", ollama:"🦙", together:"🤝", cerebras:"🧠",
+    minimax:"〽", moonshot:"🌙", "qwen-portal":"千", venice:"🎭",
+    qianfan:"百", zai:"Z", vercel:"▲", cloudflare:"⛅",
+    "opencode-zen":"🔮", xiaomi:"🟠", synthetic:"🧪",
+  };
+
+  // State
+  let allProviders  = [];
+  let configuredIds = [];
+  let modelCatalog  = {}; // pid -> models array
+  let activePid     = null;
+  let activeModelId = null;
+  let activeModelName = null;
+  let saving        = false;
+  let modelFilter   = "";
+
+  // ── Data loading ───────────────────────────────────────────────────────────
+
+  async function loadData() {
+    try {
+      const [pRes, cRes] = await Promise.all([
+        fetch("/api/instances/providers"),
+        fetch("/api/config"),
+      ]);
+      const { providers = [] } = pRes.ok ? await pRes.json() : {};
+      const cfgData = cRes.ok ? await cRes.json() : {};
+      const selMap  = cfgData?.config?.web?.providers?.selectedOptionByProvider || {};
+      const currentModelId = cfgData?.config?.agents?.defaults?.model?.primary || null;
+
+      allProviders = providers;
+      activeModelId = currentModelId;
+
+      const configured = providers.filter(p => p.configured);
+      configuredIds = configured.map(p => p.id);
+
+      // Determine active provider
+      activePid = null;
+      for (const p of configured) {
+        if (selMap[p.id]) { activePid = p.id; break; }
+      }
+      if (!activePid && configured.length > 0) activePid = configured[0].id;
+
+      updateBtnLabel(configured);
+    } catch (_) {
+      dropzone.innerHTML = '<div class="model-selector-loading">Failed to load</div>';
+    }
+  }
+
+  async function openAndFetchAll() {
+    dropzone.classList.add("open");
+    modelFilter = "";
+    
+    // Show spinner if we don't have catalog data yet
+    if (Object.keys(modelCatalog).length === 0) {
+      dropzone.innerHTML = '<div class="model-selector-loading">Loading models…</div>';
+    } else {
+      renderFlatList();
+    }
+
+    // Refresh data in background
+    await loadData();
+    if (configuredIds.length === 0) {
+      renderFlatList();
+      return;
+    }
+
+    // Fetch models for all configured providers concurrently
+    try {
+      const promises = configuredIds.map(pid => 
+        fetch(`/api/instances/provider/${encodeURIComponent(pid)}/models`)
+          .then(res => res.ok ? res.json() : { models: [] })
+          .then(data => ({ pid, models: data.models, currentModel: data.currentModel }))
+          .catch(() => ({ pid, models: [], currentModel: null }))
+      );
+      
+      const results = await Promise.all(promises);
+      let needsFullRender = false;
+
+      for (const res of results) {
+        if (res.currentModel && activeModelId === null) {
+          activeModelId = res.currentModel;
+          needsFullRender = true;
+        }
+        modelCatalog[res.pid] = res.models;
+      }
+      
+      if (needsFullRender) updateBtnLabel(allProviders.filter(p => p.configured));
+      renderFlatList();
+    } catch (_) {
+      if (Object.keys(modelCatalog).length === 0) {
+        dropzone.innerHTML = '<div class="model-selector-loading">Failed to load models</div>';
+      }
+    }
+  }
+
+  // ── Rendering ──────────────────────────────────────────────────────────────
+
+  function updateBtnLabel(configured) {
+    const activeP = configured.find(p => p.id === activePid);
+    if (activeP) {
+      if (activeModelId) {
+        const parts = activeModelId.split("/");
+        activeModelName = parts[parts.length - 1];
+        label.textContent = activeModelName;
+        // See if we can find the provider for this model to show the correct icon
+        let foundPid = activePid;
+        for (const pid of Object.keys(modelCatalog)) {
+          if (modelCatalog[pid].some(m => m.id === activeModelId)) {
+            foundPid = pid; break;
+          }
+        }
+        iconEl.textContent = EMOJI[foundPid] || "✦";
+      } else {
+        label.textContent = activeP.name;
+        iconEl.textContent = EMOJI[activeP.id] || "✦";
+      }
+      btn.classList.add("active");
+    } else {
+      label.textContent = "Model";
+      iconEl.textContent = "✦";
+      btn.classList.remove("active");
+    }
+  }
+
+  function renderFlatList() {
+    const configured = allProviders.filter(p => p.configured);
+
+    if (configured.length === 0) {
+      dropzone.innerHTML = `
+        <div class="model-selector-empty">
+          No providers configured.<br>
+          <a href="#" id="ms-go-infra">Go to Infra → AI</a>
+        </div>`;
+      dropzone.querySelector("#ms-go-infra")?.addEventListener("click", e => {
+        e.preventDefault(); closeDropdown();
+        (document.querySelector('.nav-item[data-view="instances"]') ||
+         document.querySelector('.mobile-tool-btn[data-view="instances"]'))?.click();
+      });
+      return;
+    }
+
+    let html = `
+      <div class="ms-search-wrap" style="padding-top: 6px;">
+        <input class="ms-search-input" id="ms-model-search" type="text" placeholder="Search models…" value="${esc(modelFilter)}">
+      </div>
+      <div class="ms-model-list">
+    `;
+
+    let totalMatches = 0;
+
+    for (const pid of configuredIds) {
+      const pName = (allProviders.find(p => p.id === pid) || {}).name || pid;
+      const models = modelCatalog[pid] || [];
+      
+      const filtered = modelFilter
+        ? models.filter(m => (m.name+m.id+m.desc).toLowerCase().includes(modelFilter.toLowerCase()))
+        : models;
+
+      if (filtered.length > 0) {
+        totalMatches += filtered.length;
+        html += `
+          <div class="ms-provider-group">
+            <div class="ms-provider-header">
+              ${esc(EMOJI[pid] || "✦")} ${esc(pName)}
+            </div>
+        `;
+
+        for (const m of filtered) {
+          const isCurrent = m.id === activeModelId;
+          const reasoningBadge = m.reasoning ? '<span class="ms-reasoning-badge">🧠</span>' : "";
+          html += `
+            <button class="model-selector-item${isCurrent ? " selected" : ""}"
+                    data-pid="${esc(pid)}" data-model-id="${esc(m.id)}" data-model-name="${esc(m.name)}" type="button">
+              <span class="model-item-info">
+                <span class="model-item-name">${esc(m.name)}${reasoningBadge}</span>
+                <span class="model-item-desc">${esc(m.desc || m.id)}</span>
+              </span>
+              <span class="model-item-check">✓</span>
+            </button>`;
+        }
+        html += `</div>`; // end ms-provider-group
+      }
+    }
+
+    if (totalMatches === 0) {
+      html += `<div class="model-selector-empty">${modelFilter ? "No matches found" : "No models available"}</div>`;
+    }
+
+    html += `</div>`; // end ms-model-list
+    dropzone.innerHTML = html;
+
+    // Search input
+    const searchInput = dropzone.querySelector("#ms-model-search");
+    if (searchInput) {
+      searchInput.focus();
+      // Restore cursor position if there's text
+      if (modelFilter) searchInput.setSelectionRange(modelFilter.length, modelFilter.length);
+      
+      searchInput.addEventListener("input", () => {
+        modelFilter = searchInput.value;
+        renderFlatList();
+      });
+      searchInput.addEventListener("click", e => e.stopPropagation());
+    }
+
+    // Model items
+    dropzone.querySelectorAll(".model-selector-item[data-model-id]").forEach(el => {
+      el.addEventListener("click", async () => {
+        if (saving) return;
+        const mid = el.dataset.modelId;
+        const mname = el.dataset.modelName || mid;
+        const pid = el.dataset.pid;
+
+        saving = true;
+        activeModelId = mid;
+        activeModelName = mname;
+
+        // Select the appropriate provider backend active choice if needed
+        const providerData = allProviders.find(p => p.id === pid);
+        if (providerData && activePid !== pid) {
+           activePid = pid;
+           const oid = providerData.selectedOptionId || "api";
+           try {
+             await fetch("/api/instances/provider/select", {
+               method: "POST",
+               headers: { "Content-Type": "application/json" },
+               body: JSON.stringify({ providerId: pid, optionId: oid }),
+             });
+           } catch(_) {}
+        }
+
+        // Set the specific model
+        try {
+          await fetch("/api/instances/provider/set-model", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ modelId: mid }),
+          });
+        } catch(_) {}
+
+        updateBtnLabel(allProviders.filter(p => p.configured));
+        closeDropdown();
+        saving = false;
+      });
+    });
+  }
+
+  // ── Dropdown open/close ────────────────────────────────────────────────────
+
+  function closeDropdown() {
+    dropzone.classList.remove("open");
+  }
+
+  btn.addEventListener("click", e => {
+    e.stopPropagation();
+    dropzone.classList.contains("open") ? closeDropdown() : openAndFetchAll();
+  });
+
+  document.addEventListener("click", e => {
+    if (!btn.contains(e.target) && !dropzone.contains(e.target)) {
+      closeDropdown();
+    }
+  });
+
+  // Reload when user visits Infra
+  document.querySelectorAll('.nav-item[data-view="instances"], .mobile-tool-btn[data-view="instances"]')
+    .forEach(el => el.addEventListener("click", () => setTimeout(loadData, 800)));
+
+  // Initial load
+  loadData();
+})();
+
+/* ── Auth Modal Logic ── */
+(function initAuthModal() {
+  const authModal = document.getElementById("auth-modal");
+  const authModalClose = document.getElementById("auth-modal-close");
+  const sidebarProfile = document.getElementById("sidebar-user-profile");
+  const emailInput = document.getElementById("auth-email");
+  const passwordInput = document.getElementById("auth-password");
+  const signinBtn = document.getElementById("auth-signin-btn");
+  const signupBtn = document.getElementById("auth-signup-btn");
+  const errorMsg = document.getElementById("auth-error-msg");
+  const successMsg = document.getElementById("auth-success-msg");
+
+  if (!authModal || !sidebarProfile) return;
+
+  let turnstileWidgetId = null;
+
+  function openModal() {
+    authModal.style.display = "flex";
+    errorMsg.textContent = "";
+    successMsg.textContent = "";
+    emailInput.value = "";
+    passwordInput.value = "";
+    // Render or reset Turnstile
+    if (window.turnstile) {
+      if (turnstileWidgetId != null) {
+        try { window.turnstile.reset(turnstileWidgetId); } catch (_) {}
+      } else {
+        try {
+          turnstileWidgetId = window.turnstile.render("#turnstile-widget", {
+            sitekey: "0x4AAAAAACgflp_3ZM1kH8RG"
+          });
+        } catch (_) {}
+      }
+    }
+  }
+
+  function closeModal() {
+    authModal.style.display = "none";
+  }
+
+  sidebarProfile.addEventListener("click", () => {
+    const token = localStorage.getItem("text2llm.web.supabase.access_token");
+    if (token) {
+      if (confirm("You are currently signed in. Do you want to sign out?")) {
+        localStorage.removeItem("text2llm.web.supabase.access_token");
+        alert("Signed out successfully.");
+        window.location.reload();
+      }
+    } else {
+      openModal();
+    }
+  });
+
+  authModalClose.addEventListener("click", closeModal);
+
+  authModal.addEventListener("click", (e) => {
+    if (e.target === authModal) {
+      closeModal();
+    }
+  });
+
+  function getTurnstileToken() {
+    const input = document.querySelector('input[name="cf-turnstile-response"]');
+    return input ? input.value : null;
+  }
+
+  async function handleAuth(action) {
+    const email = emailInput.value.trim();
+    const password = passwordInput.value;
+    const captchaToken = getTurnstileToken();
+
+    errorMsg.textContent = "";
+    successMsg.textContent = "";
+
+    if (!email || !password) {
+      errorMsg.textContent = "Please enter both email and password.";
+      return;
+    }
+
+    if (!captchaToken) {
+      errorMsg.textContent = "Please complete the CAPTCHA.";
+      return;
+    }
+
+    const endpoint = action === "signup" ? "/api/auth/signup" : "/api/auth/login";
+    
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, captchaToken })
+      });
+      
+      const data = await res.json();
+      
+      if (!data.ok) {
+        errorMsg.textContent = data.error || "Authentication failed.";
+        return;
+      }
+      
+      const token = data.session?.access_token;
+      if (token) {
+        localStorage.setItem("text2llm.web.supabase.access_token", token);
+        successMsg.textContent = "Successfully authenticated!";
+        setTimeout(() => {
+          closeModal();
+          window.location.reload();
+        }, 1000);
+      } else {
+        successMsg.textContent = "Check your email for confirmation.";
+        setTimeout(() => closeModal(), 2000);
+      }
+    } catch (err) {
+      errorMsg.textContent = "Network error occurred.";
+    }
+  }
+
+  signinBtn.addEventListener("click", () => handleAuth("login"));
+  signupBtn.addEventListener("click", () => handleAuth("signup"));
+  
+  // Update sidebar on load
+  const token = localStorage.getItem("text2llm.web.supabase.access_token");
+  if (token) {
+      const userNameEl = sidebarProfile.querySelector(".user-name");
+      if (userNameEl) userNameEl.textContent = "Logged In";
+  }
+})();
