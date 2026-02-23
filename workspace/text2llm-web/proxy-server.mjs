@@ -435,6 +435,59 @@ export function createProxyApp() {
     }
   });
 
+  // ── Supabase Auth endpoints (with Turnstile captcha) ──────────────────────
+  app.post("/api/auth/login", async (req, res) => {
+    try {
+      const { email, password, captchaToken } = req.body || {};
+      const supabaseUrl = process.env.SUPABASE_URL?.trim();
+      const supabaseAnonKey = process.env.SUPABASE_ANON_KEY?.trim();
+
+      if (!supabaseUrl || !supabaseAnonKey) {
+        return res.status(500).json({ ok: false, error: "Server missing Supabase credentials" });
+      }
+
+      const response = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
+        method: "POST",
+        headers: { apikey: supabaseAnonKey, "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, gotrue_meta_security: { captcha_token: captchaToken } }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        return res.status(400).json({ ok: false, error: data.error_description || data.msg || data.error || "Login failed" });
+      }
+      res.json({ ok: true, session: data });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: error.message });
+    }
+  });
+
+  app.post("/api/auth/signup", async (req, res) => {
+    try {
+      const { email, password, captchaToken } = req.body || {};
+      const supabaseUrl = process.env.SUPABASE_URL?.trim();
+      const supabaseAnonKey = process.env.SUPABASE_ANON_KEY?.trim();
+
+      if (!supabaseUrl || !supabaseAnonKey) {
+        return res.status(500).json({ ok: false, error: "Server missing Supabase credentials" });
+      }
+
+      const response = await fetch(`${supabaseUrl}/auth/v1/signup`, {
+        method: "POST",
+        headers: { apikey: supabaseAnonKey, "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, gotrue_meta_security: { captcha_token: captchaToken } }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        return res.status(400).json({ ok: false, error: data.error_description || data.msg || data.error || "Signup failed" });
+      }
+      res.json({ ok: true, session: data });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: error.message });
+    }
+  });
+
   return app;
 }
 
