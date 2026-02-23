@@ -64,3 +64,56 @@ create policy "Users insert own events"
   on public.usage_events
   for insert
   with check (auth.uid() = user_id);
+
+-- --- Dataset Processing Tables & Webhooks ---
+
+create table if not exists public.dataset_jobs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  file_key text not null,
+  output_format text not null default 'jsonl',
+  status text not null default 'pending', -- 'pending', 'processing', 'completed', 'failed'
+  result_url text,
+  error_message text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.dataset_jobs enable row level security;
+
+drop policy if exists "Users read own jobs" on public.dataset_jobs;
+create policy "Users read own jobs"
+  on public.dataset_jobs
+  for select
+  using (auth.uid() = user_id);
+
+drop policy if exists "Users insert own jobs" on public.dataset_jobs;
+create policy "Users insert own jobs"
+  on public.dataset_jobs
+  for insert
+  with check (auth.uid() = user_id);
+
+-- Setup Database Webhook via Postgres Trigger
+create or replace function public.notify_dataset_job()
+returns trigger
+language plpgsql
+security definer
+as $$
+begin
+  -- Note: We are using the production Edge Function URL for mzmyesthlfnoqsxqenyb
+  perform supabase_functions.http_request(
+    'https://mzmyesthlfnoqsxqenyb.supabase.co/functions/v1/process-dataset', 
+    'POST',
+    '{"Content-Type": "application/json"}',
+    jsonb_build_object('record', row_to_json(NEW))::text,
+    '5000'
+  );
+  return NEW;
+end;
+$$;
+
+drop trigger if exists tr_process_dataset_job on public.dataset_jobs;
+create trigger tr_process_dataset_job
+  after insert on public.dataset_jobs
+  for each row
+  execute function public.notify_dataset_job();
