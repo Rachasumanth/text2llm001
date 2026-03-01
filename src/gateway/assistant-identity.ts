@@ -35,43 +35,6 @@ function coerceIdentityValue(value: string | undefined, maxLength: number): stri
   return trimmed.slice(0, maxLength);
 }
 
-function isAvatarimport type { TEXT2LLMConfig } from "../config/config.js";
-import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../agents/agent-scope.js";
-import { resolveAgentIdentity } from "../agents/identity.js";
-import { loadAgentIdentity } from "../commands/agents.config.js";
-import { normalizeAgentId } from "../routing/session-key.js";
-
-const MAX_ASSISTANT_NAME = 50;
-const MAX_ASSISTANT_AVATAR = 200;
-const MAX_ASSISTANT_EMOJI = 16;
-
-export const DEFAULT_ASSISTANT_IDENTITY: AssistantIdentity = {
-  agentId: "main",
-  name: "Assistant",
-  avatar: "A",
-};
-
-export type AssistantIdentity = {
-  agentId: string;
-  name: string;
-  avatar: string;
-  emoji?: string;
-};
-
-function coerceIdentityValue(value: string | undefined, maxLength: number): string | undefined {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return undefined;
-  }
-  if (trimmed.length <= maxLength) {
-    return trimmed;
-  }
-  return trimmed.slice(0, maxLength);
-}
-
 function isAvatarUrl(value: string): boolean {
   return /^https?:\/\//i.test(value) || /^data:image\//i.test(value);
 }

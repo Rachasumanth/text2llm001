@@ -30,38 +30,6 @@ function makeStore(entries: Array<[string, SessionEntry]>): Record<string, Sessi
   return Object.fromEntries(entries);
 }
 
-// -------------------------import crypto from "node:crypto";
-import fs from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { SessionEntry } from "./types.js";
-import {
-  capEntryCount,
-  clearSessionStoreCacheForTest,
-  loadSessionStore,
-  pruneStaleEntries,
-  rotateSessionFile,
-  saveSessionStore,
-} from "./store.js";
-
-// Mock loadConfig so resolveMaintenanceConfig() never reads a real text2llm.json.
-// Unit tests always pass explicit overrides so this mock is inert for them.
-// Integration tests set return values to control the config.
-vi.mock("../config.js", () => ({
-  loadConfig: vi.fn().mockReturnValue({}),
-}));
-
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-function makeEntry(updatedAt: number): SessionEntry {
-  return { sessionId: crypto.randomUUID(), updatedAt };
-}
-
-function makeStore(entries: Array<[string, SessionEntry]>): Record<string, SessionEntry> {
-  return Object.fromEntries(entries);
-}
-
 // ---------------------------------------------------------------------------
 // Unit tests — each function called with explicit override parameters.
 // No config loading needed; overrides bypass resolveMaintenanceConfig().

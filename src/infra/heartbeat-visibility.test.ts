@@ -36,44 +36,6 @@ describe("resolveHeartbeatVisibility", () => {
     });
   });
 
-  it("per-channel config ovimport { describe, expect, it } from "vitest";
-import type { TEXT2LLMConfig } from "../config/config.js";
-import { resolveHeartbeatVisibility } from "./heartbeat-visibility.js";
-
-describe("resolveHeartbeatVisibility", () => {
-  it("returns default values when no config is provided", () => {
-    const cfg = {} as TEXT2LLMConfig;
-    const result = resolveHeartbeatVisibility({ cfg, channel: "telegram" });
-
-    expect(result).toEqual({
-      showOk: false,
-      showAlerts: true,
-      useIndicator: true,
-    });
-  });
-
-  it("uses channel defaults when provided", () => {
-    const cfg = {
-      channels: {
-        defaults: {
-          heartbeat: {
-            showOk: true,
-            showAlerts: false,
-            useIndicator: false,
-          },
-        },
-      },
-    } as TEXT2LLMConfig;
-
-    const result = resolveHeartbeatVisibility({ cfg, channel: "telegram" });
-
-    expect(result).toEqual({
-      showOk: true,
-      showAlerts: false,
-      useIndicator: false,
-    });
-  });
-
   it("per-channel config overrides channel defaults", () => {
     const cfg = {
       channels: {

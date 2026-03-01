@@ -25,33 +25,6 @@ describe("image tool implicit imageModel config", () => {
     vi.stubEnv("ZAI_API_KEY", "");
     vi.stubEnv("Z_AI_API_KEY", "");
     // Avoid implicit Copilot provider discovery hitting the network in tests.
-    vi.stubEnv("COimport fs from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { TEXT2LLMConfig } from "../../config/config.js";
-import { __testing, createImageTool, resolveImageModelConfigForTool } from "./image-tool.js";
-
-async function writeAuthProfiles(agentDir: string, profiles: unknown) {
-  await fs.mkdir(agentDir, { recursive: true });
-  await fs.writeFile(
-    path.join(agentDir, "auth-profiles.json"),
-    `${JSON.stringify(profiles, null, 2)}\n`,
-    "utf8",
-  );
-}
-
-describe("image tool implicit imageModel config", () => {
-  const priorFetch = global.fetch;
-
-  beforeEach(() => {
-    vi.stubEnv("OPENAI_API_KEY", "");
-    vi.stubEnv("ANTHROPIC_API_KEY", "");
-    vi.stubEnv("ANTHROPIC_OAUTH_TOKEN", "");
-    vi.stubEnv("MINIMAX_API_KEY", "");
-    vi.stubEnv("ZAI_API_KEY", "");
-    vi.stubEnv("Z_AI_API_KEY", "");
-    // Avoid implicit Copilot provider discovery hitting the network in tests.
     vi.stubEnv("COPILOT_GITHUB_TOKEN", "");
     vi.stubEnv("GH_TOKEN", "");
     vi.stubEnv("GITHUB_TOKEN", "");

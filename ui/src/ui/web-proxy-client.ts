@@ -92,9 +92,9 @@ function readStorageValue(key: string): string | null {
 
 export function getWebProxyRuntimeConfig() {
   return {
-    provider: readStorageValue(STORAGE_KEYS.provider) ?? "openai",
+    provider: readStorageValue(STORAGE_KEYS.provider) ?? "",
     providerKey: readStorageValue(STORAGE_KEYS.providerKey),
-    model: readStorageValue(STORAGE_KEYS.model) ?? "gpt-4.1-mini",
+    model: readStorageValue(STORAGE_KEYS.model) ?? "",
     accessToken: readStorageValue(STORAGE_KEYS.accessToken),
   };
 }

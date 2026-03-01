@@ -58,6 +58,8 @@ import type {
   StatusSummary,
   NostrProfile,
 } from "./types.ts";
+import type { DatasetJob } from "./controllers/datasets.ts";
+import { handleDatasetsUpload as handleDatasetsUploadInternal, handleDatasetsRefresh as handleDatasetsRefreshInternal } from "./controllers/datasets.ts";
 import type { NostrProfileFormState } from "./views/channels.nostr-profile-form.ts";
 import {
   handleChannelConfigReload as handleChannelConfigReloadInternal,
@@ -307,6 +309,12 @@ export class TEXT2LLMApp extends LitElement {
   @state() usageLogFilterTools: string[] = [];
   @state() usageLogFilterHasTools = false;
   @state() usageLogFilterQuery = "";
+
+  @state() datasetsLoading = false;
+  @state() datasetsError: string | null = null;
+  @state() datasetsQueue: DatasetJob[] = [];
+  @state() datasetsActiveJob: DatasetJob | null = null;
+  @state() datasetsUploadProgress = 0;
 
   // Non-reactive (don’t trigger renders just for timer bookkeeping).
   usageQueryDebounceTimer: number | null = null;
@@ -560,6 +568,14 @@ export class TEXT2LLMApp extends LitElement {
 
   handleGatewayUrlCancel() {
     this.pendingGatewayUrl = null;
+  }
+
+  async handleDatasetsUpload(file: File, format: string) {
+    await handleDatasetsUploadInternal(this as unknown as AppViewState, file, format);
+  }
+
+  async handleDatasetsRefresh() {
+    await handleDatasetsRefreshInternal(this as unknown as AppViewState);
   }
 
   // Sidebar handlers for tool output viewing

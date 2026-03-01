@@ -39,47 +39,6 @@ function decodeDnsSdEscapes(value: string): string {
     if (!pending) {
       return;
     }
-    bytes.push(...Buffer.from(pending, "utfimport { runCommandWithTimeout } from "../process/exec.js";
-import { resolveWideAreaDiscoveryDomain } from "./widearea-dns.js";
-
-export type GatewayBonjourBeacon = {
-  instanceName: string;
-  domain?: string;
-  displayName?: string;
-  host?: string;
-  port?: number;
-  lanHost?: string;
-  tailnetDns?: string;
-  gatewayPort?: number;
-  sshPort?: number;
-  gatewayTls?: boolean;
-  gatewayTlsFingerprintSha256?: string;
-  cliPath?: string;
-  role?: string;
-  transport?: string;
-  txt?: Record<string, string>;
-};
-
-export type GatewayBonjourDiscoverOpts = {
-  timeoutMs?: number;
-  domains?: string[];
-  wideAreaDomain?: string | null;
-  platform?: NodeJS.Platform;
-  run?: typeof runCommandWithTimeout;
-};
-
-const DEFAULT_TIMEOUT_MS = 2000;
-const GATEWAY_SERVICE_TYPE = "_TEXT2LLM-gw._tcp";
-
-function decodeDnsSdEscapes(value: string): string {
-  let decoded = false;
-  const bytes: number[] = [];
-  let pending = "";
-
-  const flush = () => {
-    if (!pending) {
-      return;
-    }
     bytes.push(...Buffer.from(pending, "utf8"));
     pending = "";
   };

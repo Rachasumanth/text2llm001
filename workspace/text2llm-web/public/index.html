@@ -21,6 +21,7 @@
   </head>
   <body>
     <div class="app-layout">
+
       <!-- Sidebar -->
       <aside class="sidebar">
         <div class="sidebar-header">
@@ -103,7 +104,7 @@
               </svg>
               <span>Experiments</span>
             </a>
-            <a href="#" class="nav-item" data-view="data-studio" title="Open Data Studio">
+            <a href="#" class="nav-item" data-view="dataset-creator" title="Open Dataset Creator">
               <svg
                 width="18"
                 height="18"
@@ -116,7 +117,22 @@
                 <path d="M4 5v10c0 1.66 3.58 3 8 3s8-1.34 8-3V5" />
                 <path d="M4 10c0 1.66 3.58 3 8 3s8-1.34 8-3" />
               </svg>
-              <span>Datasets</span>
+              <span>Dataset Creator</span>
+            </a>
+            <a href="#" class="nav-item" data-view="data-studio" title="Open Data Studio">
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <rect x="3" y="4" width="18" height="16" rx="2" ry="2" />
+                <line x1="3" y1="10" x2="21" y2="10" />
+                <line x1="9" y1="10" x2="9" y2="20" />
+              </svg>
+              <span>Data Studio</span>
             </a>
           </div>
 
@@ -500,8 +516,23 @@
               <div id="storage-settings-drawer" class="gpu-launch-drawer hidden">
                 <div class="gpu-launch-drawer-inner">
                   <div class="gpu-launch-drawer-header">
-                    <h3>Storage Settings</h3>
+                    <h3 class="storage-settings-title">Storage Settings</h3>
                     <button id="storage-settings-close-btn" class="gpu-drawer-close" type="button">&times;</button>
+                  </div>
+
+                  <div class="menu-hero-card menu-hero-card-compact storage-settings-hero">
+                    <div class="menu-hero-shapes" aria-hidden="true">
+                      <svg viewBox="0 0 200 200" preserveAspectRatio="none">
+                        <path d="M 120 0 Q 80 100 200 120 L 200 0 Z" fill="#2eb0f1" />
+                        <path d="M 200 100 Q 150 150 200 200 Z" fill="#24b662" />
+                        <path d="M 100 200 Q 150 100 200 150 L 200 200 Z" fill="#fcca22" />
+                      </svg>
+                    </div>
+                    <div class="menu-hero-content">
+                      <p class="menu-hero-eyebrow">Storage</p>
+                      <h4>Project & Sync Controls</h4>
+                      <p>Manage retention, replication, and restore policies in one place.</p>
+                    </div>
                   </div>
 
                   <div class="storage-settings-tabs">
@@ -632,6 +663,23 @@
         <!-- CLUI VIEW -->
         <div id="clui-view" class="view">
           <div class="terminal-container">
+            <div class="runtime-toolbar">
+              <label class="runtime-toolbar-label" for="runtime-filter-select">View</label>
+              <select id="runtime-filter-select" class="runtime-toolbar-select">
+                <option value="all" selected>All</option>
+                <option value="commands">Commands only</option>
+                <option value="errors">Errors only</option>
+                <option value="verbose">Verbose</option>
+              </select>
+              <label class="runtime-toolbar-label" for="runtime-replay-tail">Replay</label>
+              <select id="runtime-replay-tail" class="runtime-toolbar-select">
+                <option value="100">Last 100</option>
+                <option value="200" selected>Last 200</option>
+                <option value="500">Last 500</option>
+                <option value="1000">Last 1000</option>
+              </select>
+              <button id="runtime-replay-btn" class="runtime-toolbar-btn" type="button">Replay Now</button>
+            </div>
             <div id="terminal"></div>
           </div>
         </div>
@@ -662,6 +710,10 @@
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                   Markdown
                 </button>
+                <button id="nb-templates-btn" class="nb-toolbar-btn nb-toolbar-templates" type="button" title="Insert from templates">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                  Templates
+                </button>
               </div>
             </div>
             <div id="nb-cells" class="nb-cells">
@@ -670,195 +722,257 @@
             <p id="nb-status" class="nb-status-msg"></p>
           </div>
         </div>
+
+        <!-- Replace/Continue Confirmation Modal -->
+        <div id="nb-tpl-confirm-modal" class="nb-tpl-overlay" style="display:none; z-index: 1001;">
+          <div class="nb-tpl-modal" style="max-width: 400px; padding: 20px;">
+            <h3 style="margin-top: 0; margin-bottom: 12px; color: var(--text);">Insert Template</h3>
+            <p style="color: var(--text-dim); font-size: 0.9rem; margin-bottom: 24px;">Do you want to replace all existing notebook cells or append the template to the bottom of the current cells?</p>
+            <div style="display: flex; gap: 12px; justify-content: flex-end;">
+              <button id="nb-tpl-confirm-cancel" class="modal-cancel-btn" type="button">Cancel</button>
+              <button id="nb-tpl-confirm-replace" class="modal-save-btn" style="background-color: var(--primary);" type="button">Replace</button>
+              <button id="nb-tpl-confirm-continue" class="modal-save-btn" type="button">Continue</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Templates Modal -->
+        <div id="nb-templates-modal" class="nb-tpl-overlay" style="display:none">
+          <div class="nb-tpl-modal">
+            <div class="nb-tpl-header">
+              <div class="nb-tpl-title">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                Code Templates
+              </div>
+              <button id="nb-tpl-close" class="nb-tpl-close" type="button">&times;</button>
+            </div>
+
+            <!-- Tabs -->
+            <div class="nb-tpl-tabs">
+              <button class="nb-tpl-tab active" data-tpl-tab="builtin" type="button">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                Built-in
+              </button>
+              <button class="nb-tpl-tab" data-tpl-tab="community" type="button">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20z"/></svg>
+                Community
+              </button>
+              <button class="nb-tpl-tab" data-tpl-tab="import" type="button">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Import
+              </button>
+            </div>
+
+            <!-- Built-in Tab -->
+            <div id="nb-tpl-tab-builtin" class="nb-tpl-tab-content active">
+              <div class="nb-tpl-search-row">
+                <input type="text" id="nb-tpl-search" class="nb-tpl-search" placeholder="Search 3000+ templates...">
+              </div>
+              <div id="nb-tpl-categories" class="nb-tpl-categories"></div>
+              <div id="nb-tpl-grid" class="nb-tpl-grid"></div>
+            </div>
+
+            <!-- Community Tab -->
+            <div id="nb-tpl-tab-community" class="nb-tpl-tab-content">
+              <div class="nb-tpl-community-search-row">
+                <input type="text" id="nb-tpl-community-search" class="nb-tpl-search" placeholder="Search GitHub for notebooks and scripts...">
+                <button id="nb-tpl-community-search-btn" class="nb-tpl-community-btn" type="button">Search GitHub</button>
+              </div>
+              <p class="nb-tpl-community-hint">Search millions of public Python scripts and notebooks. Rate limit: 10 req/min (unauthenticated).</p>
+              <div id="nb-tpl-community-grid" class="nb-tpl-grid"></div>
+            </div>
+
+            <!-- Import Tab -->
+            <div id="nb-tpl-tab-import" class="nb-tpl-tab-content">
+              <div class="nb-tpl-import-section">
+                <h4>Import from URL</h4>
+                <p class="nb-tpl-community-hint">Paste a GitHub file URL, Gist URL, or any raw .py / .ipynb link.</p>
+                <div class="nb-tpl-community-search-row">
+                  <input type="text" id="nb-tpl-import-url" class="nb-tpl-search" placeholder="https://github.com/user/repo/blob/main/train.py">
+                  <button id="nb-tpl-import-btn" class="nb-tpl-community-btn" type="button">Import</button>
+                </div>
+                <p id="nb-tpl-import-status" class="nb-tpl-community-hint"></p>
+              </div>
+              <div class="nb-tpl-import-section" style="margin-top:1.5rem">
+                <h4>Paste Code</h4>
+                <p class="nb-tpl-community-hint">Paste any Python code to add as a new cell.</p>
+                <textarea id="nb-tpl-paste-code" class="nb-tpl-paste-area" rows="8" placeholder="# Paste your Python code here..."></textarea>
+                <button id="nb-tpl-paste-btn" class="nb-tpl-community-btn" type="button" style="margin-top:0.5rem">Add as Cell</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- /NOTEBOOK VIEW -->
+
+        <!-- DATASET CREATOR VIEW -->
+        <div id="dataset-creator-view" class="view">
+          <div class="dc-container">
+            <!-- Header -->
+            <div class="dc-header">
+              <h1 class="dc-title">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+                Multi-Format Dataset Creator
+              </h1>
+              <p class="dc-subtitle">Clean, deduplicate, and format massive raw datasets directly in the cloud. This advanced computing feature requires a Pro subscription.</p>
+            </div>
+
+            <!-- Error Banner -->
+            <div id="dataset-error-banner" class="dc-error-banner" style="display:none;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              <span id="dataset-error-text"></span>
+            </div>
+
+            <!-- Two-column grid -->
+            <div class="dc-grid">
+              <!-- Left Column: Upload Form -->
+              <div class="dc-card">
+                <h2 class="dc-card-title">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                  Upload Raw Data
+                </h2>
+
+                <div class="dc-form">
+                  <!-- Format Selector -->
+                  <div class="dc-field">
+                    <label class="dc-label" for="dataset-format-select">Target Output Format</label>
+                    <select id="dataset-format-select" class="dc-select">
+                      <option value="jsonl">JSONL (Chat Completions)</option>
+                      <option value="parquet">Parquet (Columnar)</option>
+                      <option value="csv">CSV (Tabular)</option>
+                    </select>
+                  </div>
+
+                  <!-- File Input -->
+                  <div class="dc-field">
+                    <label class="dc-label">Source File (&gt;1GB supported)</label>
+                    <input type="file" id="dataset-file-input" class="dc-file-input" />
+                  </div>
+
+                  <!-- Upload Button -->
+                  <button id="dataset-upload-btn" class="dc-upload-btn" type="button">
+                    Secure Upload &amp; Process
+                  </button>
+
+                  <!-- Progress Bar -->
+                  <div id="dataset-upload-progress-wrap" class="dc-progress-wrap" style="display:none;">
+                    <div class="dc-progress-track">
+                      <div id="dataset-upload-progress-bar" class="dc-progress-fill" style="width:0%"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Right Column: Processing Status -->
+              <div class="dc-card dc-card-status">
+                <h2 class="dc-card-title">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                  Processing Status
+                </h2>
+
+                <div id="dataset-job-status" class="dc-status-body">
+                  <!-- Idle state -->
+                  <div id="dataset-status-idle" class="dc-status-state">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-dim, #555)" stroke-width="1.5"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+                    <p class="dc-status-text">No active tasks. Upload a dataset to begin processing.</p>
+                  </div>
+
+                  <!-- Pending/Processing state (hidden by default) -->
+                  <div id="dataset-status-pending" class="dc-status-state" style="display:none;">
+                    <svg class="dc-spinner" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--primary, #3b82f6)" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                    <div class="dc-status-info">
+                      <p class="dc-status-label">Pipeline running in secure sandbox...</p>
+                      <p id="dataset-job-meta" class="dc-status-meta"></p>
+                    </div>
+                  </div>
+
+                  <!-- Completed state (hidden by default) -->
+                  <div id="dataset-status-completed" class="dc-status-state" style="display:none;">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                    <div class="dc-status-info">
+                      <p class="dc-status-label">Job completed</p>
+                      <a id="dataset-download-link" href="#" target="_blank" class="dc-download-link">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        Download Result
+                      </a>
+                    </div>
+                  </div>
+
+                  <!-- Failed state (hidden by default) -->
+                  <div id="dataset-status-failed" class="dc-status-state" style="display:none;">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                    <p class="dc-status-label">Job failed</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Premium Overlay -->
+            <div id="dataset-premium-banner" class="dc-premium-banner">
+              <div class="dc-premium-left">
+                <div class="dc-premium-icon">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>
+                </div>
+                <div>
+                  <h3 class="dc-premium-title">Pro Plan Required</h3>
+                  <p class="dc-premium-desc">Dataset processing utilizes heavy isolated compute infrastructure. Upgrade your account to unlock.</p>
+                </div>
+              </div>
+              <a href="#" class="dc-premium-cta">Upgrade to Pro</a>
+            </div>
+          </div>
+        </div>
+        <!-- /DATASET CREATOR VIEW -->
 
         <!-- DATA STUDIO VIEW -->
         <div id="data-studio-view" class="view">
-            <div class="ds-container">
-              <div class="ds-header">
-                <div>
-                  <h2 class="ds-title">Data Studio</h2>
-                  <p class="ds-subtitle">Upload or connect datasets, clean/chunk/tag, split, and version data</p>
-                </div>
-                <button id="ds-refresh-btn" class="ds-btn" type="button">Refresh</button>
-              </div>
+          <div class="instances-container">
+            <div class="instances-header">
+              <h2 class="instances-title">Data Studio</h2>
+              <p class="instances-subtitle">Edit, structure, and refine project datasets</p>
+            </div>
 
-              <section class="ds-import-card">
-                <div class="ds-import-grid">
-                  <label class="gpu-form-label">
-                    <span>Dataset name</span>
-                    <input id="ds-name-input" class="gpu-form-input" type="text" placeholder="e.g. support-conversations-v1" />
-                  </label>
-                  <label class="gpu-form-label">
-                    <span>Source</span>
-                    <select id="ds-source-select" class="gpu-form-select">
-                      <option value="paste">Paste text</option>
-                      <option value="upload">Upload file</option>
-                      <option value="url">Connect URL</option>
-                      <option value="library">Project library</option>
-                      <option value="remote">Remote connector</option>
-                    </select>
-                  </label>
-                  <label class="gpu-form-label">
-                    <span>Format</span>
-                    <select id="ds-format-select" class="gpu-form-select">
-                      <option value="auto">Auto detect</option>
-                      <option value="json">JSON</option>
-                      <option value="jsonl">JSONL</option>
-                      <option value="csv">CSV</option>
-                      <option value="tsv">TSV</option>
-                      <option value="txt">Text lines</option>
-                      <option value="markdown">Markdown</option>
-                      <option value="yaml">YAML</option>
-                      <option value="xml">XML</option>
-                      <option value="html">HTML</option>
-                      <option value="graph">Graph file</option>
-                    </select>
-                  </label>
+            <div class="studio-layout">
+              <aside class="studio-sidebar">
+                <div class="studio-sidebar-header">
+                  <h3>Datasets</h3>
+                  <button id="studio-refresh-btn" class="ds-btn" type="button">Refresh</button>
+                </div>
+                <input id="studio-search-input" class="gpu-form-input" type="text" placeholder="Search rows..." />
+                <div id="studio-dataset-list" class="studio-dataset-list"></div>
+              </aside>
+
+              <section class="studio-main">
+                <div class="studio-toolbar">
+                  <div class="studio-toolbar-title">
+                    <h3 id="studio-active-name">No dataset selected</h3>
+                    <p id="studio-active-meta">Pick a dataset to start editing</p>
+                  </div>
+                  <div class="studio-toolbar-actions">
+                    <button id="studio-add-row-btn" class="ds-btn" type="button">Add Row</button>
+                    <button id="studio-add-col-btn" class="ds-btn" type="button">Add Column</button>
+                    <button id="studio-delete-dataset-btn" class="ds-btn" type="button">Delete Dataset</button>
+                  </div>
                 </div>
 
-                <label id="ds-url-wrap" class="gpu-form-label ds-source-wrap hidden">
-                  <span>Dataset URL</span>
-                  <input id="ds-url-input" class="gpu-form-input" type="url" placeholder="https://..." />
-                </label>
+                <p id="studio-status" class="gpu-inline-status"></p>
 
-                <label id="ds-file-wrap" class="gpu-form-label ds-source-wrap hidden">
-                  <span>Upload file</span>
-                  <input id="ds-file-input" class="gpu-form-input" type="file" />
-                </label>
+                <div id="studio-empty" class="studio-empty-state">No datasets found in this project yet. Create one in Dataset Creator first.</div>
 
-                <label id="ds-content-wrap" class="gpu-form-label ds-source-wrap">
-                  <span>Paste content</span>
-                  <textarea id="ds-content-input" class="ds-content-input" rows="4" placeholder='[{"text":"example"}]'></textarea>
-                </label>
+                <div id="studio-table-wrap" class="studio-table-wrap hidden">
+                  <table class="studio-table" id="studio-table">
+                    <thead id="studio-table-head"></thead>
+                    <tbody id="studio-table-body"></tbody>
+                  </table>
+                </div>
 
-                <label id="ds-library-wrap" class="gpu-form-label ds-source-wrap hidden">
-                  <span>Library dataset resource</span>
-                  <div class="ds-inline-2">
-                    <select id="ds-library-select" class="gpu-form-select" title="Project library resource"></select>
-                    <button id="ds-library-refresh-btn" class="ds-btn" type="button">Refresh library</button>
-                  </div>
-                </label>
-
-                <label id="ds-remote-wrap" class="gpu-form-label ds-source-wrap hidden">
-                  <span>Remote connector</span>
-                  <div class="ds-inline-3">
-                    <select id="ds-remote-provider" class="gpu-form-select" title="Remote source provider">
-                      <option value="huggingface">Hugging Face dataset</option>
-                      <option value="zenodo">Zenodo record</option>
-                      <option value="url">Direct file URL</option>
-                      <option value="kaggle">Kaggle dataset</option>
-                    </select>
-                    <input id="ds-remote-id" class="gpu-form-input" type="text" placeholder="Dataset id (e.g. squad)" />
-                    <input id="ds-remote-url" class="gpu-form-input" type="url" placeholder="Optional direct URL" />
-                  </div>
-                </label>
-
-                <div class="ds-import-actions">
-                  <button id="ds-create-btn" class="ds-btn ds-btn-primary" type="button">Create dataset</button>
-                  <p id="ds-status" class="gpu-inline-status"></p>
+                <div id="studio-pagination" class="studio-pagination hidden">
+                  <button id="studio-prev-btn" class="ds-btn" type="button">Previous</button>
+                  <span id="studio-page-label">Page 1 / 1</span>
+                  <button id="studio-next-btn" class="ds-btn" type="button">Next</button>
                 </div>
               </section>
-
-              <div class="ds-workspace">
-                <aside class="ds-datasets-panel">
-                  <div class="ds-panel-head">
-                    <h3>Datasets</h3>
-                    <span id="ds-count" class="ds-count">0</span>
-                  </div>
-                  <div id="ds-dataset-list" class="ds-dataset-list"></div>
-                </aside>
-
-                <section class="ds-editor-panel">
-                  <div class="ds-editor-head">
-                    <div>
-                      <h3 id="ds-selected-name">No dataset selected</h3>
-                      <p id="ds-selected-meta" class="ds-selected-meta"></p>
-                    </div>
-                    <button id="ds-delete-btn" class="ds-btn ds-btn-danger" type="button">Delete</button>
-                  </div>
-
-                  <div class="ds-toolbar-row">
-                    <input id="ds-search-input" class="gpu-form-input" type="text" placeholder="Search rows" />
-                    <button id="ds-search-btn" class="ds-btn" type="button">Search</button>
-                    <button id="ds-clear-search-btn" class="ds-btn" type="button">Clear</button>
-                  </div>
-
-                  <div class="ds-toolbar-row ds-toolbar-row-edit">
-                    <button id="ds-add-row-btn" class="ds-btn" type="button">Add row</button>
-                    <button id="ds-add-col-btn" class="ds-btn" type="button">Add column</button>
-                    <button id="ds-rename-col-btn" class="ds-btn" type="button">Rename column</button>
-                    <button id="ds-delete-col-btn" class="ds-btn ds-btn-danger" type="button">Delete column</button>
-                  </div>
-
-                  <div class="ds-ops-grid">
-                    <div class="ds-op-card">
-                      <h4>Clean</h4>
-                      <select id="ds-clean-op" class="gpu-form-select" title="Select clean operation">
-                        <option value="trim-text">Trim whitespace</option>
-                        <option value="remove-empty">Remove empty rows</option>
-                        <option value="dedupe">Deduplicate rows</option>
-                        <option value="lowercase">Lowercase field</option>
-                        <option value="filter-regex">Filter by regex</option>
-                      </select>
-                      <input id="ds-clean-field" class="gpu-form-input" type="text" placeholder="Field (default: text)" />
-                      <input id="ds-clean-pattern" class="gpu-form-input" type="text" placeholder="Pattern (regex only)" />
-                      <button id="ds-clean-btn" class="ds-btn" type="button">Apply clean</button>
-                    </div>
-
-                    <div class="ds-op-card">
-                      <h4>Chunk</h4>
-                      <input id="ds-chunk-field" class="gpu-form-input" type="text" placeholder="Field (default: text)" />
-                      <div class="ds-inline-2">
-                        <input id="ds-chunk-size" class="gpu-form-input" type="number" min="50" value="500" placeholder="Chunk size" />
-                        <input id="ds-chunk-overlap" class="gpu-form-input" type="number" min="0" value="50" placeholder="Overlap" />
-                      </div>
-                      <button id="ds-chunk-btn" class="ds-btn" type="button">Apply chunk</button>
-                    </div>
-
-                    <div class="ds-op-card">
-                      <h4>Tag</h4>
-                      <input id="ds-tag-field" class="gpu-form-input" type="text" placeholder="Tag field (default: tag)" />
-                      <input id="ds-tag-value" class="gpu-form-input" type="text" placeholder="Tag value" />
-                      <input id="ds-tag-match-field" class="gpu-form-input" type="text" placeholder="Match field (default: text)" />
-                      <input id="ds-tag-contains" class="gpu-form-input" type="text" placeholder="Only rows containing... (optional)" />
-                      <button id="ds-tag-btn" class="ds-btn" type="button">Apply tag</button>
-                    </div>
-
-                    <div class="ds-op-card">
-                      <h4>Train/Eval split</h4>
-                      <div class="ds-inline-3">
-                        <input id="ds-split-train" class="gpu-form-input" type="number" min="0" value="80" placeholder="Train" />
-                        <input id="ds-split-eval" class="gpu-form-input" type="number" min="0" value="10" placeholder="Eval" />
-                        <input id="ds-split-test" class="gpu-form-input" type="number" min="0" value="10" placeholder="Test" />
-                      </div>
-                      <input id="ds-split-field" class="gpu-form-input" type="text" placeholder="Split field (default: split)" />
-                      <button id="ds-split-btn" class="ds-btn" type="button">Apply split</button>
-                    </div>
-
-                    <div class="ds-op-card">
-                      <h4>Versioning</h4>
-                      <input id="ds-version-label" class="gpu-form-input" type="text" placeholder="Version label" />
-                      <button id="ds-version-btn" class="ds-btn" type="button">Create version</button>
-                      <select id="ds-version-select" class="gpu-form-select" title="Select version"></select>
-                      <button id="ds-rollback-btn" class="ds-btn" type="button">Rollback</button>
-                    </div>
-                  </div>
-
-                  <div class="ds-table-wrap">
-                    <table class="ds-table">
-                      <thead id="ds-table-head"></thead>
-                      <tbody id="ds-table-body"></tbody>
-                    </table>
-                  </div>
-
-                  <div class="ds-pagination">
-                    <button id="ds-prev-btn" class="ds-btn" type="button">Previous</button>
-                    <span id="ds-page-label">Page 1 of 1</span>
-                    <button id="ds-next-btn" class="ds-btn" type="button">Next</button>
-                  </div>
-                </section>
-              </div>
+            </div>
           </div>
         </div>
         <!-- /DATA STUDIO VIEW -->
@@ -1076,6 +1190,21 @@
             <div class="instances-header">
               <h2 class="instances-title">Settings</h2>
               <p class="instances-subtitle">Configure your account and workspace preferences</p>
+            </div>
+
+            <div class="menu-hero-card settings-hero">
+              <div class="menu-hero-shapes" aria-hidden="true">
+                <svg viewBox="0 0 200 200" preserveAspectRatio="none">
+                  <path d="M 120 0 Q 80 100 200 120 L 200 0 Z" fill="#2eb0f1" />
+                  <path d="M 200 100 Q 150 150 200 200 Z" fill="#24b662" />
+                  <path d="M 100 200 Q 150 100 200 150 L 200 200 Z" fill="#fcca22" />
+                </svg>
+              </div>
+              <div class="menu-hero-content">
+                <p class="menu-hero-eyebrow">Workspace Preferences</p>
+                <h3>Control Center</h3>
+                <p>Fine-tune your agent, tools, account, and diagnostics from a unified menu.</p>
+              </div>
             </div>
             
             <div class="settings-layout">
@@ -1379,6 +1508,87 @@
         </div>
         <!-- /SETTINGS VIEW -->
 
+      </main>
+
+        <!-- Profile Modal (Kaggle-style) -->
+        <div id="profile-modal" class="nb-tpl-overlay" style="display:none; z-index: 2000;">
+          <div class="profile-modal-container">
+            
+            <!-- Top Hero Banner with Graphic Shapes -->
+            <div class="profile-hero">
+              <button class="profile-settings-btn" id="profile-settings-btn">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                Settings
+              </button>
+              
+              <div class="profile-hero-shapes">
+                <svg viewBox="0 0 200 200" preserveAspectRatio="none">
+                  <path d="M 120 0 Q 80 100 200 120 L 200 0 Z" fill="#2eb0f1" />
+                  <path d="M 200 100 Q 150 150 200 200 Z" fill="#24b662" />
+                  <path d="M 100 200 Q 150 100 200 150 L 200 200 Z" fill="#fcca22" />
+                </svg>
+              </div>
+
+              <div class="profile-hero-content">
+                <div class="profile-avatar-wrapper">
+                  <div class="profile-avatar-large" id="profile-modal-avatar">
+                    <!-- Avatar injected via JS -->
+                     <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" stroke-width="1.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                  </div>
+                </div>
+                
+                <div class="profile-user-details">
+                  <div class="profile-username" id="profile-modal-username">username</div>
+                  <div class="profile-displayname" id="profile-modal-name">Display Name</div>
+                  <div class="profile-meta" id="profile-modal-meta">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                    Joined recently
+                  </div>
+                </div>
+                
+                <!-- Close button for modal -->
+                <button class="profile-close-btn" id="profile-modal-close">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="profile-body">
+              <div class="profile-tabs">
+                <button class="profile-tab active" data-ptab="about">About</button>
+                <button class="profile-tab" data-ptab="activity">Activity</button>
+              </div>
+              
+              <div class="profile-tab-content active" id="ptab-about">
+                <h3 class="profile-section-title">Bio</h3>
+                <p class="profile-bio" id="profile-modal-bio">No bio yet...</p>
+                
+                <!-- Guest Warning Banner -->
+                <div id="profile-guest-warning" class="profile-guest-warning" style="display:none;">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                  <div>
+                    <strong>Guest Session Active</strong>
+                    <p>You are logged in as a guest. Your data, projects, and custom settings will be lost when you sign out or close the browser.</p>
+                  </div>
+                </div>
+                
+                <div class="profile-actions-bottom">
+                  <button id="profile-signout-btn" class="ds-btn ds-btn-primary" style="margin-top: 24px; background-color: var(--surface-hover); color: var(--text); border: 1px solid var(--border-color);">
+                    Sign Out
+                  </button>
+                </div>
+              </div>
+
+              <div class="profile-tab-content" id="ptab-activity">
+                 <div class="profile-empty-state">
+                   No recent activity.
+                 </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
         <!-- Auth Modal -->
         <div class="modal-overlay auth-modal" id="auth-modal" style="display:none; z-index: 9999;">
           <div class="modal-content auth-modal-content" style="max-width: 400px; width: 100%; border-radius: 12px; border: 1px solid var(--border-color); background: var(--surface);">
@@ -1392,23 +1602,44 @@
               <div id="turnstile-widget" style="margin: 0 auto;"></div>
               <button id="auth-signin-btn" class="ds-btn ds-btn-primary" style="width: 100%; justify-content: center; padding: 10px;">Sign In</button>
               <button id="auth-signup-btn" class="ds-btn" style="width: 100%; justify-content: center; padding: 10px;">Sign Up</button>
+              
+              <div style="display: flex; align-items: center; margin: 8px 0;">
+                <div style="flex: 1; height: 1px; background: var(--border-color);"></div>
+                <span style="padding: 0 10px; color: var(--text-dim); font-size: 0.85rem;">OR</span>
+                <div style="flex: 1; height: 1px; background: var(--border-color);"></div>
+              </div>
+              
+              <div style="display: flex; flex-direction: column; gap: 8px;">
+                <button id="auth-google-btn" class="ds-btn" style="width: 100%; justify-content: center; padding: 10px; background: #ffffff; color: #3c4043; border: 1px solid #dadce0; font-family: 'Roboto', sans-serif; font-weight: 500; font-size: 14px; transition: background 0.2s;">
+                  <img src="/logos/google.svg" alt="Google" width="18" height="18" style="margin-right: 12px;" onerror="this.style.display='none'"> Continue with Google
+                </button>
+                <button id="auth-discord-btn" class="ds-btn" style="width: 100%; justify-content: center; padding: 10px; background: #5865F2; color: #ffffff; border: none; font-family: 'Roboto', sans-serif; font-weight: 500; font-size: 14px; transition: opacity 0.2s;">
+                  <img src="/logos/discord.svg" alt="Discord" width="18" height="18" style="margin-right: 12px;" onerror="this.style.display='none'"> Continue with Discord
+                </button>
+                <button id="auth-github-btn" class="ds-btn" style="width: 100%; justify-content: center; padding: 10px; background: #24292e; color: #ffffff; border: none; font-family: 'Roboto', sans-serif; font-weight: 500; font-size: 14px; transition: opacity 0.2s;">
+                  <img src="/logos/github.svg" alt="GitHub" width="18" height="18" style="margin-right: 12px;" onerror="this.style.display='none'"> Continue with GitHub
+                </button>
+                <button id="auth-facebook-btn" class="ds-btn" style="width: 100%; justify-content: center; padding: 10px; background: #1877F2; color: #ffffff; border: none; font-family: 'Roboto', sans-serif; font-weight: 500; font-size: 14px; transition: opacity 0.2s;">
+                  <img src="/logos/facebook.svg" alt="Facebook" width="18" height="18" style="margin-right: 12px;" onerror="this.style.display='none'"> Continue with Facebook
+                </button>
+                <button id="auth-guest-btn" class="ds-btn" style="width: 100%; justify-content: center; padding: 10px; background: var(--surface-hover); color: var(--text); border: 1px solid var(--border-color); font-family: 'Roboto', sans-serif; font-weight: 500; font-size: 14px; transition: background 0.2s;">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 12px;"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> Continue as Guest
+                </button>
+              </div>
               <p id="auth-error-msg" class="gpu-inline-status" style="color: var(--danger, #ff4d4f); text-align: center; margin: 0; min-height: 20px;"></p>
               <p id="auth-success-msg" class="gpu-inline-status" style="color: var(--success, #00e5bf); text-align: center; margin: 0; min-height: 20px;"></p>
             </div>
           </div>
         </div>
 
-      </main>
-    </div>
-
     <nav class="mobile-tools-dock" id="mobile-tools-dock" aria-label="Quick tools">
       <button type="button" class="mobile-tool-btn" data-view="clui" title="Runtime">
         <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
         <span>Runtime</span>
       </button>
-      <button type="button" class="mobile-tool-btn" data-view="data-studio" title="Datasets">
+      <button type="button" class="mobile-tool-btn" data-view="data-studio" title="Data Studio">
         <svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"></ellipse><path d="M4 5v10c0 1.66 3.58 3 8 3s8-1.34 8-3V5"></path><path d="M4 10c0 1.66 3.58 3 8 3s8-1.34 8-3"></path></svg>
-        <span>Datasets</span>
+        <span>Studio</span>
       </button>
       <button type="button" class="mobile-tool-btn mobile-tool-home-btn" data-view="home" title="Mission Control">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
@@ -1443,6 +1674,14 @@
         <span class="mobile-tools-sheet-content">
           <span class="mobile-tools-sheet-label">Experiments</span>
           <span class="mobile-tools-sheet-hint">Notebook and execution</span>
+        </span>
+        <span class="mobile-tools-sheet-chevron">â€º</span>
+      </button>
+      <button type="button" class="mobile-tools-sheet-item" data-view="dataset-creator">
+        <span class="mobile-tools-sheet-icon">🗃️</span>
+        <span class="mobile-tools-sheet-content">
+          <span class="mobile-tools-sheet-label">Dataset Creator</span>
+          <span class="mobile-tools-sheet-hint">Create datasets with AI pipelines</span>
         </span>
         <span class="mobile-tools-sheet-chevron">â€º</span>
       </button>
@@ -1511,6 +1750,7 @@
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     
     <!-- Retaining original script import -->
-    <script src="/app.js" type="module"></script>
+    <script src="/templates.js"></script>
+    <script src="/app.js?v=2" type="module"></script>
   </body>
 </html>

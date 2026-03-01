@@ -43,51 +43,6 @@ function normalizePresenceKey(key: string | undefined): string | undefined {
 }
 
 function resolvePrimaryIPv4(): string | undefined {
-  const nets = os.networimport { spawnSync } from "node:child_process";
-import os from "node:os";
-
-export type SystemPresence = {
-  host?: string;
-  ip?: string;
-  version?: string;
-  platform?: string;
-  deviceFamily?: string;
-  modelIdentifier?: string;
-  lastInputSeconds?: number;
-  mode?: string;
-  reason?: string;
-  deviceId?: string;
-  roles?: string[];
-  scopes?: string[];
-  instanceId?: string;
-  text: string;
-  ts: number;
-};
-
-export type SystemPresenceUpdate = {
-  key: string;
-  previous?: SystemPresence;
-  next: SystemPresence;
-  changes: Partial<SystemPresence>;
-  changedKeys: (keyof SystemPresence)[];
-};
-
-const entries = new Map<string, SystemPresence>();
-const TTL_MS = 5 * 60 * 1000; // 5 minutes
-const MAX_ENTRIES = 200;
-
-function normalizePresenceKey(key: string | undefined): string | undefined {
-  if (!key) {
-    return undefined;
-  }
-  const trimmed = key.trim();
-  if (!trimmed) {
-    return undefined;
-  }
-  return trimmed.toLowerCase();
-}
-
-function resolvePrimaryIPv4(): string | undefined {
   const nets = os.networkInterfaces();
   const prefer = ["en0", "eth0"];
   const pick = (names: string[]) => {

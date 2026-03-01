@@ -1,10 +1,9 @@
 import { Command } from "commander";
-import { registerProgramCommands } from "./command-registry.js";
 import { createProgramContext } from "./context.js";
 import { configureProgramHelp } from "./help.js";
 import { registerPreActionHooks } from "./preaction.js";
 
-export function buildProgram() {
+export async function buildProgram(options?: { primary?: string }) {
   const program = new Command();
   const ctx = createProgramContext();
   const argv = process.argv;
@@ -12,7 +11,8 @@ export function buildProgram() {
   configureProgramHelp(program, ctx);
   registerPreActionHooks(program, ctx.programVersion);
 
-  registerProgramCommands(program, ctx, argv);
+  const { registerProgramCommands } = await import("./command-registry.js");
+  registerProgramCommands(program, ctx, argv, { primary: options?.primary });
 
   return program;
 }

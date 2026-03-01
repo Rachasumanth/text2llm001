@@ -32,40 +32,6 @@ describe("noteSecurityWarnings gateway exposure", () => {
       process.env.TEXT2LLM_GATEWAY_TOKEN = prevToken;
     }
     if (prevPassword === undefined) {
-      delete process.env.TEXT2LLM_GATEimport { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { TEXT2LLMConfig } from "../config/config.js";
-
-const note = vi.hoisted(() => vi.fn());
-
-vi.mock("../terminal/note.js", () => ({
-  note,
-}));
-
-vi.mock("../channels/plugins/index.js", () => ({
-  listChannelPlugins: () => [],
-}));
-
-import { noteSecurityWarnings } from "./doctor-security.js";
-
-describe("noteSecurityWarnings gateway exposure", () => {
-  let prevToken: string | undefined;
-  let prevPassword: string | undefined;
-
-  beforeEach(() => {
-    note.mockClear();
-    prevToken = process.env.TEXT2LLM_GATEWAY_TOKEN;
-    prevPassword = process.env.TEXT2LLM_GATEWAY_PASSWORD;
-    delete process.env.TEXT2LLM_GATEWAY_TOKEN;
-    delete process.env.TEXT2LLM_GATEWAY_PASSWORD;
-  });
-
-  afterEach(() => {
-    if (prevToken === undefined) {
-      delete process.env.TEXT2LLM_GATEWAY_TOKEN;
-    } else {
-      process.env.TEXT2LLM_GATEWAY_TOKEN = prevToken;
-    }
-    if (prevPassword === undefined) {
       delete process.env.TEXT2LLM_GATEWAY_PASSWORD;
     } else {
       process.env.TEXT2LLM_GATEWAY_PASSWORD = prevPassword;

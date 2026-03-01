@@ -66,8 +66,8 @@ function runChannelsCommandWithDanger(action: () => Promise<void>, label: string
   });
 }
 
-export function registerChannelsCli(program: Command) {
-  const channelNames = formatCliChannelOptions();
+export async function registerChannelsCli(program: Command) {
+  const channelNames = await formatCliChannelOptions();
   const channels = program
     .command("channels")
     .description("Manage chat channel accounts")
@@ -106,7 +106,7 @@ export function registerChannelsCli(program: Command) {
   channels
     .command("capabilities")
     .description("Show provider capabilities (intents/scopes + supported features)")
-    .option("--channel <name>", `Channel (${formatCliChannelOptions(["all"])})`)
+    .option("--channel <name>", `Channel (${await formatCliChannelOptions(["all"])})`)
     .option("--account <id>", "Account id (only with --channel)")
     .option("--target <dest>", "Channel target for permission audit (Discord channel:<id>)")
     .option("--timeout <ms>", "Timeout in ms", "10000")
@@ -143,7 +143,7 @@ export function registerChannelsCli(program: Command) {
   channels
     .command("logs")
     .description("Show recent channel logs from the gateway log file")
-    .option("--channel <name>", `Channel (${formatCliChannelOptions(["all"])})`, "all")
+    .option("--channel <name>", `Channel (${await formatCliChannelOptions(["all"])})`, "all")
     .option("--lines <n>", "Number of lines (default: 200)", "200")
     .option("--json", "Output JSON", false)
     .action(async (opts) => {

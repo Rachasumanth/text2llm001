@@ -27,35 +27,6 @@ export async function promptGatewayConfig(
   );
   const port = Number.parseInt(String(portRaw), 10);
 
-  let binimport type { TEXT2LLMConfig } from "../config/config.js";
-import type { RuntimeEnv } from "../runtime.js";
-import { resolveGatewayPort } from "../config/config.js";
-import { findTailscaleBinary } from "../infra/tailscale.js";
-import { note } from "../terminal/note.js";
-import { buildGatewayAuthConfig } from "./configure.gateway-auth.js";
-import { confirm, select, text } from "./configure.shared.js";
-import { guardCancel, normalizeGatewayTokenInput, randomToken } from "./onboard-helpers.js";
-
-type GatewayAuthChoice = "token" | "password";
-
-export async function promptGatewayConfig(
-  cfg: TEXT2LLMConfig,
-  runtime: RuntimeEnv,
-): Promise<{
-  config: TEXT2LLMConfig;
-  port: number;
-  token?: string;
-}> {
-  const portRaw = guardCancel(
-    await text({
-      message: "Gateway port",
-      initialValue: String(resolveGatewayPort(cfg)),
-      validate: (value) => (Number.isFinite(Number(value)) ? undefined : "Invalid port"),
-    }),
-    runtime,
-  );
-  const port = Number.parseInt(String(portRaw), 10);
-
   let bind = guardCancel(
     await select({
       message: "Gateway bind mode",

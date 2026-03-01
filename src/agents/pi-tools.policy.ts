@@ -22,30 +22,6 @@ function compilePattern(pattern: string): CompiledPattern {
     return { kind: "all" };
   }
   if (!normalized.includes("*")) {
-    return { kind: "exaimport type { TEXT2LLMConfig } from "../config/config.js";
-import type { AnyAgentTool } from "./pi-tools.types.js";
-import type { SandboxToolPolicy } from "./sandbox.js";
-import { getChannelDock } from "../channels/dock.js";
-import { resolveChannelGroupToolsPolicy } from "../config/group-policy.js";
-import { resolveThreadParentSessionKey } from "../sessions/session-key-utils.js";
-import { normalizeMessageChannel } from "../utils/message-channel.js";
-import { resolveAgentConfig, resolveAgentIdFromSessionKey } from "./agent-scope.js";
-import { expandToolGroups, normalizeToolName } from "./tool-policy.js";
-
-type CompiledPattern =
-  | { kind: "all" }
-  | { kind: "exact"; value: string }
-  | { kind: "regex"; value: RegExp };
-
-function compilePattern(pattern: string): CompiledPattern {
-  const normalized = normalizeToolName(pattern);
-  if (!normalized) {
-    return { kind: "exact", value: "" };
-  }
-  if (normalized === "*") {
-    return { kind: "all" };
-  }
-  if (!normalized.includes("*")) {
     return { kind: "exact", value: normalized };
   }
   const escaped = normalized.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

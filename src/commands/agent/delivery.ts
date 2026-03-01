@@ -20,28 +20,6 @@ import {
 import { isInternalMessageChannel } from "../../utils/message-channel.js";
 
 type RunResult = Awaited<
-  ReturnTimport type { TEXT2LLMConfig } from "../../config/config.js";
-import type { SessionEntry } from "../../config/sessions.js";
-import type { RuntimeEnv } from "../../runtime.js";
-import type { AgentCommandOpts } from "./types.js";
-import { AGENT_LANE_NESTED } from "../../agents/lanes.js";
-import { getChannelPlugin, normalizeChannelId } from "../../channels/plugins/index.js";
-import { createOutboundSendDeps, type CliDeps } from "../../cli/outbound-send-deps.js";
-import {
-  resolveAgentDeliveryPlan,
-  resolveAgentOutboundTarget,
-} from "../../infra/outbound/agent-delivery.js";
-import { deliverOutboundPayloads } from "../../infra/outbound/deliver.js";
-import { buildOutboundResultEnvelope } from "../../infra/outbound/envelope.js";
-import {
-  formatOutboundPayloadLog,
-  type NormalizedOutboundPayload,
-  normalizeOutboundPayloads,
-  normalizeOutboundPayloadsForJson,
-} from "../../infra/outbound/payloads.js";
-import { isInternalMessageChannel } from "../../utils/message-channel.js";
-
-type RunResult = Awaited<
   ReturnType<(typeof import("../../agents/pi-embedded.js"))["runEmbeddedPiAgent"]>
 >;
 

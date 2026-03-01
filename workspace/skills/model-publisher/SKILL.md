@@ -52,3 +52,13 @@ Required:
 2. `README.md` (generated model card)
 3. `release_notes.md` (changes since last version)
 4. optional `gguf_manifest.json` (quantized artifacts)
+
+## Preflight Validation
+
+Before any publish operation, validate:
+
+- `HF_TOKEN` is set and has write permissions.
+- HF Hub API is reachable and token is valid (`huggingface-cli whoami`).
+- Target repository exists or can be created under the authenticated account.
+
+Report clear error if credentials are missing or invalid.

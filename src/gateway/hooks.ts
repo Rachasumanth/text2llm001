@@ -26,34 +26,6 @@ export type HookAgentPolicyResolved = {
   allowedAgentIds?: Set<string>;
 };
 
-exporimport type { IncomingMessage } from "node:http";
-import { randomUUID } from "node:crypto";
-import type { ChannelId } from "../channels/plugins/types.js";
-import type { TEXT2LLMConfig } from "../config/config.js";
-import { listAgentIds, resolveDefaultAgentId } from "../agents/agent-scope.js";
-import { listChannelPlugins } from "../channels/plugins/index.js";
-import { normalizeAgentId } from "../routing/session-key.js";
-import { normalizeMessageChannel } from "../utils/message-channel.js";
-import { type HookMappingResolved, resolveHookMappings } from "./hooks-mapping.js";
-
-const DEFAULT_HOOKS_PATH = "/hooks";
-const DEFAULT_HOOKS_MAX_BODY_BYTES = 256 * 1024;
-
-export type HooksConfigResolved = {
-  basePath: string;
-  token: string;
-  maxBodyBytes: number;
-  mappings: HookMappingResolved[];
-  agentPolicy: HookAgentPolicyResolved;
-  sessionPolicy: HookSessionPolicyResolved;
-};
-
-export type HookAgentPolicyResolved = {
-  defaultAgentId: string;
-  knownAgentIds: Set<string>;
-  allowedAgentIds?: Set<string>;
-};
-
 export type HookSessionPolicyResolved = {
   defaultSessionKey?: string;
   allowRequestSessionKey: boolean;

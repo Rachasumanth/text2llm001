@@ -22,30 +22,6 @@ import {
   inspectPathPermissions,
   safeStat,
 } from "./audit-fs.js";
-impo/**
- * Asynchronous security audit collector functions.
- *
- * These functions perform I/O (filesystem, config reads) to detect security issues.
- */
-import JSON5 from "json5";
-import fs from "node:fs/promises";
-import path from "node:path";
-import type { TEXT2LLMConfig, ConfigFileSnapshot } from "../config/config.js";
-import type { ExecFn } from "./windows-acl.js";
-import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../agents/agent-scope.js";
-import { loadWorkspaceSkillEntries } from "../agents/skills.js";
-import { MANIFEST_KEY } from "../compat/legacy-names.js";
-import { resolveNativeSkillsEnabled } from "../config/commands.js";
-import { createConfigIO } from "../config/config.js";
-import { INCLUDE_KEY, MAX_INCLUDE_DEPTH } from "../config/includes.js";
-import { resolveOAuthDir } from "../config/paths.js";
-import { normalizeAgentId } from "../routing/session-key.js";
-import {
-  formatPermissionDetail,
-  formatPermissionRemediation,
-  inspectPathPermissions,
-  safeStat,
-} from "./audit-fs.js";
 import { scanDirectoryWithSummary, type SkillScanFinding } from "./skill-scanner.js";
 
 export type SecurityAuditFinding = {

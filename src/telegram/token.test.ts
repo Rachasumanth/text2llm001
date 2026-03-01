@@ -30,38 +30,6 @@ describe("resolveTelegramToken", () => {
       channels: { telegram: {} },
     } as TEXT2LLMConfig;
     const res = resolveTelegramToken(cfg);
-    expect(rimport fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import type { TEXT2LLMConfig } from "../config/config.js";
-import { resolveTelegramToken } from "./token.js";
-
-function withTempDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "text2llm-telegram-token-"));
-}
-
-describe("resolveTelegramToken", () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
-  it("prefers config token over env", () => {
-    vi.stubEnv("TELEGRAM_BOT_TOKEN", "env-token");
-    const cfg = {
-      channels: { telegram: { botToken: "cfg-token" } },
-    } as TEXT2LLMConfig;
-    const res = resolveTelegramToken(cfg);
-    expect(res.token).toBe("cfg-token");
-    expect(res.source).toBe("config");
-  });
-
-  it("uses env token when config is missing", () => {
-    vi.stubEnv("TELEGRAM_BOT_TOKEN", "env-token");
-    const cfg = {
-      channels: { telegram: {} },
-    } as TEXT2LLMConfig;
-    const res = resolveTelegramToken(cfg);
     expect(res.token).toBe("env-token");
     expect(res.source).toBe("env");
   });

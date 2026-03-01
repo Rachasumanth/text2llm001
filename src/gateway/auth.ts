@@ -37,45 +37,6 @@ type TailscaleUser = {
 
 type TailscaleWhoisLookup = (ip: string) => Promise<TailscaleWhoisIdentity | null>;
 
-function normaliimport type { IncomingMessage } from "node:http";
-import type { GatewayAuthConfig, GatewayTailscaleMode } from "../config/config.js";
-import { readTailscaleWhoisIdentity, type TailscaleWhoisIdentity } from "../infra/tailscale.js";
-import { safeEqualSecret } from "../security/secret-equal.js";
-import {
-  isLoopbackAddress,
-  isTrustedProxyAddress,
-  parseForwardedForClientIp,
-  resolveGatewayClientIp,
-} from "./net.js";
-export type ResolvedGatewayAuthMode = "token" | "password";
-
-export type ResolvedGatewayAuth = {
-  mode: ResolvedGatewayAuthMode;
-  token?: string;
-  password?: string;
-  allowTailscale: boolean;
-};
-
-export type GatewayAuthResult = {
-  ok: boolean;
-  method?: "token" | "password" | "tailscale" | "device-token";
-  user?: string;
-  reason?: string;
-};
-
-type ConnectAuth = {
-  token?: string;
-  password?: string;
-};
-
-type TailscaleUser = {
-  login: string;
-  name: string;
-  profilePic?: string;
-};
-
-type TailscaleWhoisLookup = (ip: string) => Promise<TailscaleWhoisIdentity | null>;
-
 function normalizeLogin(login: string): string {
   return login.trim().toLowerCase();
 }

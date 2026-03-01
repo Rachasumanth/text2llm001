@@ -33,41 +33,6 @@ export function resolveInboundDebounceMs(params: {
   return override ?? byChannel ?? base ?? 0;
 }
 
-type DebounceBufimport type { TEXT2LLMConfig } from "../config/config.js";
-import type { InboundDebounceByProvider } from "../config/types.messages.js";
-
-const resolveMs = (value: unknown): number | undefined => {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    return undefined;
-  }
-  return Math.max(0, Math.trunc(value));
-};
-
-const resolveChannelOverride = (params: {
-  byChannel?: InboundDebounceByProvider;
-  channel: string;
-}): number | undefined => {
-  if (!params.byChannel) {
-    return undefined;
-  }
-  return resolveMs(params.byChannel[params.channel]);
-};
-
-export function resolveInboundDebounceMs(params: {
-  cfg: TEXT2LLMConfig;
-  channel: string;
-  overrideMs?: number;
-}): number {
-  const inbound = params.cfg.messages?.inbound;
-  const override = resolveMs(params.overrideMs);
-  const byChannel = resolveChannelOverride({
-    byChannel: inbound?.byChannel,
-    channel: params.channel,
-  });
-  const base = resolveMs(inbound?.debounceMs);
-  return override ?? byChannel ?? base ?? 0;
-}
-
 type DebounceBuffer<T> = {
   items: T[];
   timeout: ReturnType<typeof setTimeout> | null;

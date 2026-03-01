@@ -71,6 +71,20 @@ Produce these artifacts:
 3. `data_pipeline_report.md` with quality, PII, and domain-balance summaries.
 4. Reproducible commands/configs used to generate the dataset.
 
+## Dataset Versioning
+
+Track dataset versions for reproducibility:
+
+- Use **DVC** (Data Version Control) when project uses git, otherwise use manifest-based versioning.
+- Support **git-lfs** for large artifact tracking when DVC is not available.
+- Every pipeline run should produce a versioned `dataset_manifest.json` with:
+  - corpus hash / content fingerprint
+  - source file list with sizes and modification dates
+  - pipeline config snapshot (filter thresholds, dedup settings)
+  - parent version link for lineage tracking
+- Tag versions with human-readable labels (e.g., `v1-raw`, `v2-deduped`, `v3-filtered`).
+- Never overwrite previous versions — always create new version entries.
+
 ## Python Dependencies
 
 Core dependencies for this skill:

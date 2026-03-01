@@ -25,33 +25,6 @@ async function readConfigFileRaw(configPath: string): Promise<{
 }
 
 export async function setupCommand(
-  opts?: { worksimport JSON5 from "json5";
-import fs from "node:fs/promises";
-import type { RuntimeEnv } from "../runtime.js";
-import { DEFAULT_AGENT_WORKSPACE_DIR, ensureAgentWorkspace } from "../agents/workspace.js";
-import { type TEXT2LLMConfig, createConfigIO, writeConfigFile } from "../config/config.js";
-import { formatConfigPath, logConfigUpdated } from "../config/logging.js";
-import { resolveSessionTranscriptsDir } from "../config/sessions.js";
-import { defaultRuntime } from "../runtime.js";
-import { shortenHomePath } from "../utils.js";
-
-async function readConfigFileRaw(configPath: string): Promise<{
-  exists: boolean;
-  parsed: TEXT2LLMConfig;
-}> {
-  try {
-    const raw = await fs.readFile(configPath, "utf-8");
-    const parsed = JSON5.parse(raw);
-    if (parsed && typeof parsed === "object") {
-      return { exists: true, parsed: parsed as TEXT2LLMConfig };
-    }
-    return { exists: true, parsed: {} };
-  } catch {
-    return { exists: false, parsed: {} };
-  }
-}
-
-export async function setupCommand(
   opts?: { workspace?: string },
   runtime: RuntimeEnv = defaultRuntime,
 ) {

@@ -2,16 +2,43 @@
 
 Checking Hugging Face...
 - Items returned: 1
-- Total Available: 2
+- Total Available: Unknown (Honest Mode)
+- Has More: true
+PASS: Hugging Face allocated items. Valid behavior.
+
 
 Checking GitHub...
 - Items returned: 1
-- Total Available: 57040
-PASS: GitHub seems to return valid total count.
+- Total Available: 57042
+- Has More: true
+PASS: GitHub allocated items. Valid behavior.
+
 
 Checking Arxiv...
 - Items returned: 1
 - Total Available: 1160170
-PASS: Arxiv seems to return valid total count.
+- Has More: true
+PASS: Arxiv allocated items. Valid behavior.
+
+
+Checking Kaggle...
+- Items returned: 1
+- Total Available: Unknown (Honest Mode)
+- Has More: true
+PASS: Kaggle allocated items. Valid behavior.
+
+
+Checking Civitai...
+- Items returned: 1
+- Total Available: Unknown (Honest Mode)
+- Has More: true
+PASS: Civitai allocated items. Valid behavior.
+
+
+Checking Papers With Code...
+- Items returned: 0
+- Total Available: Unknown (Honest Mode)
+- Has More: false
+
 
 Verification Complete.

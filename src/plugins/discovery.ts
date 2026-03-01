@@ -135,6 +135,7 @@ function discoverInDirectory(params: {
     return;
   }
 
+  console.time("discoverInDirectory_looping_" + params.dir);
   for (const entry of entries) {
     const fullPath = path.join(params.dir, entry.name);
     if (entry.isFile()) {
@@ -198,6 +199,7 @@ function discoverInDirectory(params: {
       });
     }
   }
+  console.timeEnd("discoverInDirectory_looping_" + params.dir);
 }
 
 function discoverFromPath(params: {
@@ -302,11 +304,13 @@ export function discoverTEXT2LLMPlugins(params: {
   workspaceDir?: string;
   extraPaths?: string[];
 }): PluginDiscoveryResult {
+  console.time("discoverTEXT2LLMPlugins_Total");
   const candidates: PluginCandidate[] = [];
   const diagnostics: PluginDiagnostic[] = [];
   const seen = new Set<string>();
   const workspaceDir = params.workspaceDir?.trim();
 
+  console.time("discoverTEXT2LLMPlugins_extra");
   const extra = params.extraPaths ?? [];
   for (const extraPath of extra) {
     if (typeof extraPath !== "string") {
@@ -325,6 +329,9 @@ export function discoverTEXT2LLMPlugins(params: {
       seen,
     });
   }
+  console.timeEnd("discoverTEXT2LLMPlugins_extra");
+  
+  console.time("discoverTEXT2LLMPlugins_workspace");
   if (workspaceDir) {
     const workspaceRoot = resolveUserPath(workspaceDir);
     const workspaceExtDirs = [path.join(workspaceRoot, ".text2llm", "extensions")];
@@ -339,7 +346,9 @@ export function discoverTEXT2LLMPlugins(params: {
       });
     }
   }
+  console.timeEnd("discoverTEXT2LLMPlugins_workspace");
 
+  console.time("discoverTEXT2LLMPlugins_global");
   const globalDir = path.join(resolveConfigDir(), "extensions");
   discoverInDirectory({
     dir: globalDir,
@@ -348,7 +357,9 @@ export function discoverTEXT2LLMPlugins(params: {
     diagnostics,
     seen,
   });
+  console.timeEnd("discoverTEXT2LLMPlugins_global");
 
+  console.time("discoverTEXT2LLMPlugins_bundled");
   const bundledDir = resolveBundledPluginsDir();
   if (bundledDir) {
     discoverInDirectory({
@@ -359,6 +370,8 @@ export function discoverTEXT2LLMPlugins(params: {
       seen,
     });
   }
+  console.timeEnd("discoverTEXT2LLMPlugins_bundled");
 
+  console.timeEnd("discoverTEXT2LLMPlugins_Total");
   return { candidates, diagnostics };
 }

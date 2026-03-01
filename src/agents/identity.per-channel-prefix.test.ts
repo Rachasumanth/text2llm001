@@ -19,27 +19,6 @@ describe("resolveResponsePrefix with per-channel override", () => {
     });
 
     it("resolves 'auto' to identity name at global level", () => {
-      const cfg: TEXimport { describe, expect, it } from "vitest";
-import type { TEXT2LLMConfig } from "../config/config.js";
-import { resolveResponsePrefix, resolveEffectiveMessagesConfig } from "./identity.js";
-
-const makeConfig = <T extends TEXT2LLMConfig>(cfg: T) => cfg;
-
-describe("resolveResponsePrefix with per-channel override", () => {
-  // ─── Backward compatibility ─────────────────────────────────────────
-
-  describe("backward compatibility (no channel param)", () => {
-    it("returns undefined when no prefix configured anywhere", () => {
-      const cfg: TEXT2LLMConfig = {};
-      expect(resolveResponsePrefix(cfg, "main")).toBeUndefined();
-    });
-
-    it("returns global prefix when set", () => {
-      const cfg: TEXT2LLMConfig = { messages: { responsePrefix: "[Bot] " } };
-      expect(resolveResponsePrefix(cfg, "main")).toBe("[Bot] ");
-    });
-
-    it("resolves 'auto' to identity name at global level", () => {
       const cfg: TEXT2LLMConfig = {
         agents: {
           list: [{ id: "main", identity: { name: "TestBot" } }],

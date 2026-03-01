@@ -18,26 +18,6 @@ import { setConsoleSubsystemFilter, setConsoleTimestampPrefix } from "../../logg
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { defaultRuntime } from "../../runtime.js";
 import { formatCliCommand } from "../command-format.js";
-import { forceFreePortAndWait } from "../ports.js"import type { Command } from "commander";
-import fs from "node:fs";
-import type { GatewayAuthMode } from "../../config/config.js";
-import type { GatewayWsLogStyle } from "../../gateway/ws-logging.js";
-import {
-  CONFIG_PATH,
-  loadConfig,
-  readConfigFileSnapshot,
-  resolveGatewayPort,
-} from "../../config/config.js";
-import { resolveGatewayAuth } from "../../gateway/auth.js";
-import { startGatewayServer } from "../../gateway/server.js";
-import { setGatewayWsLogStyle } from "../../gateway/ws-logging.js";
-import { setVerbose } from "../../globals.js";
-import { GatewayLockError } from "../../infra/gateway-lock.js";
-import { formatPortDiagnostics, inspectPortUsage } from "../../infra/ports.js";
-import { setConsoleSubsystemFilter, setConsoleTimestampPrefix } from "../../logging/console.js";
-import { createSubsystemLogger } from "../../logging/subsystem.js";
-import { defaultRuntime } from "../../runtime.js";
-import { formatCliCommand } from "../command-format.js";
 import { forceFreePortAndWait } from "../ports.js";
 import { ensureDevGatewayConfig } from "./dev.js";
 import { runGatewayLoop } from "./run-loop.js";

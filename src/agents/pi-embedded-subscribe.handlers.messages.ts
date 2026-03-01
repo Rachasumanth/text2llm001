@@ -211,7 +211,17 @@ export function handleMessageEnd(
     rawThinking: extractAssistantThinking(assistantMessage),
   });
 
-  const text = ctx.stripBlockTags(rawText, { thinking: false, final: false });
+  let text = ctx.stripBlockTags(rawText, { thinking: false, final: false });
+  if (!text && ctx.params.enforceFinalTag) {
+    const originalEnforce = ctx.params.enforceFinalTag;
+    try {
+      ctx.params.enforceFinalTag = false;
+      text = ctx.stripBlockTags(rawText, { thinking: false, final: false });
+    } finally {
+      ctx.params.enforceFinalTag = originalEnforce;
+    }
+  }
+
   const rawThinking =
     ctx.state.includeReasoning || ctx.state.streamReasoning
       ? extractAssistantThinking(assistantMessage) || extractThinkingFromTaggedText(rawText)

@@ -28,36 +28,6 @@ describe("registerTelegramNativeCommands", () => {
     cfg,
     runtime: {} as RuntimeEnv,
     accountId,
-   import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { TEXT2LLMConfig } from "../config/config.js";
-import type { TelegramAccountConfig } from "../config/types.js";
-import type { RuntimeEnv } from "../runtime.js";
-import { registerTelegramNativeCommands } from "./bot-native-commands.js";
-
-const { listSkillCommandsForAgents } = vi.hoisted(() => ({
-  listSkillCommandsForAgents: vi.fn(() => []),
-}));
-
-vi.mock("../auto-reply/skill-commands.js", () => ({
-  listSkillCommandsForAgents,
-}));
-
-describe("registerTelegramNativeCommands", () => {
-  beforeEach(() => {
-    listSkillCommandsForAgents.mockReset();
-  });
-
-  const buildParams = (cfg: TEXT2LLMConfig, accountId = "default") => ({
-    bot: {
-      api: {
-        setMyCommands: vi.fn().mockResolvedValue(undefined),
-        sendMessage: vi.fn().mockResolvedValue(undefined),
-      },
-      command: vi.fn(),
-    } as unknown as Parameters<typeof registerTelegramNativeCommands>[0]["bot"],
-    cfg,
-    runtime: {} as RuntimeEnv,
-    accountId,
     telegramCfg: {} as TelegramAccountConfig,
     allowFrom: [],
     groupAllowFrom: [],

@@ -29,37 +29,6 @@ describe("hooks install (e2e)", () => {
   });
 
   afterEach(async () => {
-    if (prevStateDir === undefined)import fs from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-const tempDirs: string[] = [];
-
-async function makeTempDir() {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "text2llm-hooks-e2e-"));
-  tempDirs.push(dir);
-  return dir;
-}
-
-describe("hooks install (e2e)", () => {
-  let prevStateDir: string | undefined;
-  let prevBundledDir: string | undefined;
-  let workspaceDir: string;
-
-  beforeEach(async () => {
-    const baseDir = await makeTempDir();
-    workspaceDir = path.join(baseDir, "workspace");
-    await fs.mkdir(workspaceDir, { recursive: true });
-
-    prevStateDir = process.env.TEXT2LLM_STATE_DIR;
-    prevBundledDir = process.env.TEXT2LLM_BUNDLED_HOOKS_DIR;
-    process.env.TEXT2LLM_STATE_DIR = path.join(baseDir, "state");
-    process.env.TEXT2LLM_BUNDLED_HOOKS_DIR = path.join(baseDir, "bundled-none");
-    vi.resetModules();
-  });
-
-  afterEach(async () => {
     if (prevStateDir === undefined) {
       delete process.env.TEXT2LLM_STATE_DIR;
     } else {

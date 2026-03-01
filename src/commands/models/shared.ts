@@ -31,39 +31,6 @@ export const formatTokenK = (value?: number | null) => {
 };
 
 export const formatMs = (value?: number | null) => {
-  if (value === null || value === undefiimport { listAgentIds } from "../../agents/agent-scope.js";
-import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "../../agents/defaults.js";
-import {
-  buildModelAliasIndex,
-  modelKey,
-  parseModelRef,
-  resolveModelRefFromString,
-} from "../../agents/model-selection.js";
-import { formatCliCommand } from "../../cli/command-format.js";
-import {
-  type TEXT2LLMConfig,
-  readConfigFileSnapshot,
-  writeConfigFile,
-} from "../../config/config.js";
-import { normalizeAgentId } from "../../routing/session-key.js";
-
-export const ensureFlagCompatibility = (opts: { json?: boolean; plain?: boolean }) => {
-  if (opts.json && opts.plain) {
-    throw new Error("Choose either --json or --plain, not both.");
-  }
-};
-
-export const formatTokenK = (value?: number | null) => {
-  if (!value || !Number.isFinite(value)) {
-    return "-";
-  }
-  if (value < 1024) {
-    return `${Math.round(value)}`;
-  }
-  return `${Math.round(value / 1024)}k`;
-};
-
-export const formatMs = (value?: number | null) => {
   if (value === null || value === undefined) {
     return "-";
   }

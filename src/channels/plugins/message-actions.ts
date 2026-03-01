@@ -27,35 +27,6 @@ export function supportsChannelMessageButtons(cfg: TEXT2LLMConfig): boolean {
 }
 
 export function supportsChannelMessageCards(cfg: TEXT2LLMConfig): boolean {
-  for (const pluginimport type { AgentToolResult } from "@mariozechner/pi-agent-core";
-import type { TEXT2LLMConfig } from "../../config/config.js";
-import type { ChannelMessageActionContext, ChannelMessageActionName } from "./types.js";
-import { getChannelPlugin, listChannelPlugins } from "./index.js";
-
-export function listChannelMessageActions(cfg: TEXT2LLMConfig): ChannelMessageActionName[] {
-  const actions = new Set<ChannelMessageActionName>(["send", "broadcast"]);
-  for (const plugin of listChannelPlugins()) {
-    const list = plugin.actions?.listActions?.({ cfg });
-    if (!list) {
-      continue;
-    }
-    for (const action of list) {
-      actions.add(action);
-    }
-  }
-  return Array.from(actions);
-}
-
-export function supportsChannelMessageButtons(cfg: TEXT2LLMConfig): boolean {
-  for (const plugin of listChannelPlugins()) {
-    if (plugin.actions?.supportsButtons?.({ cfg })) {
-      return true;
-    }
-  }
-  return false;
-}
-
-export function supportsChannelMessageCards(cfg: TEXT2LLMConfig): boolean {
   for (const plugin of listChannelPlugins()) {
     if (plugin.actions?.supportsCards?.({ cfg })) {
       return true;

@@ -29,37 +29,6 @@ export type GatewayRuntimeConfig = {
   canvasHostEnabled: boolean;
 };
 
-export async function resolveGatewayRuntimeConimport type {
-  GatewayAuthConfig,
-  GatewayBindMode,
-  GatewayTailscaleConfig,
-  loadConfig,
-} from "../config/config.js";
-import {
-  assertGatewayAuthConfigured,
-  type ResolvedGatewayAuth,
-  resolveGatewayAuth,
-} from "./auth.js";
-import { normalizeControlUiBasePath } from "./control-ui-shared.js";
-import { resolveHooksConfig } from "./hooks.js";
-import { isLoopbackHost, resolveGatewayBindHost } from "./net.js";
-
-export type GatewayRuntimeConfig = {
-  bindHost: string;
-  controlUiEnabled: boolean;
-  openAiChatCompletionsEnabled: boolean;
-  openResponsesEnabled: boolean;
-  openResponsesConfig?: import("../config/types.gateway.js").GatewayHttpResponsesConfig;
-  controlUiBasePath: string;
-  controlUiRoot?: string;
-  resolvedAuth: ResolvedGatewayAuth;
-  authMode: ResolvedGatewayAuth["mode"];
-  tailscaleConfig: GatewayTailscaleConfig;
-  tailscaleMode: "off" | "serve" | "funnel";
-  hooksConfig: ReturnType<typeof resolveHooksConfig>;
-  canvasHostEnabled: boolean;
-};
-
 export async function resolveGatewayRuntimeConfig(params: {
   cfg: ReturnType<typeof loadConfig>;
   port: number;

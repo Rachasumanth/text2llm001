@@ -31,40 +31,7 @@ describe("warning filter", () => {
       }),
     ).toBe(true);
     expect(
-      shouldIgnoreWarnimport { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { installProcessWarningFilter, shouldIgnoreWarning } from "./warning-filter.js";
-
-const warningFilterKey = Symbol.for("text2llm.warning-filter");
-const baseEmitWarning = process.emitWarning.bind(process);
-
-function resetWarningFilterInstallState(): void {
-  const globalState = globalThis as typeof globalThis & {
-    [warningFilterKey]?: { installed: boolean };
-  };
-  delete globalState[warningFilterKey];
-  process.emitWarning = baseEmitWarning;
-}
-
-describe("warning filter", () => {
-  beforeEach(() => {
-    resetWarningFilterInstallState();
-  });
-
-  afterEach(() => {
-    resetWarningFilterInstallState();
-    vi.restoreAllMocks();
-  });
-
-  it("suppresses known deprecation and experimental warning signatures", () => {
-    expect(
-      shouldIgnoreWarning({
-        name: "DeprecationWarning",
-        code: "DEP0040",
-        message: "The punycode module is deprecated.",
-      }),
-    ).toBe(true);
-    expect(
-      shouldIgnoreWarning({
+      shouldIgnoreWarnng({
         name: "DeprecationWarning",
         code: "DEP0060",
         message: "The `util._extend` API is deprecated.",

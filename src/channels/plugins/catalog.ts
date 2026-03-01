@@ -34,42 +34,6 @@ export type ChannelPluginCatalogEntry = {
 };
 
 type CatalogOptions = {
-  workspaceDirimport fs from "node:fs";
-import path from "node:path";
-import type { TEXT2LLMPackageManifest } from "../../plugins/manifest.js";
-import type { PluginOrigin } from "../../plugins/types.js";
-import type { ChannelMeta } from "./types.js";
-import { MANIFEST_KEY } from "../../compat/legacy-names.js";
-import { discoverTEXT2LLMPlugins } from "../../plugins/discovery.js";
-import { CONFIG_DIR, isRecord, resolveUserPath } from "../../utils.js";
-
-export type ChannelUiMetaEntry = {
-  id: string;
-  label: string;
-  detailLabel: string;
-  systemImage?: string;
-};
-
-export type ChannelUiCatalog = {
-  entries: ChannelUiMetaEntry[];
-  order: string[];
-  labels: Record<string, string>;
-  detailLabels: Record<string, string>;
-  systemImages: Record<string, string>;
-  byId: Record<string, ChannelUiMetaEntry>;
-};
-
-export type ChannelPluginCatalogEntry = {
-  id: string;
-  meta: ChannelMeta;
-  install: {
-    npmSpec: string;
-    localPath?: string;
-    defaultChoice?: "npm" | "local";
-  };
-};
-
-type CatalogOptions = {
   workspaceDir?: string;
   catalogPaths?: string[];
 };
@@ -295,7 +259,11 @@ export function buildChannelUiCatalog(
 export function listChannelPluginCatalogEntries(
   options: CatalogOptions = {},
 ): ChannelPluginCatalogEntry[] {
+  console.time("listChannelPluginCatalogEntries_Total");
+  console.time("listChannelPluginCatalogEntries_discover");
   const discovery = discoverTEXT2LLMPlugins({ workspaceDir: options.workspaceDir });
+  console.timeEnd("listChannelPluginCatalogEntries_discover");
+  console.time("listChannelPluginCatalogEntries_build");
   const resolved = new Map<string, { entry: ChannelPluginCatalogEntry; priority: number }>();
 
   for (const candidate of discovery.candidates) {
@@ -309,7 +277,9 @@ export function listChannelPluginCatalogEntries(
       resolved.set(entry.id, { entry, priority });
     }
   }
+  console.timeEnd("listChannelPluginCatalogEntries_build");
 
+  console.time("listChannelPluginCatalogEntries_external_load");
   const externalEntries = loadExternalCatalogEntries(options)
     .map((entry) => buildExternalCatalogEntry(entry))
     .filter((entry): entry is ChannelPluginCatalogEntry => Boolean(entry));
@@ -318,8 +288,10 @@ export function listChannelPluginCatalogEntries(
       resolved.set(entry.id, { entry, priority: 99 });
     }
   }
+  console.timeEnd("listChannelPluginCatalogEntries_external_load");
 
-  return Array.from(resolved.values())
+  console.time("listChannelPluginCatalogEntries_sort");
+  const res = Array.from(resolved.values())
     .map(({ entry }) => entry)
     .toSorted((a, b) => {
       const orderA = a.meta.order ?? 999;
@@ -329,6 +301,9 @@ export function listChannelPluginCatalogEntries(
       }
       return a.meta.label.localeCompare(b.meta.label);
     });
+  console.timeEnd("listChannelPluginCatalogEntries_sort");
+  console.timeEnd("listChannelPluginCatalogEntries_Total");
+  return res;
 }
 
 export function getChannelPluginCatalogEntry(

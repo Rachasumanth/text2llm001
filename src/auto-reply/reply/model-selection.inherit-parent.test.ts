@@ -29,37 +29,6 @@ async function resolveState(params: {
   return createModelSelectionState({
     cfg: params.cfg,
     agentCfg: params.cfg.agents?.defaults,
- import { describe, expect, it, vi } from "vitest";
-import type { TEXT2LLMConfig } from "../../config/config.js";
-import { createModelSelectionState } from "./model-selection.js";
-
-vi.mock("../../agents/model-catalog.js", () => ({
-  loadModelCatalog: vi.fn(async () => [
-    { provider: "openai", id: "gpt-4o-mini", name: "GPT-4o mini" },
-    { provider: "openai", id: "gpt-4o", name: "GPT-4o" },
-    { provider: "anthropic", id: "claude-opus-4-5", name: "Claude Opus 4.5" },
-  ]),
-}));
-
-const defaultProvider = "openai";
-const defaultModel = "gpt-4o-mini";
-
-const makeEntry = (overrides: Record<string, unknown> = {}) => ({
-  sessionId: "session-id",
-  updatedAt: Date.now(),
-  ...overrides,
-});
-
-async function resolveState(params: {
-  cfg: TEXT2LLMConfig;
-  sessionEntry: ReturnType<typeof makeEntry>;
-  sessionStore: Record<string, ReturnType<typeof makeEntry>>;
-  sessionKey: string;
-  parentSessionKey?: string;
-}) {
-  return createModelSelectionState({
-    cfg: params.cfg,
-    agentCfg: params.cfg.agents?.defaults,
     sessionEntry: params.sessionEntry,
     sessionStore: params.sessionStore,
     sessionKey: params.sessionKey,

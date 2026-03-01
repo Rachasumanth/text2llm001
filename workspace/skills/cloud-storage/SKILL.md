@@ -14,6 +14,9 @@ The agent must never own provider credentials; user authorization is required.
 - Dropbox (`dropbox` SDK, OAuth 2.0 PKCE)
 - OneDrive (`msal` + Microsoft Graph, OAuth 2.0)
 - MEGA (`mega.py`, session auth)
+- AWS S3 (`boto3`, IAM credentials or SSO)
+- Google Cloud Storage (`google-cloud-storage`, service account or ADC)
+- Azure Blob Storage (`azure-storage-blob`, connection string or managed identity)
 
 ## Credential and OAuth Rules
 
@@ -69,9 +72,22 @@ Map artifacts consistently:
 - `msal`
 - `requests`
 - `mega.py`
+- `boto3`
+- `google-cloud-storage`
+- `azure-storage-blob`
 
 ## Deliverables
 
 1. `cloud_sync_config.json` (provider + project mapping, no raw secrets)
 2. `sync_manifest.json` (uploaded files, versions, remote paths)
 3. `sync_status.md` (latest run status + quota notes)
+
+## Preflight Validation
+
+Before starting any sync operation, validate:
+
+- Required credentials/env vars are set for the selected provider.
+- Provider API is reachable and auth is valid.
+- Sufficient quota/storage is available for queued artifacts.
+
+Report clear errors identifying which credentials are missing and where to set them.

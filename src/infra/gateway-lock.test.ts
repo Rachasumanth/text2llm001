@@ -26,35 +26,7 @@ async function makeEnv() {
 
 function resolveLockPath(env: NodeJS.ProcessEnv) {
   const stateDir = resolveStateDir(env);
-  const configPath = resolveConfigPath(env, stateDimport { createHash } from "node:crypto";
-import fsSync from "node:fs";
-import fs from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import { describe, expect, it, vi } from "vitest";
-import { resolveConfigPath, resolveGatewayLockDir, resolveStateDir } from "../config/paths.js";
-import { acquireGatewayLock, GatewayLockError } from "./gateway-lock.js";
-
-async function makeEnv() {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "text2llm-gateway-lock-"));
-  const configPath = path.join(dir, "text2llm.json");
-  await fs.writeFile(configPath, "{}", "utf8");
-  await fs.mkdir(resolveGatewayLockDir(), { recursive: true });
-  return {
-    env: {
-      ...process.env,
-      TEXT2LLM_STATE_DIR: dir,
-      TEXT2LLM_CONFIG_PATH: configPath,
-    },
-    cleanup: async () => {
-      await fs.rm(dir, { recursive: true, force: true });
-    },
-  };
-}
-
-function resolveLockPath(env: NodeJS.ProcessEnv) {
-  const stateDir = resolveStateDir(env);
-  const configPath = resolveConfigPath(env, stateDir);
+  const configPath = resolveConfigPath(env, stateDr);
   const hash = createHash("sha1").update(configPath).digest("hex").slice(0, 8);
   const lockDir = resolveGatewayLockDir();
   return { lockPath: path.join(lockDir, `gateway.${hash}.lock`), configPath };

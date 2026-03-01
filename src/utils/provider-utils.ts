@@ -16,18 +16,12 @@ export function isReasoningTagProvider(provider: string | undefined | null): boo
   // Check for exact matches or known prefixes/substrings for reasoning providers
   if (
     normalized === "ollama" ||
-    normalized === "google-gemini-cli" ||
-    normalized === "google-generative-ai"
+    normalized === "minimax"
   ) {
     return true;
   }
 
-  // Handle google-antigravity and its model variations (e.g. google-antigravity/gemini-3)
-  if (normalized.includes("google-antigravity")) {
-    return true;
-  }
-
-  // Handle Minimax (M2.1 is chatty/reasoning-like)
+  // Minimax uses tags because native reasoning streams are not available/reliable on some nodes
   if (normalized.includes("minimax")) {
     return true;
   }

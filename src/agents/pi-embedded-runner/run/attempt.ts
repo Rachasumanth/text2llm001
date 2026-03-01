@@ -498,6 +498,9 @@ export async function runEmbeddedAttempt(
         throw new Error("Embedded agent session missing");
       }
       const activeSession = session;
+      if (params.thinkLevel === "off") {
+        (activeSession as any).agent.thinkingBudgets = { off: 0 };
+      }
       const cacheTrace = createCacheTrace({
         cfg: params.config,
         env: process.env,
@@ -905,6 +908,8 @@ export async function runEmbeddedAttempt(
         .slice()
         .toReversed()
         .find((m) => m.role === "assistant");
+        
+      console.error("DEBUG: lastAssistant =", JSON.stringify(lastAssistant, null, 2));
 
       const toolMetasNormalized = toolMetas
         .filter(

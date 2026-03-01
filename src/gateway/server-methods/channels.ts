@@ -20,28 +20,6 @@ import {
   formatValidationErrors,
   validateChannelsLogoutParams,
   validateChannelsStatusParams,
-} from "../protocol/indimport type { ChannelAccountSnapshot, ChannelPlugin } from "../../channels/plugins/types.js";
-import type { TEXT2LLMConfig } from "../../config/config.js";
-import type { GatewayRequestContext, GatewayRequestHandlers } from "./types.js";
-import { buildChannelUiCatalog } from "../../channels/plugins/catalog.js";
-import { resolveChannelDefaultAccountId } from "../../channels/plugins/helpers.js";
-import {
-  type ChannelId,
-  getChannelPlugin,
-  listChannelPlugins,
-  normalizeChannelId,
-} from "../../channels/plugins/index.js";
-import { buildChannelAccountSnapshot } from "../../channels/plugins/status.js";
-import { loadConfig, readConfigFileSnapshot } from "../../config/config.js";
-import { getChannelActivity } from "../../infra/channel-activity.js";
-import { DEFAULT_ACCOUNT_ID } from "../../routing/session-key.js";
-import { defaultRuntime } from "../../runtime.js";
-import {
-  ErrorCodes,
-  errorShape,
-  formatValidationErrors,
-  validateChannelsLogoutParams,
-  validateChannelsStatusParams,
 } from "../protocol/index.js";
 import { formatForLog } from "../ws-log.js";
 

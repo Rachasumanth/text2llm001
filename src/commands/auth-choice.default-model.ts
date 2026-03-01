@@ -23,31 +23,6 @@ export async function applyDefaultModelChoice(params: {
   const next = params.applyProviderConfig(params.config);
   const nextWithModel = ensureModelAllowlistEntry({
     cfg: next,
-    modelRimport type { TEXT2LLMConfig } from "../config/config.js";
-import type { WizardPrompter } from "../wizard/prompts.js";
-import { ensureModelAllowlistEntry } from "./model-allowlist.js";
-
-export async function applyDefaultModelChoice(params: {
-  config: TEXT2LLMConfig;
-  setDefaultModel: boolean;
-  defaultModel: string;
-  applyDefaultConfig: (config: TEXT2LLMConfig) => TEXT2LLMConfig;
-  applyProviderConfig: (config: TEXT2LLMConfig) => TEXT2LLMConfig;
-  noteDefault?: string;
-  noteAgentModel: (model: string) => Promise<void>;
-  prompter: WizardPrompter;
-}): Promise<{ config: TEXT2LLMConfig; agentModelOverride?: string }> {
-  if (params.setDefaultModel) {
-    const next = params.applyDefaultConfig(params.config);
-    if (params.noteDefault) {
-      await params.prompter.note(`Default model set to ${params.noteDefault}`, "Model configured");
-    }
-    return { config: next };
-  }
-
-  const next = params.applyProviderConfig(params.config);
-  const nextWithModel = ensureModelAllowlistEntry({
-    cfg: next,
     modelRef: params.defaultModel,
   });
   await params.noteAgentModel(params.defaultModel);

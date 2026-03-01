@@ -39,47 +39,6 @@ function resolveContextGuardTarget(
   action: ChannelMessageActionName,
   params: Record<string, unknown>,
 ): string | undefined {
-  if (!CONTimport type {
-  ChannelId,
-  ChannelMessageActionName,
-  ChannelThreadingToolContext,
-} from "../../channels/plugins/types.js";
-import type { TEXT2LLMConfig } from "../../config/config.js";
-import { getChannelMessageAdapter } from "./channel-adapters.js";
-import { normalizeTargetForProvider } from "./target-normalization.js";
-import { formatTargetDisplay, lookupDirectoryDisplay } from "./target-resolver.js";
-
-export type CrossContextDecoration = {
-  prefix: string;
-  suffix: string;
-  embeds?: unknown[];
-};
-
-const CONTEXT_GUARDED_ACTIONS = new Set<ChannelMessageActionName>([
-  "send",
-  "poll",
-  "reply",
-  "sendWithEffect",
-  "sendAttachment",
-  "thread-create",
-  "thread-reply",
-  "sticker",
-]);
-
-const CONTEXT_MARKER_ACTIONS = new Set<ChannelMessageActionName>([
-  "send",
-  "poll",
-  "reply",
-  "sendWithEffect",
-  "sendAttachment",
-  "thread-reply",
-  "sticker",
-]);
-
-function resolveContextGuardTarget(
-  action: ChannelMessageActionName,
-  params: Record<string, unknown>,
-): string | undefined {
   if (!CONTEXT_GUARDED_ACTIONS.has(action)) {
     return undefined;
   }

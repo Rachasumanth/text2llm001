@@ -21,29 +21,6 @@ const EXAMPLES = [
   ["text2llm gateway --force", "Kill anything bound to the default gateway port, then start it."],
   ["text2llm gateway ...", "Gateway control via WebSocket."],
   [
-    'text2llm agent --to +15import type { Command } from "commander";
-import type { ProgramContext } from "./context.js";
-import { formatDocsLink } from "../../terminal/links.js";
-import { isRich, theme } from "../../terminal/theme.js";
-import { formatCliBannerLine, hasEmittedCliBanner } from "../banner.js";
-import { replaceCliName, resolveCliName } from "../cli-name.js";
-
-const CLI_NAME = resolveCliName();
-
-const EXAMPLES = [
-  [
-    "text2llm channels login --verbose",
-    "Link personal WhatsApp Web and show QR + connection logs.",
-  ],
-  [
-    'text2llm message send --target +15555550123 --message "Hi" --json',
-    "Send via your web session and print JSON result.",
-  ],
-  ["text2llm gateway --port 18789", "Run the WebSocket Gateway locally."],
-  ["text2llm --dev gateway", "Run a dev Gateway (isolated state/config) on ws://127.0.0.1:19001."],
-  ["text2llm gateway --force", "Kill anything bound to the default gateway port, then start it."],
-  ["text2llm gateway ...", "Gateway control via WebSocket."],
-  [
     'text2llm agent --to +15555550123 --message "Run summary" --deliver',
     "Talk directly to the agent using the Gateway; optionally send the WhatsApp reply.",
   ],

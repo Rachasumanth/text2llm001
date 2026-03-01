@@ -34,42 +34,6 @@ function parseInstallSpec(input: unknown): HookInstallSpec | undefined {
   if (!input || typeof input !== "object") {
     return undefined;
   }
-  const raw = input as Record<string, unkimport JSON5 from "json5";
-import type {
-  TEXT2LLMHookMetadata,
-  HookEntry,
-  HookInstallSpec,
-  HookInvocationPolicy,
-  ParsedHookFrontmatter,
-} from "./types.js";
-import { LEGACY_MANIFEST_KEYS, MANIFEST_KEY } from "../compat/legacy-names.js";
-import { parseFrontmatterBlock } from "../markdown/frontmatter.js";
-import { parseBooleanValue } from "../utils/boolean.js";
-
-export function parseFrontmatter(content: string): ParsedHookFrontmatter {
-  return parseFrontmatterBlock(content);
-}
-
-function normalizeStringList(input: unknown): string[] {
-  if (!input) {
-    return [];
-  }
-  if (Array.isArray(input)) {
-    return input.map((value) => String(value).trim()).filter(Boolean);
-  }
-  if (typeof input === "string") {
-    return input
-      .split(",")
-      .map((value) => value.trim())
-      .filter(Boolean);
-  }
-  return [];
-}
-
-function parseInstallSpec(input: unknown): HookInstallSpec | undefined {
-  if (!input || typeof input !== "object") {
-    return undefined;
-  }
   const raw = input as Record<string, unknown>;
   const kindRaw =
     typeof raw.kind === "string" ? raw.kind : typeof raw.type === "string" ? raw.type : "";

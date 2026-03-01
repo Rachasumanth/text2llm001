@@ -26,34 +26,6 @@ export function resolveShellFromEnv(env: NodeJS.ProcessEnv = process.env): Compl
     return "fish";
   }
   if (shellName === "pwsh" || shellName === "powershell") {
- import { Command, Option } from "commander";
-import fs from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import { resolveStateDir } from "../config/paths.js";
-import { pathExists } from "../utils.js";
-import { getSubCliEntries, registerSubCliByName } from "./program/register.subclis.js";
-
-const COMPLETION_SHELLS = ["zsh", "bash", "powershell", "fish"] as const;
-type CompletionShell = (typeof COMPLETION_SHELLS)[number];
-
-function isCompletionShell(value: string): value is CompletionShell {
-  return COMPLETION_SHELLS.includes(value as CompletionShell);
-}
-
-export function resolveShellFromEnv(env: NodeJS.ProcessEnv = process.env): CompletionShell {
-  const shellPath = env.SHELL?.trim() ?? "";
-  const shellName = shellPath ? path.basename(shellPath).toLowerCase() : "";
-  if (shellName === "zsh") {
-    return "zsh";
-  }
-  if (shellName === "bash") {
-    return "bash";
-  }
-  if (shellName === "fish") {
-    return "fish";
-  }
-  if (shellName === "pwsh" || shellName === "powershell") {
     return "powershell";
   }
   return "zsh";

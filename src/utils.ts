@@ -37,46 +37,7 @@ export function clampInt(value: number, min: number, max: number): number {
 export const clamp = clampNumber;
 
 /**
- * Escapes specimport fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import { resolveOAuthDir } from "./config/paths.js";
-import { logVerbose, shouldLogVerbose } from "./globals.js";
-import {
-  expandHomePrefix,
-  resolveEffectiveHomeDir,
-  resolveRequiredHomeDir,
-} from "./infra/home-dir.js";
-
-export async function ensureDir(dir: string) {
-  await fs.promises.mkdir(dir, { recursive: true });
-}
-
-/**
- * Check if a file or directory exists at the given path.
- */
-export async function pathExists(targetPath: string): Promise<boolean> {
-  try {
-    await fs.promises.access(targetPath);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-export function clampNumber(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
-
-export function clampInt(value: number, min: number, max: number): number {
-  return clampNumber(Math.floor(value), min, max);
-}
-
-/** Alias for clampNumber (shorter, more common name) */
-export const clamp = clampNumber;
-
-/**
- * Escapes special regex characters in a string so it can be used in a RegExp constructor.
+ * Escapes specal regex characters in a string so it can be used in a RegExp constructor.
  */
 export function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

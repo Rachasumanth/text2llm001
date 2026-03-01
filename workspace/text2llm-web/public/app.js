@@ -16,6 +16,7 @@ const ANSI_ESCAPE_REGEX = /\u001b\[[0-9;]*m/g;
 let lastThinkingStatus = "Thinking...";
 let manualMissionStage = null;
 let runtimeSocketState = "idle";
+let markedConfigured = false;
 
 function getStoredProjectId() {
   try {
@@ -136,7 +137,7 @@ function sanitizeAgentText(text) {
   const withoutAnsi = String(text || "").replace(ANSI_ESCAPE_REGEX, "");
   const lines = withoutAnsi.split(/\r?\n/);
   const kept = lines.filter((line) => !isDiagnosticLine(line));
-  return kept.join("\n").trim();
+  return kept.join("\n");
 }
 
 async function readApiResponse(response) {
@@ -250,9 +251,14 @@ const STATUS_VIEW_META = {
     path: "workspace/notebooks/lab.ipynb",
     mode: "Notebook",
   },
-  "data-studio": {
-    label: "Datasets",
+  "dataset-creator": {
+    label: "Dataset Creator",
     path: "workspace/data/dataset.csv",
+    mode: "Data",
+  },
+  "data-studio": {
+    label: "Data Studio",
+    path: "workspace/data/datasets.json",
     mode: "Data",
   },
   projects: {
@@ -1369,6 +1375,7 @@ function syncWorkspacesWithAgent(tool) {
   else if (t.includes("dataset") || t.includes("data_studio") || t.includes("clean") || t.includes("chunk")) {
     // Sync data in background without forcing a tab switch
     try { if (typeof refreshDataStudioWorkspace === "function") refreshDataStudioWorkspace(); } catch (e) {}
+    try { if (typeof refreshDatasetCreatorWorkspace === "function") refreshDatasetCreatorWorkspace(); } catch (e) {}
   }
 }
 
@@ -1484,6 +1491,40 @@ function scrollToBottom() {
   }
 }
 
+function configureMarked() {
+  if (markedConfigured || typeof marked === "undefined" || !marked.use) return;
+  marked.use({
+    renderer: {
+      code(arg1, arg2) {
+        let text, lang;
+        if (typeof arg1 === 'object' && arg1 !== null) {
+          text = arg1.text || "";
+          lang = arg1.lang || "";
+        } else {
+          text = arg1 || "";
+          lang = arg2 || "";
+        }
+        const validLang = (lang || 'plaintext').toLowerCase();
+        const escapedCode = escapeHtml(text);
+        const encodedCode = encodeURIComponent(text).replace(/'/g, "%27");
+        return `
+          <div class="code-canvas">
+            <div class="code-canvas-header">
+              <span class="code-lang">${validLang}</span>
+              <button class="copy-code-btn" type="button" onclick="navigator.clipboard.writeText(decodeURIComponent('${encodedCode}')); this.innerHTML='&check; Copied'; setTimeout(() => this.innerHTML='<svg viewBox=\\'0 0 24 24\\' width=\\'14\\' height=\\'14\\' stroke=\\'currentColor\\' stroke-width=\\'2\\' fill=\\'none\\' stroke-linecap=\\'round\\' stroke-linejoin=\\'round\\'><rect x=\\'9\\' y=\\'9\\' width=\\'13\\' height=\\'13\\' rx=\\'2\\' ry=\\'2\\'></rect><path d=\\'M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1\\'></path></svg> Copy', 2000)">
+                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                Copy
+              </button>
+            </div>
+            <pre><code class="language-${validLang}">${escapedCode}</code></pre>
+          </div>
+        `;
+      }
+    }
+  });
+  markedConfigured = true;
+}
+
 function renderMarkdown(text) {
   let processed = text;
   const openCount = (processed.match(/<think>/g) || []).length;
@@ -1491,6 +1532,8 @@ function renderMarkdown(text) {
   if (openCount > closedCount) {
     processed += "\n</think>";
   }
+
+  configureMarked();
 
   if (typeof marked !== "undefined" && marked.parse) {
     try {
@@ -1807,7 +1850,7 @@ async function sendMessage(prompt) {
                 removeThinkingIndicator();
                 botBubble = addMessage("bot", "");
               }
-              fullText += `${fullText ? "\n" : ""}${cleanText}`;
+              fullText += cleanText;
               botBubble.innerHTML = renderMarkdown(fullText);
               scrollToBottom();
               break;
@@ -2654,6 +2697,8 @@ function showApiKeyModal(provider) {
              throw new Error(data.error || "Failed to start OAuth job");
           }
 
+          let inputSubmitting = false;
+
           // Start polling
           const pollInterval = setInterval(async () => {
             try {
@@ -2664,7 +2709,6 @@ function showApiKeyModal(provider) {
 
               const job = statusData.job;
               
-              // We no longer stream raw terminal logs to the user UI
               if (job.status === "completed") {
                 clearInterval(pollInterval);
                 oauthBtn.textContent = "✓ Connected";
@@ -2679,13 +2723,11 @@ function showApiKeyModal(provider) {
                 oauthBtn.textContent = "Retry Connection";
                 oauthBtn.disabled = false;
                 
-                // Show clean error message
                 logsEl.style.display = "block";
                 logsEl.style.background = "#ffebe9";
                 logsEl.style.color = "#cf222e";
                 logsEl.style.border = "1px solid rgba(255,129,130,0.4)";
                 
-                // Find the first actual error in the logs, or use a generic one
                 const mainErr = job.logs?.find(l => l.level === "error")?.message || "Authentication process failed or timed out.";
                 const cleanErr = mainErr.split("\\n")[0].replace(/Process error: /i, "");
                 
@@ -2696,6 +2738,96 @@ function showApiKeyModal(provider) {
                     <strong>Solution:</strong> Check your local system terminal for detailed logs or <a href="#" style="color:#0969da; text-decoration:underline;" onclick="alert('Running text2llm doctor can diagnose local configuration issues.')">run the diagnostic tool</a>.
                   </div>
                 `;
+              } else {
+                oauthBtn.textContent = job.awaitingInput
+                  ? "Waiting for Redirect URL..."
+                  : "Waiting for Sign-in...";
+
+                if (job.authUrl || job.awaitingInput) {
+                  logsEl.style.display = "block";
+                  logsEl.style.background = "#eef6ff";
+                  logsEl.style.color = "#1f2a44";
+                  logsEl.style.border = "1px solid rgba(9,105,218,0.25)";
+
+                  const authUrlHtml = job.authUrl
+                    ? `
+                      <div style="margin-bottom:8px;">
+                        <a href="${escapeHtml(job.authUrl)}" target="_blank" rel="noopener noreferrer" style="color:#0969da; text-decoration:underline; font-weight:600;">
+                          Open Google sign-in page
+                        </a>
+                      </div>
+                    `
+                    : "";
+                  const promptHtml = job.awaitingInput
+                    ? `
+                      <div style="margin-top:8px; text-align: center; padding: 12px 0;">
+                        <div class="oauth-spinner" style="display:inline-block; width:24px; height:24px; border:3px solid rgba(9, 105, 218, 0.3); border-radius:50%; border-top-color:#0969da; animation:oauth-spin 1s linear infinite;"></div>
+                        <style>@keyframes oauth-spin { 100% { transform: rotate(360deg); } }</style>
+                        <div style="font-weight:600; margin-top:8px; color: var(--text);">Waiting for browser sign-in...</div>
+                        <div style="font-size:12px; color:var(--text-muted); margin-top:4px;">Please complete the login in the browser window that just opened.</div>
+                        
+                        <details style="margin-top: 16px; text-align: left; background: var(--bg-surface); border-radius: 6px; padding: 8px;">
+                          <summary style="font-size: 11px; cursor: pointer; color: var(--text-dim);">Browser didn't open? Paste URL manually</summary>
+                          <div style="margin-top: 8px;">
+                            <div style="font-weight:600; margin-bottom:6px; font-size:11px; color: var(--text-muted);">${escapeHtml(job.inputPrompt || "Paste the full redirect URL from your browser.")}</div>
+                            <textarea id="oauth-callback-input-${jobId}" style="width:100%; min-height:68px; border:1px solid var(--border); border-radius:6px; padding:8px; font-size:12px; background: var(--bg); color: var(--text);" placeholder="http://localhost:8085/oauth2callback?code=...&state=..."></textarea>
+                            <button id="oauth-callback-submit-${jobId}" style="margin-top:8px; background:var(--primary); color:white; border:0; border-radius:6px; padding:8px 10px; font-weight:600; cursor:pointer; width: 100%;">
+                              Submit Redirect URL
+                            </button>
+                          </div>
+                        </details>
+                      </div>
+                    `
+                    : `<div style="font-size:12px;">Complete Google sign-in in your browser. This dialog will continue automatically.</div>`;
+
+                  logsEl.innerHTML = `
+                    <div style="font-weight:600; margin-bottom:4px;">OAuth in progress</div>
+                    ${authUrlHtml}
+                    ${promptHtml}
+                  `;
+
+                  if (job.awaitingInput) {
+                    const submitBtn = logsEl.querySelector(`#oauth-callback-submit-${jobId}`);
+                    if (submitBtn && !submitBtn.dataset.bound) {
+                      submitBtn.dataset.bound = "1";
+                      submitBtn.addEventListener("click", async () => {
+                        if (inputSubmitting) return;
+                        const inputEl = logsEl.querySelector(`#oauth-callback-input-${jobId}`);
+                        const value = (inputEl?.value || "").trim();
+                        if (!value) {
+                          inputEl?.focus();
+                          return;
+                        }
+                        inputSubmitting = true;
+                        submitBtn.disabled = true;
+                        submitBtn.textContent = "Submitting...";
+
+                        try {
+                          const submitRes = await fetch("/api/auth/input", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ jobId, input: value }),
+                          });
+                          const submitData = await readApiResponse(submitRes);
+                          if (!submitData.ok) {
+                            throw new Error(submitData.error || "Failed to submit redirect URL");
+                          }
+                          oauthBtn.textContent = "Continuing...";
+                          logsEl.style.background = "#fff8c5";
+                          logsEl.style.color = "#5a4a00";
+                          logsEl.style.border = "1px solid rgba(154,103,0,0.25)";
+                          logsEl.innerHTML = "<div>Redirect URL received. Finishing authentication...</div>";
+                        } catch (submitErr) {
+                          submitBtn.disabled = false;
+                          submitBtn.textContent = "Submit Redirect URL";
+                          alert(`Failed to submit callback URL: ${submitErr.message}`);
+                        } finally {
+                          inputSubmitting = false;
+                        }
+                      });
+                    }
+                  }
+                }
               }
             } catch (err) {
               console.error("Poll error", err);
@@ -3413,6 +3545,9 @@ function initViewNavigation() {
         if (targetView === "notebook") {
           activateNotebookWorkspace();
         }
+        if (targetView === "dataset-creator") {
+          activateDatasetCreatorWorkspace();
+        }
         if (targetView === "data-studio") {
           activateDataStudioWorkspace();
         }
@@ -3443,10 +3578,120 @@ if (document.readyState === "loading") {
 let terminal = null;
 let fitAddon = null;
 let ws = null;
+let terminalIoHandlersBound = false;
+const runtimeViewState = {
+  filter: "all",
+  replayTail: 200,
+};
 
 window.terminal = terminal;
 window.fitAddon = fitAddon;
 window.ws = ws;
+
+function parseTerminalFrame(raw) {
+  if (typeof raw !== "string") {
+    return null;
+  }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function initRuntimeControls() {
+  const filterEl = document.getElementById("runtime-filter-select");
+  const replayTailEl = document.getElementById("runtime-replay-tail");
+  const replayBtn = document.getElementById("runtime-replay-btn");
+
+  if (!filterEl || filterEl.dataset.bound === "1") {
+    return;
+  }
+
+  filterEl.value = runtimeViewState.filter;
+  if (replayTailEl) {
+    replayTailEl.value = String(runtimeViewState.replayTail);
+  }
+
+  filterEl.addEventListener("change", () => {
+    runtimeViewState.filter = filterEl.value || "all";
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "runtime:filter", filter: runtimeViewState.filter }));
+    }
+  });
+
+  if (replayTailEl) {
+    replayTailEl.addEventListener("change", () => {
+      runtimeViewState.replayTail = Number(replayTailEl.value || 200);
+    });
+  }
+
+  if (replayBtn) {
+    replayBtn.addEventListener("click", () => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(
+          JSON.stringify({
+            type: "runtime:replay",
+            tail: runtimeViewState.replayTail,
+          }),
+        );
+      }
+    });
+  }
+
+  filterEl.dataset.bound = "1";
+}
+
+function renderTerminalFrame(frame, rawFallback = "") {
+  if (!frame || typeof frame !== "object") {
+    if (rawFallback) terminal.write(rawFallback);
+    return;
+  }
+
+  if (typeof frame.line === "string") {
+    terminal.write(frame.line);
+    return;
+  }
+
+  if (frame.type === "shell" && frame.payload && typeof frame.payload.text === "string") {
+    terminal.write(frame.payload.text);
+    return;
+  }
+
+  if (frame.type === "shell-output") {
+    terminal.write(String(frame.data || ""));
+    return;
+  }
+
+  if (frame.type === "runtime-event") {
+    terminal.write(String(frame.line || ""));
+    return;
+  }
+
+  if (frame.type === "runtime-replay-start") {
+    terminal.write(`\r\n\x1b[90m[Runtime]\x1b[0m replay start (${frame.count || 0} events)\r\n`);
+    return;
+  }
+
+  if (frame.type === "runtime-replay-end") {
+    terminal.write(`\r\n\x1b[90m[Runtime]\x1b[0m replay complete (${frame.count || 0} events)\r\n`);
+    return;
+  }
+
+  if (frame.type === "runtime-filter-ack") {
+    terminal.write(`\r\n\x1b[90m[Runtime]\x1b[0m filter set to ${frame.filter || "all"}\r\n`);
+    return;
+  }
+
+  if (typeof frame.data === "string") {
+    terminal.write(frame.data);
+    return;
+  }
+
+  if (rawFallback) {
+    terminal.write(rawFallback);
+  }
+}
 
 function initTerminal() {
   if (window.terminalInitialized) return;
@@ -3477,6 +3722,8 @@ function initTerminal() {
   terminal.loadAddon(fitAddon);
   terminal.open(terminalElement);
   fitAddon.fit();
+
+  initRuntimeControls();
 
   window.addEventListener('resize', () => {
     if (fitAddon) fitAddon.fit();
@@ -3512,10 +3759,16 @@ function connectTerminalWebSocket() {
     refreshStatusBar("clui");
     console.log('Terminal WebSocket connected');
     terminal.write('\r\n\x1b[1;32m✓ Connected to terminal\x1b[0m\r\n\r\n');
+    ws.send(JSON.stringify({ type: "runtime:filter", filter: runtimeViewState.filter }));
+    ws.send(JSON.stringify({ type: "runtime:replay", tail: runtimeViewState.replayTail }));
     ws.send(JSON.stringify({ type: 'resize', cols: terminal.cols, rows: terminal.rows }));
   };
 
-  ws.onmessage = (event) => { terminal.write(event.data); };
+  ws.onmessage = (event) => {
+    const raw = typeof event.data === "string" ? event.data : "";
+    const frame = parseTerminalFrame(raw);
+    renderTerminalFrame(frame, raw);
+  };
 
   ws.onerror = (error) => {
     runtimeSocketState = "disconnected";
@@ -3537,17 +3790,21 @@ function connectTerminalWebSocket() {
     }, 3000);
   };
 
-  terminal.onData((data) => {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'input', data }));
-    }
-  });
+  if (!terminalIoHandlersBound) {
+    terminalIoHandlersBound = true;
 
-  terminal.onResize(({ cols, rows }) => {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'resize', cols, rows }));
-    }
-  });
+    terminal.onData((data) => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'input', data }));
+      }
+    });
+
+    terminal.onResize(({ cols, rows }) => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'resize', cols, rows }));
+      }
+    });
+  }
 }
 
 window.connectTerminalWebSocket = connectTerminalWebSocket;
@@ -4752,940 +5009,589 @@ async function activateStorageTab() {
   await loadStorageState();
 }
 
-/* ── Data Studio ── */
-const dataStudioState = {
+/* ── Dataset Creator (minimized) ── */
+const datasetCreatorState = {
   initialized: false,
   loading: false,
-  datasets: [],
-  libraryResources: [],
-  selectedDatasetId: null,
-  selectedDataset: null,
-  rows: [],
-  page: 1,
-  pageSize: 25,
-  totalPages: 1,
-  totalRows: 0,
-  search: "",
+  uploadProgress: 0,
+  activeJob: null,
+  error: null,
 };
 
-function dataStudioEls() {
+function datasetCreatorEls() {
   return {
-    refreshBtn: document.getElementById("ds-refresh-btn"),
-    nameInput: document.getElementById("ds-name-input"),
-    sourceSelect: document.getElementById("ds-source-select"),
-    formatSelect: document.getElementById("ds-format-select"),
-    urlWrap: document.getElementById("ds-url-wrap"),
-    urlInput: document.getElementById("ds-url-input"),
-    fileWrap: document.getElementById("ds-file-wrap"),
-    fileInput: document.getElementById("ds-file-input"),
-    contentWrap: document.getElementById("ds-content-wrap"),
-    contentInput: document.getElementById("ds-content-input"),
-    libraryWrap: document.getElementById("ds-library-wrap"),
-    librarySelect: document.getElementById("ds-library-select"),
-    libraryRefreshBtn: document.getElementById("ds-library-refresh-btn"),
-    remoteWrap: document.getElementById("ds-remote-wrap"),
-    remoteProvider: document.getElementById("ds-remote-provider"),
-    remoteId: document.getElementById("ds-remote-id"),
-    remoteUrl: document.getElementById("ds-remote-url"),
-    createBtn: document.getElementById("ds-create-btn"),
-    status: document.getElementById("ds-status"),
-    count: document.getElementById("ds-count"),
-    datasetList: document.getElementById("ds-dataset-list"),
-    selectedName: document.getElementById("ds-selected-name"),
-    selectedMeta: document.getElementById("ds-selected-meta"),
-    deleteBtn: document.getElementById("ds-delete-btn"),
-    searchInput: document.getElementById("ds-search-input"),
-    searchBtn: document.getElementById("ds-search-btn"),
-    clearSearchBtn: document.getElementById("ds-clear-search-btn"),
-    addRowBtn: document.getElementById("ds-add-row-btn"),
-    addColBtn: document.getElementById("ds-add-col-btn"),
-    renameColBtn: document.getElementById("ds-rename-col-btn"),
-    deleteColBtn: document.getElementById("ds-delete-col-btn"),
-    cleanOp: document.getElementById("ds-clean-op"),
-    cleanField: document.getElementById("ds-clean-field"),
-    cleanPattern: document.getElementById("ds-clean-pattern"),
-    cleanBtn: document.getElementById("ds-clean-btn"),
-    chunkField: document.getElementById("ds-chunk-field"),
-    chunkSize: document.getElementById("ds-chunk-size"),
-    chunkOverlap: document.getElementById("ds-chunk-overlap"),
-    chunkBtn: document.getElementById("ds-chunk-btn"),
-    tagField: document.getElementById("ds-tag-field"),
-    tagValue: document.getElementById("ds-tag-value"),
-    tagMatchField: document.getElementById("ds-tag-match-field"),
-    tagContains: document.getElementById("ds-tag-contains"),
-    tagBtn: document.getElementById("ds-tag-btn"),
-    splitTrain: document.getElementById("ds-split-train"),
-    splitEval: document.getElementById("ds-split-eval"),
-    splitTest: document.getElementById("ds-split-test"),
-    splitField: document.getElementById("ds-split-field"),
-    splitBtn: document.getElementById("ds-split-btn"),
-    versionLabel: document.getElementById("ds-version-label"),
-    versionBtn: document.getElementById("ds-version-btn"),
-    versionSelect: document.getElementById("ds-version-select"),
-    rollbackBtn: document.getElementById("ds-rollback-btn"),
-    tableHead: document.getElementById("ds-table-head"),
-    tableBody: document.getElementById("ds-table-body"),
-    prevBtn: document.getElementById("ds-prev-btn"),
-    nextBtn: document.getElementById("ds-next-btn"),
-    pageLabel: document.getElementById("ds-page-label"),
+    errorBanner: document.getElementById("dataset-error-banner"),
+    errorText: document.getElementById("dataset-error-text"),
+    formatSelect: document.getElementById("dataset-format-select"),
+    fileInput: document.getElementById("dataset-file-input"),
+    uploadBtn: document.getElementById("dataset-upload-btn"),
+    progressWrap: document.getElementById("dataset-upload-progress-wrap"),
+    progressBar: document.getElementById("dataset-upload-progress-bar"),
+    statusIdle: document.getElementById("dataset-status-idle"),
+    statusPending: document.getElementById("dataset-status-pending"),
+    statusCompleted: document.getElementById("dataset-status-completed"),
+    statusFailed: document.getElementById("dataset-status-failed"),
+    jobMeta: document.getElementById("dataset-job-meta"),
+    downloadLink: document.getElementById("dataset-download-link"),
+    premiumBanner: document.getElementById("dataset-premium-banner"),
   };
 }
 
-function setDataStudioStatus(message, level = "") {
-  const { status } = dataStudioEls();
-  if (!status) {
+function setDatasetCreatorError(message) {
+  const { errorBanner, errorText } = datasetCreatorEls();
+  if (!errorBanner || !errorText) return;
+  if (message) {
+    errorText.textContent = message;
+    errorBanner.style.display = "flex";
+  } else {
+    errorBanner.style.display = "none";
+    errorText.textContent = "";
+  }
+  datasetCreatorState.error = message || null;
+}
+
+function renderDatasetCreatorStatus() {
+  const { statusIdle, statusPending, statusCompleted, statusFailed, jobMeta, downloadLink } = datasetCreatorEls();
+  if (!statusIdle) return;
+
+  const job = datasetCreatorState.activeJob;
+  const isPending = job && (job.status === "pending" || job.status === "processing");
+  const isCompleted = job && job.status === "completed";
+  const isFailed = job && job.status === "failed";
+
+  statusIdle.style.display = (!job) ? "flex" : "none";
+  statusPending.style.display = isPending ? "flex" : "none";
+  statusCompleted.style.display = isCompleted ? "flex" : "none";
+  statusFailed.style.display = isFailed ? "flex" : "none";
+
+  if (isPending && jobMeta) {
+    jobMeta.textContent = `Job ID: ${(job.id || "").slice(0, 8)} | Format: ${(job.output_format || "jsonl").toUpperCase()}`;
+  }
+  if (isCompleted && downloadLink && job.output_url) {
+    downloadLink.href = job.output_url;
+  }
+}
+
+async function handleDatasetUpload() {
+  const { formatSelect, fileInput, uploadBtn, progressWrap, progressBar } = datasetCreatorEls();
+  const file = fileInput?.files?.[0];
+  if (!file) {
+    setDatasetCreatorError("Please select a file first.");
     return;
   }
 
-  status.textContent = message || "";
-  status.className = "gpu-inline-status";
+  setDatasetCreatorError(null);
+  uploadBtn.disabled = true;
+  uploadBtn.textContent = "Uploading...";
+  progressWrap.style.display = "block";
+  progressBar.style.width = "0%";
+  datasetCreatorState.loading = true;
+
+  try {
+    const format = formatSelect?.value || "jsonl";
+    const content = await file.text();
+
+    // Simulate upload progress
+    let pct = 0;
+    const progressInterval = setInterval(() => {
+      pct = Math.min(pct + 8, 90);
+      progressBar.style.width = pct + "%";
+      datasetCreatorState.uploadProgress = pct;
+    }, 200);
+
+    const response = await fetch("/api/data-studio/datasets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId: typeof getActiveProjectIdOrDefault === "function" ? getActiveProjectIdOrDefault() : "default",
+        name: file.name.replace(/\.[^.]+$/, ""),
+        sourceType: "upload",
+        format,
+        content,
+        uploadAsset: {
+          name: file.name,
+          type: file.type || "application/octet-stream",
+          size: file.size,
+          source: "upload",
+          dataUrl: "",
+        },
+      }),
+    });
+
+    clearInterval(progressInterval);
+    progressBar.style.width = "100%";
+
+    const payload = await readApiResponse(response);
+    datasetCreatorState.activeJob = {
+      id: payload?.dataset?.id || "unknown",
+      status: "completed",
+      output_format: format,
+      output_url: payload?.dataset?.downloadUrl || "#",
+    };
+    renderDatasetCreatorStatus();
+  } catch (error) {
+    setDatasetCreatorError(error.message || "Upload failed");
+    datasetCreatorState.activeJob = {
+      id: "error",
+      status: "failed",
+      output_format: formatSelect?.value || "jsonl",
+    };
+    renderDatasetCreatorStatus();
+  } finally {
+    datasetCreatorState.loading = false;
+    uploadBtn.disabled = false;
+    uploadBtn.textContent = "Secure Upload & Process";
+    setTimeout(() => {
+      progressWrap.style.display = "none";
+      progressBar.style.width = "0%";
+    }, 1500);
+  }
+}
+
+function initDatasetCreator() {
+  if (datasetCreatorState.initialized) return;
+
+  const { uploadBtn } = datasetCreatorEls();
+  if (!uploadBtn) return;
+
+  uploadBtn.addEventListener("click", handleDatasetUpload);
+  datasetCreatorState.initialized = true;
+}
+
+function setDatasetCreatorStatus(message, level) {
   if (level === "error") {
-    status.classList.add("error");
-  } else if (level === "success") {
-    status.classList.add("success");
+    setDatasetCreatorError(message);
   }
 }
 
-const DATA_STUDIO_INLINE_UPLOAD_MAX_BYTES = 2 * 1024 * 1024;
-
-function fileToDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ""));
-    reader.onerror = () => reject(new Error("Failed to read file"));
-    reader.readAsDataURL(file);
-  });
+async function refreshDatasetCreatorWorkspace() {
+  renderDatasetCreatorStatus();
 }
 
-function isTextLikeUpload(file, selectedFormat = "auto") {
-  const explicitFormat = String(selectedFormat || "auto").toLowerCase();
-  if (explicitFormat !== "auto") {
-    return ["json", "jsonl", "csv", "tsv", "txt", "markdown", "yaml", "xml", "html", "graph"].includes(explicitFormat);
-  }
-
-  const mime = String(file?.type || "").toLowerCase();
-  const name = String(file?.name || "").toLowerCase();
-  if (mime.startsWith("text/")) return true;
-  if (mime.includes("json") || mime.includes("xml") || mime.includes("yaml") || mime.includes("csv")) return true;
-  return (
-    name.endsWith(".json") ||
-    name.endsWith(".jsonl") ||
-    name.endsWith(".csv") ||
-    name.endsWith(".tsv") ||
-    name.endsWith(".txt") ||
-    name.endsWith(".md") ||
-    name.endsWith(".markdown") ||
-    name.endsWith(".yaml") ||
-    name.endsWith(".yml") ||
-    name.endsWith(".xml") ||
-    name.endsWith(".html") ||
-    name.endsWith(".htm") ||
-    name.endsWith(".graphml") ||
-    name.endsWith(".gexf") ||
-    name.endsWith(".dot") ||
-    name.endsWith(".gml")
-  );
+function initDatasetCreatorWorkspace() {
+  initDatasetCreator();
 }
 
-function safePreviewSrc(url) {
-  const value = String(url || "").trim();
-  if (!value) return "";
-  if (/^data:/i.test(value)) return value;
-  if (/^https?:\/\//i.test(value)) return value;
-  return "";
+async function activateDatasetCreatorWorkspace() {
+  initDatasetCreator();
+  renderDatasetCreatorStatus();
 }
 
-function renderDataStudioCellValue(row, column) {
-  const value = row?.[column];
-  if (value == null) {
-    return { html: "", editable: true, raw: "" };
-  }
+const dataStudioEditorState = {
+  initialized: false,
+  loading: false,
+  datasets: [],
+  selectedDatasetId: null,
+  rows: [],
+  columns: [],
+  page: 1,
+  pageSize: 25,
+  totalRows: 0,
+  totalPages: 1,
+  query: "",
+};
 
-  if (typeof value === "number" || typeof value === "boolean") {
-    return { html: escapeHtml(String(value)), editable: true, raw: String(value) };
-  }
-
-  if (typeof value === "object") {
-    const serialized = JSON.stringify(value);
-    return { html: `<code>${escapeHtml(serialized)}</code>`, editable: false, raw: serialized };
-  }
-
-  const raw = String(value);
-  const source = safePreviewSrc(raw);
-  const isImage = /^data:image\//i.test(source) || /^https?:\/\/.+\.(png|jpg|jpeg|gif|webp|svg)(\?|#|$)/i.test(source);
-  const isAudio = /^data:audio\//i.test(source) || /^https?:\/\/.+\.(mp3|wav|ogg|m4a|flac)(\?|#|$)/i.test(source);
-  const isVideo = /^data:video\//i.test(source) || /^https?:\/\/.+\.(mp4|webm|mov|mkv)(\?|#|$)/i.test(source);
-  const isDoc = /^data:application\/pdf/i.test(source) || /^https?:\/\/.+\.(pdf)(\?|#|$)/i.test(source);
-
-  if (isImage) {
-    return {
-      html: `<img class="ds-cell-preview-image" src="${escapeHtml(source)}" alt="image preview" />`,
-      editable: false,
-      raw,
-    };
-  }
-  if (isAudio) {
-    return {
-      html: `<audio class="ds-cell-preview-audio" controls src="${escapeHtml(source)}"></audio>`,
-      editable: false,
-      raw,
-    };
-  }
-  if (isVideo) {
-    return {
-      html: `<video class="ds-cell-preview-video" controls src="${escapeHtml(source)}"></video>`,
-      editable: false,
-      raw,
-    };
-  }
-  if (isDoc) {
-    return {
-      html: `<a class="ds-cell-preview-doc" href="${escapeHtml(source)}" target="_blank" rel="noopener noreferrer">Open document</a>`,
-      editable: false,
-      raw,
-    };
-  }
-
-  if (/^https?:\/\//i.test(raw)) {
-    return {
-      html: `<a href="${escapeHtml(raw)}" target="_blank" rel="noopener noreferrer">${escapeHtml(raw)}</a>`,
-      editable: false,
-      raw,
-    };
-  }
-
-  return { html: escapeHtml(raw), editable: true, raw };
+function dataStudioEditorEls() {
+  return {
+    refreshBtn: document.getElementById("studio-refresh-btn"),
+    searchInput: document.getElementById("studio-search-input"),
+    datasetList: document.getElementById("studio-dataset-list"),
+    activeName: document.getElementById("studio-active-name"),
+    activeMeta: document.getElementById("studio-active-meta"),
+    addRowBtn: document.getElementById("studio-add-row-btn"),
+    addColBtn: document.getElementById("studio-add-col-btn"),
+    deleteDatasetBtn: document.getElementById("studio-delete-dataset-btn"),
+    status: document.getElementById("studio-status"),
+    empty: document.getElementById("studio-empty"),
+    tableWrap: document.getElementById("studio-table-wrap"),
+    tableHead: document.getElementById("studio-table-head"),
+    tableBody: document.getElementById("studio-table-body"),
+    pagination: document.getElementById("studio-pagination"),
+    prevBtn: document.getElementById("studio-prev-btn"),
+    nextBtn: document.getElementById("studio-next-btn"),
+    pageLabel: document.getElementById("studio-page-label"),
+  };
 }
 
-function getSelectedDatasetSummary() {
-  return dataStudioState.datasets.find((item) => item.id === dataStudioState.selectedDatasetId) || null;
+function setDataStudioEditorStatus(message, level = "") {
+  const { status } = dataStudioEditorEls();
+  if (!status) return;
+  status.textContent = message || "";
+  status.style.color = level === "error" ? "var(--danger, #ef4444)" : "";
 }
 
-function getEditableDatasetColumns(rows = []) {
-  const columnSet = new Set();
-  rows.forEach((row) => {
+function getDataStudioSelectedDataset() {
+  return dataStudioEditorState.datasets.find((dataset) => dataset.id === dataStudioEditorState.selectedDatasetId) || null;
+}
+
+function getDataStudioColumns(rows) {
+  const columns = new Set();
+  (Array.isArray(rows) ? rows : []).forEach((row) => {
     Object.keys(row || {}).forEach((key) => {
-      const normalized = String(key || "");
-      if (normalized && !normalized.startsWith("__")) {
-        columnSet.add(normalized);
+      if (key && !key.startsWith("__")) {
+        columns.add(key);
       }
     });
   });
-  return Array.from(columnSet);
+  return Array.from(columns);
 }
 
-function renderDataStudioLibraryResources() {
-  const { librarySelect } = dataStudioEls();
-  if (!librarySelect) {
+function renderDataStudioDatasetList() {
+  const { datasetList } = dataStudioEditorEls();
+  if (!datasetList) return;
+
+  if (!Array.isArray(dataStudioEditorState.datasets) || dataStudioEditorState.datasets.length === 0) {
+    datasetList.innerHTML = `<div class="studio-list-empty">No datasets yet</div>`;
     return;
   }
 
-  const resources = Array.isArray(dataStudioState.libraryResources)
-    ? dataStudioState.libraryResources
-    : [];
-  const datasetResources = resources.filter((item) => item?.type === "dataset");
-
-  if (datasetResources.length === 0) {
-    librarySelect.innerHTML = `<option value="">No dataset resources in project library</option>`;
-    return;
-  }
-
-  librarySelect.innerHTML = datasetResources.map((item) => (
-    `<option value="${escapeHtml(String(item.id || ""))}">${escapeHtml(String(item.name || item.id || "Dataset"))} (${escapeHtml(String(item.source || "library"))})</option>`
-  )).join("");
-}
-
-async function loadDataStudioLibraryResources() {
-  const response = await fetch(withActiveProjectQuery("/api/data-studio/library/resources"));
-  const payload = await readApiResponse(response);
-  dataStudioState.libraryResources = Array.isArray(payload.resources) ? payload.resources : [];
-  renderDataStudioLibraryResources();
-}
-
-function renderDataStudioSourceInputs() {
-  const { sourceSelect, urlWrap, fileWrap, contentWrap, libraryWrap, remoteWrap } = dataStudioEls();
-  if (!sourceSelect || !urlWrap || !fileWrap || !contentWrap || !libraryWrap || !remoteWrap) {
-    return;
-  }
-
-  const source = String(sourceSelect.value || "paste");
-  urlWrap.classList.toggle("hidden", source !== "url");
-  fileWrap.classList.toggle("hidden", source !== "upload");
-  libraryWrap.classList.toggle("hidden", source !== "library");
-  remoteWrap.classList.toggle("hidden", source !== "remote");
-  contentWrap.classList.toggle("hidden", source !== "paste");
-}
-
-function renderDatasetList() {
-  const { datasetList, count } = dataStudioEls();
-  if (!datasetList || !count) {
-    return;
-  }
-
-  count.textContent = String(dataStudioState.datasets.length);
-  if (dataStudioState.datasets.length === 0) {
-    datasetList.innerHTML = `<div class="ds-empty">No datasets yet. Import one above.</div>`;
-    return;
-  }
-
-  datasetList.innerHTML = "";
-  dataStudioState.datasets.forEach((dataset) => {
-    const item = document.createElement("button");
-    item.type = "button";
-    item.className = `ds-dataset-item ${dataset.id === dataStudioState.selectedDatasetId ? "active" : ""}`;
-    item.innerHTML = `
-      <span class="ds-dataset-name">${escapeHtml(dataset.name || "Untitled")}</span>
-      <span class="ds-dataset-meta">${Number(dataset.stats?.rowCount || 0)} rows • ${Number(dataset.stats?.columnCount || 0)} cols</span>
-    `;
-    item.addEventListener("click", async () => {
-      dataStudioState.selectedDatasetId = dataset.id;
-      dataStudioState.page = 1;
-      await loadDataStudioDataset();
-      await loadDataStudioRows();
-      renderDatasetList();
-    });
-    datasetList.appendChild(item);
-  });
-}
-
-function renderDataStudioHeader() {
-  const { selectedName, selectedMeta, deleteBtn, versionSelect } = dataStudioEls();
-  const dataset = dataStudioState.selectedDataset;
-
-  if (!selectedName || !selectedMeta || !deleteBtn || !versionSelect) {
-    return;
-  }
-
-  if (!dataset) {
-    selectedName.textContent = "No dataset selected";
-    selectedMeta.textContent = "Import or connect a dataset to start.";
-    deleteBtn.disabled = true;
-    versionSelect.innerHTML = `<option value="">No versions</option>`;
-    return;
-  }
-
-  selectedName.textContent = dataset.name;
-  selectedMeta.textContent = `${Number(dataset.stats?.rowCount || 0)} rows • ${Number(dataset.stats?.columnCount || 0)} columns • Last op: ${dataset.lastOperation || "import"}`;
-  deleteBtn.disabled = false;
-
-  const versions = Array.isArray(dataset.versions) ? dataset.versions : [];
-  if (versions.length === 0) {
-    versionSelect.innerHTML = `<option value="">No versions</option>`;
-  } else {
-    versionSelect.innerHTML = versions.map((version) => (
-      `<option value="${version.id}">${escapeHtml(version.label || "Version")} (${version.rowCount} rows)</option>`
-    )).join("");
-    versionSelect.value = dataset.currentVersionId || versions[0].id;
-  }
+  datasetList.innerHTML = dataStudioEditorState.datasets
+    .map((dataset) => {
+      const active = dataset.id === dataStudioEditorState.selectedDatasetId ? " active" : "";
+      const rowCount = Number(dataset?.stats?.rowCount || 0);
+      const colCount = Number(dataset?.stats?.columnCount || 0);
+      return `
+        <button type="button" class="studio-dataset-item${active}" data-dataset-id="${escapeHtml(dataset.id)}">
+          <span class="studio-dataset-name">${escapeHtml(dataset.name || "Untitled Dataset")}</span>
+          <span class="studio-dataset-meta">${rowCount} rows • ${colCount} cols</span>
+        </button>
+      `;
+    })
+    .join("");
 }
 
 function renderDataStudioTable() {
-  const { tableHead, tableBody, pageLabel, prevBtn, nextBtn } = dataStudioEls();
-  if (!tableHead || !tableBody || !pageLabel || !prevBtn || !nextBtn) {
+  const { activeName, activeMeta, empty, tableWrap, tableHead, tableBody, pagination, prevBtn, nextBtn, pageLabel } = dataStudioEditorEls();
+  const selected = getDataStudioSelectedDataset();
+
+  if (!selected) {
+    if (activeName) activeName.textContent = "No dataset selected";
+    if (activeMeta) activeMeta.textContent = "Pick a dataset to start editing";
+    if (empty) empty.classList.remove("hidden");
+    if (tableWrap) tableWrap.classList.add("hidden");
+    if (pagination) pagination.classList.add("hidden");
     return;
   }
 
-  const rows = Array.isArray(dataStudioState.rows) ? dataStudioState.rows : [];
-  const columns = getEditableDatasetColumns(rows);
+  if (activeName) activeName.textContent = selected.name || "Untitled Dataset";
+  if (activeMeta) {
+    const rows = Number(selected?.stats?.rowCount || dataStudioEditorState.totalRows || 0);
+    const cols = Number(selected?.stats?.columnCount || dataStudioEditorState.columns.length || 0);
+    activeMeta.textContent = `${rows} rows • ${cols} columns • format: ${selected.format || "auto"}`;
+  }
 
-  if (rows.length === 0) {
-    tableHead.innerHTML = "";
-    tableBody.innerHTML = `<tr><td class="ds-table-empty">No rows to display</td></tr>`;
-  } else {
-    tableHead.innerHTML = `<tr>${columns.map((column) => `<th>${escapeHtml(column)}</th>`).join("")}</tr>`;
-    tableBody.innerHTML = rows.map((row) => {
+  if (empty) empty.classList.add("hidden");
+  if (tableWrap) tableWrap.classList.remove("hidden");
+  if (pagination) pagination.classList.remove("hidden");
+  if (pageLabel) pageLabel.textContent = `Page ${dataStudioEditorState.page} / ${dataStudioEditorState.totalPages}`;
+  if (prevBtn) prevBtn.disabled = dataStudioEditorState.page <= 1;
+  if (nextBtn) nextBtn.disabled = dataStudioEditorState.page >= dataStudioEditorState.totalPages;
+
+  const columns = dataStudioEditorState.columns;
+  if (tableHead) {
+    tableHead.innerHTML = `
+      <tr>
+        ${columns.map((column) => `<th>${escapeHtml(column)}</th>`).join("")}
+        <th class="studio-actions-col">Actions</th>
+      </tr>
+    `;
+  }
+
+  if (!tableBody) return;
+  if (!Array.isArray(dataStudioEditorState.rows) || dataStudioEditorState.rows.length === 0) {
+    tableBody.innerHTML = `<tr><td colspan="${Math.max(1, columns.length + 1)}" class="studio-table-empty">No rows for this page.</td></tr>`;
+    return;
+  }
+
+  tableBody.innerHTML = dataStudioEditorState.rows
+    .map((row) => {
       const rowId = String(row?.__rowId || "");
-      const cells = columns.map((column) => (
-        (() => {
-          const rendered = renderDataStudioCellValue(row, column);
-          const editableClass = rendered.editable ? "ds-editable-cell" : "";
-          const editableAttr = rendered.editable ? 'contenteditable="true"' : "";
-          const originalAttr = rendered.editable ? ` data-original="${escapeHtml(rendered.raw)}"` : "";
-          return `<td class="${editableClass}" ${editableAttr} data-row-id="${escapeHtml(rowId)}" data-column="${escapeHtml(column)}"${originalAttr}>${rendered.html}</td>`;
-        })()
-      )).join("");
-      return `<tr>${cells}</tr>`;
-    }).join("");
-    bindDataStudioTableEditors();
-  }
-
-  pageLabel.textContent = `Page ${dataStudioState.page} of ${dataStudioState.totalPages}`;
-  prevBtn.disabled = dataStudioState.page <= 1;
-  nextBtn.disabled = dataStudioState.page >= dataStudioState.totalPages;
-}
-
-function bindDataStudioTableEditors() {
-  const { tableBody } = dataStudioEls();
-  if (!tableBody) {
-    return;
-  }
-
-  tableBody.querySelectorAll(".ds-editable-cell").forEach((cell) => {
-    cell.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        cell.blur();
-      }
-    });
-
-    cell.addEventListener("blur", async () => {
-      const rowId = String(cell.getAttribute("data-row-id") || "").trim();
-      const column = String(cell.getAttribute("data-column") || "").trim();
-      const original = String(cell.getAttribute("data-original") || "");
-      const nextValue = String(cell.textContent || "");
-      if (!rowId || !column || nextValue === original) {
-        return;
-      }
-
-      try {
-        await patchDatasetRow(rowId, { [column]: nextValue });
-        cell.setAttribute("data-original", nextValue);
-        setDataStudioStatus("Cell updated", "success");
-      } catch (error) {
-        cell.textContent = original;
-        setDataStudioStatus(`⚠ ${error.message || "Failed to update cell"}`, "error");
-      }
-    });
-  });
-}
-
-async function loadDataStudioDatasets() {
-  const response = await fetch(withActiveProjectQuery("/api/data-studio/datasets"));
-  const payload = await readApiResponse(response);
-  dataStudioState.datasets = Array.isArray(payload.datasets) ? payload.datasets : [];
-
-  if (!dataStudioState.selectedDatasetId || !dataStudioState.datasets.some((item) => item.id === dataStudioState.selectedDatasetId)) {
-    dataStudioState.selectedDatasetId = dataStudioState.datasets[0]?.id || null;
-  }
-
-  renderDatasetList();
-}
-
-async function loadDataStudioDataset() {
-  if (!dataStudioState.selectedDatasetId) {
-    dataStudioState.selectedDataset = null;
-    renderDataStudioHeader();
-    return;
-  }
-
-  const response = await fetch(withActiveProjectQuery(`/api/data-studio/datasets/${encodeURIComponent(dataStudioState.selectedDatasetId)}`));
-  const payload = await readApiResponse(response);
-  dataStudioState.selectedDataset = payload.dataset || null;
-  renderDataStudioHeader();
+      return `
+        <tr>
+          ${columns
+            .map((column) => {
+              const value = row?.[column] == null ? "" : String(row[column]);
+              return `
+                <td>
+                  <input
+                    class="studio-cell-input"
+                    type="text"
+                    value="${escapeHtml(value)}"
+                    data-row-id="${escapeHtml(rowId)}"
+                    data-column="${escapeHtml(column)}"
+                    data-initial="${escapeHtml(value)}"
+                  />
+                </td>
+              `;
+            })
+            .join("")}
+          <td>
+            <button type="button" class="studio-row-delete" data-row-delete="${escapeHtml(rowId)}">Delete</button>
+          </td>
+        </tr>
+      `;
+    })
+    .join("");
 }
 
 async function loadDataStudioRows() {
-  const { search } = dataStudioState;
-  if (!dataStudioState.selectedDatasetId) {
-    dataStudioState.rows = [];
-    dataStudioState.page = 1;
-    dataStudioState.totalPages = 1;
-    dataStudioState.totalRows = 0;
+  const selected = getDataStudioSelectedDataset();
+  if (!selected) {
+    dataStudioEditorState.rows = [];
+    dataStudioEditorState.columns = [];
+    dataStudioEditorState.page = 1;
+    dataStudioEditorState.totalRows = 0;
+    dataStudioEditorState.totalPages = 1;
     renderDataStudioTable();
     return;
   }
 
   const params = new URLSearchParams({
-    page: String(dataStudioState.page),
-    pageSize: String(dataStudioState.pageSize),
+    page: String(dataStudioEditorState.page || 1),
+    pageSize: String(dataStudioEditorState.pageSize || 25),
   });
-  if (search) {
-    params.set("q", search);
+  if (dataStudioEditorState.query) {
+    params.set("q", dataStudioEditorState.query);
   }
 
-  const response = await fetch(withActiveProjectQuery(`/api/data-studio/datasets/${encodeURIComponent(dataStudioState.selectedDatasetId)}/rows?${params.toString()}`));
+  const response = await fetch(withActiveProjectQuery(`/api/data-studio/datasets/${encodeURIComponent(selected.id)}/rows?${params.toString()}`));
   const payload = await readApiResponse(response);
-  dataStudioState.rows = Array.isArray(payload.rows) ? payload.rows : [];
-  dataStudioState.page = Number(payload.page || 1);
-  dataStudioState.pageSize = Number(payload.pageSize || dataStudioState.pageSize);
-  dataStudioState.totalRows = Number(payload.totalRows || 0);
-  dataStudioState.totalPages = Number(payload.totalPages || 1);
+  dataStudioEditorState.rows = Array.isArray(payload?.rows) ? payload.rows : [];
+  dataStudioEditorState.page = Number(payload?.page || 1);
+  dataStudioEditorState.totalRows = Number(payload?.totalRows || 0);
+  dataStudioEditorState.totalPages = Number(payload?.totalPages || 1);
+  dataStudioEditorState.columns = getDataStudioColumns(dataStudioEditorState.rows);
+
+  if (dataStudioEditorState.columns.length === 0) {
+    dataStudioEditorState.columns = Array.isArray(selected?.stats?.columns) ? selected.stats.columns : [];
+  }
   renderDataStudioTable();
 }
 
-async function mutateSelectedDataset(path, method, payload = undefined) {
-  if (!dataStudioState.selectedDatasetId) {
-    throw new Error("Select a dataset first");
-  }
-
-  const response = await fetch(
-    withActiveProjectQuery(`/api/data-studio/datasets/${encodeURIComponent(dataStudioState.selectedDatasetId)}/${path}`),
-    {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: payload == null ? undefined : JSON.stringify(payload),
-    },
-  );
-  return readApiResponse(response);
-}
-
-async function patchDatasetRow(rowId, updates) {
-  if (!rowId) {
-    throw new Error("Row id is required");
-  }
-  await mutateSelectedDataset(`rows/${encodeURIComponent(rowId)}`, "PATCH", { updates });
-}
-
-async function createDatasetFromInputs() {
-  const {
-    nameInput,
-    sourceSelect,
-    formatSelect,
-    contentInput,
-    urlInput,
-    fileInput,
-    librarySelect,
-    remoteProvider,
-    remoteId,
-    remoteUrl,
-  } = dataStudioEls();
-
-  const sourceType = String(sourceSelect?.value || "paste");
-  const format = String(formatSelect?.value || "auto");
-  const name = String(nameInput?.value || "").trim();
-  let content = "";
-  let url = "";
-  let uploadAsset = null;
-
-  if (sourceType === "library") {
-    const resourceId = String(librarySelect?.value || "").trim();
-    if (!resourceId) {
-      throw new Error("Select a dataset resource from library");
-    }
-    const response = await fetch("/api/data-studio/datasets/import/library", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        projectId: getActiveProjectIdOrDefault(),
-        resourceId,
-        name,
-        format,
-      }),
-    });
-    const payload = await readApiResponse(response);
-    dataStudioState.selectedDatasetId = payload?.dataset?.id || null;
-    return;
-  }
-
-  if (sourceType === "remote") {
-    const provider = String(remoteProvider?.value || "huggingface").trim();
-    const datasetId = String(remoteId?.value || "").trim();
-    const remoteDatasetUrl = String(remoteUrl?.value || "").trim();
-    if (!datasetId && !remoteDatasetUrl) {
-      throw new Error("Provide a dataset id or URL for remote import");
-    }
-    const response = await fetch("/api/data-studio/datasets/import/remote", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        projectId: getActiveProjectIdOrDefault(),
-        provider,
-        datasetId,
-        url: remoteDatasetUrl,
-        name,
-        format,
-      }),
-    });
-    const payload = await readApiResponse(response);
-    dataStudioState.selectedDatasetId = payload?.dataset?.id || null;
-    return;
-  }
-
-  if (sourceType === "url") {
-    url = String(urlInput?.value || "").trim();
-    if (!url) {
-      throw new Error("Please enter a dataset URL");
-    }
-  } else if (sourceType === "upload") {
-    const file = fileInput?.files?.[0] || null;
-    if (!file) {
-      throw new Error("Please choose a file to upload");
-    }
-    uploadAsset = {
-      name: String(file.name || "upload"),
-      type: String(file.type || "application/octet-stream"),
-      size: Number(file.size || 0),
-      source: "upload",
-      dataUrl: "",
-    };
-    if (isTextLikeUpload(file, format)) {
-      content = await file.text();
-    } else {
-      const includeDataUrl = Number(file.size || 0) <= DATA_STUDIO_INLINE_UPLOAD_MAX_BYTES;
-      uploadAsset.dataUrl = includeDataUrl ? await fileToDataUrl(file) : "";
-    }
-  } else {
-    content = String(contentInput?.value || "").trim();
-    if (!content) {
-      throw new Error("Please paste dataset content");
-    }
-  }
-
-  const response = await fetch("/api/data-studio/datasets", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      projectId: getActiveProjectIdOrDefault(),
-      name,
-      sourceType,
-      format,
-      content,
-      url,
-      uploadAsset,
-    }),
-  });
+async function loadDataStudioDatasets(options = {}) {
+  const { keepSelection = true } = options;
+  const response = await fetch(withActiveProjectQuery("/api/data-studio/datasets"));
   const payload = await readApiResponse(response);
-  dataStudioState.selectedDatasetId = payload?.dataset?.id || null;
-}
+  dataStudioEditorState.datasets = Array.isArray(payload?.datasets) ? payload.datasets : [];
 
-async function applyDataStudioOperation(path, payload = {}, successMessage = "Operation complete") {
-  if (!dataStudioState.selectedDatasetId) {
-    throw new Error("Select a dataset first");
+  if (!keepSelection || !dataStudioEditorState.datasets.some((dataset) => dataset.id === dataStudioEditorState.selectedDatasetId)) {
+    dataStudioEditorState.selectedDatasetId = dataStudioEditorState.datasets[0]?.id || null;
   }
 
-  const response = await fetch(withActiveProjectQuery(`/api/data-studio/datasets/${encodeURIComponent(dataStudioState.selectedDatasetId)}/${path}`), {
-    method: "POST",
+  renderDataStudioDatasetList();
+  await loadDataStudioRows();
+}
+
+async function updateDataStudioCell(rowId, column, value) {
+  const selected = getDataStudioSelectedDataset();
+  if (!selected || !rowId || !column) return;
+  const response = await fetch(withActiveProjectQuery(`/api/data-studio/datasets/${encodeURIComponent(selected.id)}/rows/${encodeURIComponent(rowId)}`), {
+    method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ updates: { [column]: value } }),
   });
   await readApiResponse(response);
-
-  await loadDataStudioDatasets();
-  await loadDataStudioDataset();
-  dataStudioState.page = 1;
-  await loadDataStudioRows();
-  setDataStudioStatus(successMessage, "success");
 }
 
-async function deleteSelectedDataset() {
-  if (!dataStudioState.selectedDatasetId) {
-    return;
-  }
+async function addDataStudioRow() {
+  const selected = getDataStudioSelectedDataset();
+  if (!selected) return;
+  const baseColumns = dataStudioEditorState.columns.length > 0
+    ? dataStudioEditorState.columns
+    : (Array.isArray(selected?.stats?.columns) ? selected.stats.columns : []);
+  const row = Object.fromEntries(baseColumns.map((column) => [column, ""]));
+  const response = await fetch(withActiveProjectQuery(`/api/data-studio/datasets/${encodeURIComponent(selected.id)}/rows`), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ row }),
+  });
+  await readApiResponse(response);
+  await loadDataStudioDatasets({ keepSelection: true });
+  setDataStudioEditorStatus("Row added", "success");
+}
 
-  const response = await fetch(withActiveProjectQuery(`/api/data-studio/datasets/${encodeURIComponent(dataStudioState.selectedDatasetId)}`), {
+async function deleteDataStudioRow(rowId) {
+  const selected = getDataStudioSelectedDataset();
+  if (!selected || !rowId) return;
+  const response = await fetch(withActiveProjectQuery(`/api/data-studio/datasets/${encodeURIComponent(selected.id)}/rows/${encodeURIComponent(rowId)}`), {
     method: "DELETE",
   });
   await readApiResponse(response);
-
-  dataStudioState.selectedDatasetId = null;
-  dataStudioState.selectedDataset = null;
-  dataStudioState.rows = [];
-  dataStudioState.page = 1;
-  dataStudioState.totalPages = 1;
-  await loadDataStudioDatasets();
-  await loadDataStudioDataset();
-  await loadDataStudioRows();
-  setDataStudioStatus("Dataset deleted", "success");
+  await loadDataStudioDatasets({ keepSelection: true });
+  setDataStudioEditorStatus("Row deleted", "success");
 }
 
-async function refreshDataStudioWorkspace() {
-  if (dataStudioState.loading) {
-    return;
-  }
-  dataStudioState.loading = true;
-  try {
-    await loadDataStudioLibraryResources();
-    await loadDataStudioDatasets();
-    await loadDataStudioDataset();
-    await loadDataStudioRows();
-  } catch (error) {
-    setDataStudioStatus(`⚠ ${error.message || "Failed to load Data Studio"}`, "error");
-  } finally {
-    dataStudioState.loading = false;
-  }
+async function addDataStudioColumn() {
+  const selected = getDataStudioSelectedDataset();
+  if (!selected) return;
+  const name = window.prompt("Column name");
+  if (!name || !name.trim()) return;
+  const response = await fetch(withActiveProjectQuery(`/api/data-studio/datasets/${encodeURIComponent(selected.id)}/columns`), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: name.trim(), defaultValue: "" }),
+  });
+  await readApiResponse(response);
+  await loadDataStudioDatasets({ keepSelection: true });
+  setDataStudioEditorStatus("Column added", "success");
+}
+
+async function deleteDataStudioDataset() {
+  const selected = getDataStudioSelectedDataset();
+  if (!selected) return;
+  const confirmed = window.confirm(`Delete dataset \"${selected.name}\"? This cannot be undone.`);
+  if (!confirmed) return;
+  const response = await fetch(withActiveProjectQuery(`/api/data-studio/datasets/${encodeURIComponent(selected.id)}`), {
+    method: "DELETE",
+  });
+  await readApiResponse(response);
+  dataStudioEditorState.selectedDatasetId = null;
+  await loadDataStudioDatasets({ keepSelection: false });
+  setDataStudioEditorStatus("Dataset deleted", "success");
 }
 
 function initDataStudioWorkspace() {
-  if (dataStudioState.initialized) {
-    return;
-  }
+  if (dataStudioEditorState.initialized) return;
 
   const {
     refreshBtn,
-    sourceSelect,
-    libraryRefreshBtn,
-    createBtn,
-    deleteBtn,
-    searchBtn,
-    clearSearchBtn,
+    searchInput,
+    datasetList,
     addRowBtn,
     addColBtn,
-    renameColBtn,
-    deleteColBtn,
+    deleteDatasetBtn,
     prevBtn,
     nextBtn,
-    cleanBtn,
-    chunkBtn,
-    tagBtn,
-    splitBtn,
-    versionBtn,
-    rollbackBtn,
-    searchInput,
-    cleanOp,
-    cleanField,
-    cleanPattern,
-    chunkField,
-    chunkSize,
-    chunkOverlap,
-    tagField,
-    tagValue,
-    tagMatchField,
-    tagContains,
-    splitTrain,
-    splitEval,
-    splitTest,
-    splitField,
-    versionLabel,
-    versionSelect,
-  } = dataStudioEls();
+    tableBody,
+  } = dataStudioEditorEls();
 
-  if (!refreshBtn || !sourceSelect || !createBtn || !deleteBtn || !searchBtn || !clearSearchBtn || !prevBtn || !nextBtn || !cleanBtn || !chunkBtn || !tagBtn || !splitBtn || !versionBtn || !rollbackBtn || !addRowBtn || !addColBtn || !renameColBtn || !deleteColBtn) {
-    return;
-  }
-
-  refreshBtn.addEventListener("click", () => {
-    refreshDataStudioWorkspace();
-  });
-
-  sourceSelect.addEventListener("change", () => {
-    renderDataStudioSourceInputs();
-  });
-
-  if (libraryRefreshBtn) {
-    libraryRefreshBtn.addEventListener("click", async () => {
-      try {
-        await loadDataStudioLibraryResources();
-        setDataStudioStatus("Library refreshed", "success");
-      } catch (error) {
-        setDataStudioStatus(`⚠ ${error.message || "Failed to refresh library"}`, "error");
-      }
-    });
-  }
-
-  createBtn.addEventListener("click", async () => {
+  refreshBtn?.addEventListener("click", async () => {
     try {
-      setDataStudioStatus("Creating dataset...");
-      await createDatasetFromInputs();
-      dataStudioState.page = 1;
-      dataStudioState.search = "";
-      await refreshDataStudioWorkspace();
-      setDataStudioStatus("Dataset created", "success");
+      await loadDataStudioDatasets({ keepSelection: true });
+      setDataStudioEditorStatus("Workspace refreshed", "success");
     } catch (error) {
-      setDataStudioStatus(`⚠ ${error.message || "Failed to create dataset"}`, "error");
+      setDataStudioEditorStatus(error.message || "Failed to refresh", "error");
     }
   });
 
-  deleteBtn.addEventListener("click", async () => {
+  searchInput?.addEventListener("input", async () => {
+    dataStudioEditorState.query = String(searchInput.value || "").trim();
+    dataStudioEditorState.page = 1;
     try {
-      if (!dataStudioState.selectedDatasetId) {
-        throw new Error("Select a dataset first");
-      }
-      await deleteSelectedDataset();
-    } catch (error) {
-      setDataStudioStatus(`⚠ ${error.message || "Failed to delete dataset"}`, "error");
-    }
-  });
-
-  searchBtn.addEventListener("click", async () => {
-    dataStudioState.search = String(searchInput?.value || "").trim();
-    dataStudioState.page = 1;
-    await loadDataStudioRows();
-  });
-
-  clearSearchBtn.addEventListener("click", async () => {
-    if (searchInput) {
-      searchInput.value = "";
-    }
-    dataStudioState.search = "";
-    dataStudioState.page = 1;
-    await loadDataStudioRows();
-  });
-
-  addRowBtn.addEventListener("click", async () => {
-    try {
-      const raw = prompt("New row JSON (optional). Leave empty for a blank row.", "{}");
-      if (raw == null) {
-        return;
-      }
-      let row = {};
-      const trimmed = String(raw || "").trim();
-      if (trimmed) {
-        row = JSON.parse(trimmed);
-      }
-      await mutateSelectedDataset("rows", "POST", { row });
-      await loadDataStudioDataset();
       await loadDataStudioRows();
-      setDataStudioStatus("Row added", "success");
     } catch (error) {
-      setDataStudioStatus(`⚠ ${error.message || "Failed to add row"}`, "error");
+      setDataStudioEditorStatus(error.message || "Search failed", "error");
     }
   });
 
-  addColBtn.addEventListener("click", async () => {
+  datasetList?.addEventListener("click", async (event) => {
+    const button = event.target.closest("[data-dataset-id]");
+    if (!button) return;
+    dataStudioEditorState.selectedDatasetId = button.getAttribute("data-dataset-id") || null;
+    dataStudioEditorState.page = 1;
+    renderDataStudioDatasetList();
     try {
-      const name = String(prompt("New column name") || "").trim();
-      if (!name) {
-        throw new Error("Column name is required");
-      }
-      const defaultValue = String(prompt("Default value for existing rows", "") || "");
-      await mutateSelectedDataset("columns", "POST", { name, defaultValue });
-      await loadDataStudioDataset();
       await loadDataStudioRows();
-      setDataStudioStatus("Column added", "success");
     } catch (error) {
-      setDataStudioStatus(`⚠ ${error.message || "Failed to add column"}`, "error");
+      setDataStudioEditorStatus(error.message || "Failed to load rows", "error");
     }
   });
 
-  renameColBtn.addEventListener("click", async () => {
+  addRowBtn?.addEventListener("click", async () => {
     try {
-      const available = getEditableDatasetColumns(dataStudioState.rows);
-      const sourceName = String(prompt(`Column to rename (${available.join(", ") || "none"})`) || "").trim();
-      if (!sourceName) {
-        throw new Error("Source column name is required");
-      }
-      const name = String(prompt("New column name") || "").trim();
-      if (!name) {
-        throw new Error("New column name is required");
-      }
-      await mutateSelectedDataset(`columns/${encodeURIComponent(sourceName)}`, "PATCH", { name });
-      await loadDataStudioDataset();
+      await addDataStudioRow();
+    } catch (error) {
+      setDataStudioEditorStatus(error.message || "Failed to add row", "error");
+    }
+  });
+
+  addColBtn?.addEventListener("click", async () => {
+    try {
+      await addDataStudioColumn();
+    } catch (error) {
+      setDataStudioEditorStatus(error.message || "Failed to add column", "error");
+    }
+  });
+
+  deleteDatasetBtn?.addEventListener("click", async () => {
+    try {
+      await deleteDataStudioDataset();
+    } catch (error) {
+      setDataStudioEditorStatus(error.message || "Failed to delete dataset", "error");
+    }
+  });
+
+  prevBtn?.addEventListener("click", async () => {
+    if (dataStudioEditorState.page <= 1) return;
+    dataStudioEditorState.page -= 1;
+    try {
       await loadDataStudioRows();
-      setDataStudioStatus("Column renamed", "success");
     } catch (error) {
-      setDataStudioStatus(`⚠ ${error.message || "Failed to rename column"}`, "error");
+      setDataStudioEditorStatus(error.message || "Failed to load previous page", "error");
     }
   });
 
-  deleteColBtn.addEventListener("click", async () => {
+  nextBtn?.addEventListener("click", async () => {
+    if (dataStudioEditorState.page >= dataStudioEditorState.totalPages) return;
+    dataStudioEditorState.page += 1;
     try {
-      const available = getEditableDatasetColumns(dataStudioState.rows);
-      const name = String(prompt(`Column to delete (${available.join(", ") || "none"})`) || "").trim();
-      if (!name) {
-        throw new Error("Column name is required");
-      }
-      if (!confirm(`Delete column "${name}" from all rows?`)) {
-        return;
-      }
-      await mutateSelectedDataset(`columns/${encodeURIComponent(name)}`, "DELETE");
-      await loadDataStudioDataset();
       await loadDataStudioRows();
-      setDataStudioStatus("Column deleted", "success");
     } catch (error) {
-      setDataStudioStatus(`⚠ ${error.message || "Failed to delete column"}`, "error");
+      setDataStudioEditorStatus(error.message || "Failed to load next page", "error");
     }
   });
 
-  prevBtn.addEventListener("click", async () => {
-    if (dataStudioState.page <= 1) {
-      return;
-    }
-    dataStudioState.page -= 1;
-    await loadDataStudioRows();
-  });
-
-  nextBtn.addEventListener("click", async () => {
-    if (dataStudioState.page >= dataStudioState.totalPages) {
-      return;
-    }
-    dataStudioState.page += 1;
-    await loadDataStudioRows();
-  });
-
-  cleanBtn.addEventListener("click", async () => {
+  tableBody?.addEventListener("change", async (event) => {
+    const input = event.target.closest(".studio-cell-input");
+    if (!input) return;
+    const rowId = input.getAttribute("data-row-id") || "";
+    const column = input.getAttribute("data-column") || "";
+    const nextValue = String(input.value || "");
+    const initialValue = String(input.getAttribute("data-initial") || "");
+    if (nextValue === initialValue) return;
     try {
-      await applyDataStudioOperation("clean", {
-        operation: String(cleanOp?.value || "trim-text"),
-        field: String(cleanField?.value || "").trim(),
-        pattern: String(cleanPattern?.value || "").trim(),
-      }, "Clean operation applied");
+      await updateDataStudioCell(rowId, column, nextValue);
+      input.setAttribute("data-initial", nextValue);
+      setDataStudioEditorStatus("Cell updated", "success");
     } catch (error) {
-      setDataStudioStatus(`⚠ ${error.message || "Clean operation failed"}`, "error");
+      input.value = initialValue;
+      setDataStudioEditorStatus(error.message || "Failed to update cell", "error");
     }
   });
 
-  chunkBtn.addEventListener("click", async () => {
+  tableBody?.addEventListener("click", async (event) => {
+    const button = event.target.closest("[data-row-delete]");
+    if (!button) return;
+    const rowId = button.getAttribute("data-row-delete") || "";
+    if (!rowId) return;
     try {
-      await applyDataStudioOperation("chunk", {
-        field: String(chunkField?.value || "").trim(),
-        chunkSize: Number(chunkSize?.value || 500),
-        overlap: Number(chunkOverlap?.value || 50),
-      }, "Chunking complete");
+      await deleteDataStudioRow(rowId);
     } catch (error) {
-      setDataStudioStatus(`⚠ ${error.message || "Chunk operation failed"}`, "error");
+      setDataStudioEditorStatus(error.message || "Failed to delete row", "error");
     }
   });
 
-  tagBtn.addEventListener("click", async () => {
-    try {
-      const tagValueText = String(tagValue?.value || "").trim();
-      if (!tagValueText) {
-        throw new Error("Tag value is required");
-      }
-      await applyDataStudioOperation("tag", {
-        tagField: String(tagField?.value || "").trim(),
-        tagValue: tagValueText,
-        matchField: String(tagMatchField?.value || "").trim(),
-        contains: String(tagContains?.value || "").trim(),
-      }, "Tagging complete");
-    } catch (error) {
-      setDataStudioStatus(`⚠ ${error.message || "Tag operation failed"}`, "error");
-    }
-  });
+  dataStudioEditorState.initialized = true;
+}
 
-  splitBtn.addEventListener("click", async () => {
-    try {
-      await applyDataStudioOperation("split", {
-        trainRatio: Number(splitTrain?.value || 80),
-        evalRatio: Number(splitEval?.value || 10),
-        testRatio: Number(splitTest?.value || 10),
-        splitField: String(splitField?.value || "").trim(),
-      }, "Split labels applied");
-    } catch (error) {
-      setDataStudioStatus(`⚠ ${error.message || "Split operation failed"}`, "error");
-    }
-  });
-
-  versionBtn.addEventListener("click", async () => {
-    try {
-      await applyDataStudioOperation("version", {
-        label: String(versionLabel?.value || "").trim(),
-      }, "Version created");
-    } catch (error) {
-      setDataStudioStatus(`⚠ ${error.message || "Version creation failed"}`, "error");
-    }
-  });
-
-  rollbackBtn.addEventListener("click", async () => {
-    try {
-      const versionId = String(versionSelect?.value || "").trim();
-      if (!versionId) {
-        throw new Error("Select a version to rollback");
-      }
-      await applyDataStudioOperation("rollback", { versionId }, "Rollback complete");
-    } catch (error) {
-      setDataStudioStatus(`⚠ ${error.message || "Rollback failed"}`, "error");
-    }
-  });
-
-  renderDataStudioSourceInputs();
-  renderDataStudioLibraryResources();
-  renderDataStudioHeader();
-  renderDataStudioTable();
-  dataStudioState.initialized = true;
+async function refreshDataStudioWorkspace() {
+  if (!dataStudioEditorState.initialized) return;
+  await loadDataStudioDatasets({ keepSelection: true });
 }
 
 async function activateDataStudioWorkspace() {
   initDataStudioWorkspace();
-  await refreshDataStudioWorkspace();
+  await loadDataStudioDatasets({ keepSelection: true });
 }
 
-document.addEventListener("DOMContentLoaded", () => {
-  const dataStudioView = document.getElementById("data-studio-view");
-  if (dataStudioView && dataStudioView.classList.contains("active")) {
-    activateDataStudioWorkspace();
+function setDataStudioStatus(message, level) {
+  const activeView = getActiveViewKey();
+  if (activeView === "dataset-creator") {
+    setDatasetCreatorStatus(message, level);
+    return;
   }
-});
+  setDataStudioEditorStatus(message, level);
+}
 
 /* ── Notebook (inline cell editor) ── */
 const nbState = {
@@ -5907,6 +5813,11 @@ async function nbRunCell(cellId) {
 async function nbRunAll() {
   try {
     nbSetStatus("Running all cells...");
+    nbState.cells.forEach(c => {
+      if (c.type === "code") c.status = "running";
+    });
+    nbRenderCells();
+
     const res = await fetch(withActiveProjectQuery("/api/notebook/run-all"), { method: "POST" });
     const data = await readApiResponse(res);
     nbState.cells = Array.isArray(data.cells) ? data.cells : nbState.cells;
@@ -5914,6 +5825,7 @@ async function nbRunAll() {
     nbSetStatus("All cells executed", "success");
   } catch (err) {
     nbSetStatus(`⚠ ${err.message}`, "error");
+    await nbLoadCells();
   }
 }
 
@@ -5960,6 +5872,15 @@ async function nbMoveCell(cellId, direction) {
     await nbLoadCells();
   }
 }
+
+// === EXPOSE GLOBALS FOR TEMPLATES.JS ===
+window.nbState = nbState;
+window.nbSetStatus = nbSetStatus;
+window.nbLoadCells = nbLoadCells;
+window.getActiveProjectIdOrDefault = getActiveProjectIdOrDefault;
+window.readApiResponse = readApiResponse;
+window.escapeHtml = escapeHtml;
+// =======================================
 
 function initNotebookWorkspace() {
   if (nbState.initialized) return;
@@ -6774,6 +6695,8 @@ function setNestedValue(obj, pathArr, value) {
    Settings Panel — Full Functionality
    ───────────────────────────────────────── */
 let _settingsInitialized = false;
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.6/+esm";
+
 let _settingsDirty = false;
 
 function _markSettingsDirty() {
@@ -7455,19 +7378,35 @@ function initSettingsPanel() {
   const passwordInput = document.getElementById("auth-password");
   const signinBtn = document.getElementById("auth-signin-btn");
   const signupBtn = document.getElementById("auth-signup-btn");
-  const errorMsg = document.getElementById("auth-error-msg");
-  const successMsg = document.getElementById("auth-success-msg");
+  const errorMsg = authModal ? authModal.querySelector("#auth-error-msg") : null;
+  const successMsg = authModal ? authModal.querySelector("#auth-success-msg") : null;
 
-  if (!authModal || !sidebarProfile) return;
+  const btnGoogle = document.getElementById("auth-google-btn");
+  const btnDiscord = document.getElementById("auth-discord-btn");
+  const btnGithub = document.getElementById("auth-github-btn");
+  const btnFacebook = document.getElementById("auth-facebook-btn");
+  const btnGuest = document.getElementById("auth-guest-btn");
+
+  let supabaseClient = null;
+
+  if (!authModal) return;
+
+  function setError(message) {
+    if (errorMsg) errorMsg.textContent = message;
+  }
+
+  function setSuccess(message) {
+    if (successMsg) successMsg.textContent = message;
+  }
 
   let turnstileWidgetId = null;
 
   function openModal() {
     authModal.style.display = "flex";
-    errorMsg.textContent = "";
-    successMsg.textContent = "";
-    emailInput.value = "";
-    passwordInput.value = "";
+    setError("");
+    setSuccess("");
+    if (emailInput) emailInput.value = "";
+    if (passwordInput) passwordInput.value = "";
     // Render or reset Turnstile
     if (window.turnstile) {
       if (turnstileWidgetId != null) {
@@ -7486,26 +7425,124 @@ function initSettingsPanel() {
     authModal.style.display = "none";
   }
 
-  sidebarProfile.addEventListener("click", () => {
+  // Profile Modal Elements
+  const profileModal = document.getElementById("profile-modal");
+  const profileModalClose = document.getElementById("profile-modal-close");
+  const profileSignoutBtn = document.getElementById("profile-signout-btn");
+  const profileSettingsBtn = document.getElementById("profile-settings-btn");
+  const profileGuestWarning = document.getElementById("profile-guest-warning");
+  const profileTabs = document.querySelectorAll(".profile-tab[data-ptab]");
+  const profilePanels = document.querySelectorAll(".profile-tab-content[id^='ptab-']");
+  
+  function openProfileModal() {
+    profileModal.style.display = "flex";
+    populateProfileModal();
+  }
+
+  function closeProfileModal() {
+    profileModal.style.display = "none";
+  }
+
+  function populateProfileModal() {
     const token = localStorage.getItem("text2llm.web.supabase.access_token");
-    if (token) {
-      if (confirm("You are currently signed in. Do you want to sign out?")) {
-        localStorage.removeItem("text2llm.web.supabase.access_token");
-        alert("Signed out successfully.");
-        window.location.reload();
+    const isGuest = token === "guest-session";
+    
+    // UI Elements
+    const nameEl = document.getElementById("profile-modal-name");
+    const usernameEl = document.getElementById("profile-modal-username");
+    const avatarEl = document.getElementById("profile-modal-avatar");
+    const metaEl = document.getElementById("profile-modal-meta");
+    const bioEl = document.getElementById("profile-modal-bio");
+    
+    if (isGuest) {
+      nameEl.textContent = "Guest User";
+      usernameEl.textContent = "guest_account";
+      metaEl.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg> Temporary Session`;
+      avatarEl.innerHTML = `<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" stroke-width="1.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
+      bioEl.textContent = "Quietly working away as a guest. All data is stored locally and will be lost on exit.";
+      profileGuestWarning.style.display = "flex";
+      return;
+    }
+
+    // Authenticated user
+    profileGuestWarning.style.display = "none";
+    if (supabaseClient) {
+      supabaseClient.auth.getUser().then(({ data: { user } }) => {
+        if (user) {
+          const name = user.user_metadata?.full_name || user.user_metadata?.name || "Logged In User";
+          const username = user.email?.split('@')[0] || "user";
+          const avatar = user.user_metadata?.avatar_url || user.user_metadata?.picture;
+          const joinedDate = user.created_at ? new Date(user.created_at).toLocaleDateString(undefined, { month: 'short', year: 'numeric' }) : "recently";
+          
+          nameEl.textContent = name;
+          usernameEl.textContent = username;
+          metaEl.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg> Joined ${joinedDate}`;
+          bioEl.textContent = "Quietly working away";
+          
+          if (avatar) {
+            avatarEl.innerHTML = `<img src="${avatar}" alt="Avatar" class="profile-avatar-img">`;
+          } else {
+             avatarEl.innerHTML = `<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" stroke-width="1.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
+          }
+        }
+      }).catch(e => console.warn(e));
+    }
+  }
+
+  // Profile Modal Event Listeners
+  if (profileModalClose) profileModalClose.addEventListener("click", closeProfileModal);
+  if (profileModal) profileModal.addEventListener("click", (e) => {
+    if (e.target === profileModal) closeProfileModal();
+  });
+  
+  if (profileSettingsBtn) profileSettingsBtn.addEventListener("click", () => {
+    closeProfileModal();
+    document.querySelector('.nav-item[data-view="settings"]')?.click();
+  });
+
+  if (profileSignoutBtn) profileSignoutBtn.addEventListener("click", () => {
+    // Only sign out if confirmed
+    if (confirm("Are you sure you want to sign out?")) {
+      localStorage.removeItem("text2llm.web.supabase.access_token");
+      window.location.reload();
+    }
+  });
+
+  profileTabs.forEach(btn => {
+    btn.addEventListener("click", () => {
+      profileTabs.forEach(b => b.classList.remove("active"));
+      profilePanels.forEach(p => p.classList.remove("active"));
+      
+      btn.classList.add("active");
+      const targetId = `ptab-${btn.getAttribute("data-ptab")}`;
+      const targetPanel = document.getElementById(targetId);
+      if (targetPanel) targetPanel.classList.add("active");
+    });
+  });
+
+
+  if (sidebarProfile) {
+    sidebarProfile.addEventListener("click", () => {
+      const token = localStorage.getItem("text2llm.web.supabase.access_token");
+      if (token) {
+        openProfileModal();
+      } else {
+        openModal();
       }
-    } else {
-      openModal();
-    }
-  });
+    });
+  }
 
-  authModalClose.addEventListener("click", closeModal);
+  if (authModalClose) {
+    authModalClose.addEventListener("click", closeModal);
+  }
 
-  authModal.addEventListener("click", (e) => {
-    if (e.target === authModal) {
-      closeModal();
-    }
-  });
+  if (authModal) {
+    authModal.addEventListener("click", (e) => {
+      if (e.target === authModal) {
+        closeModal();
+      }
+    });
+  }
 
   function getTurnstileToken() {
     const input = document.querySelector('input[name="cf-turnstile-response"]');
@@ -7513,20 +7550,20 @@ function initSettingsPanel() {
   }
 
   async function handleAuth(action) {
-    const email = emailInput.value.trim();
-    const password = passwordInput.value;
+    const email = emailInput?.value.trim() || "";
+    const password = passwordInput?.value || "";
     const captchaToken = getTurnstileToken();
 
-    errorMsg.textContent = "";
-    successMsg.textContent = "";
+    setError("");
+    setSuccess("");
 
     if (!email || !password) {
-      errorMsg.textContent = "Please enter both email and password.";
+      setError("Please enter both email and password.");
       return;
     }
 
     if (!captchaToken) {
-      errorMsg.textContent = "Please complete the CAPTCHA.";
+      setError("Please complete the CAPTCHA.");
       return;
     }
 
@@ -7542,34 +7579,162 @@ function initSettingsPanel() {
       const data = await res.json();
       
       if (!data.ok) {
-        errorMsg.textContent = data.error || "Authentication failed.";
+        setError(data.error || "Authentication failed.");
         return;
       }
       
       const token = data.session?.access_token;
       if (token) {
         localStorage.setItem("text2llm.web.supabase.access_token", token);
-        successMsg.textContent = "Successfully authenticated!";
+        setSuccess("Successfully authenticated!");
         setTimeout(() => {
           closeModal();
           window.location.reload();
         }, 1000);
       } else {
-        successMsg.textContent = "Check your email for confirmation.";
+        setSuccess("Check your email for confirmation.");
         setTimeout(() => closeModal(), 2000);
       }
     } catch (err) {
-      errorMsg.textContent = "Network error occurred.";
+      setError("Network error occurred.");
     }
   }
 
-  signinBtn.addEventListener("click", () => handleAuth("login"));
-  signupBtn.addEventListener("click", () => handleAuth("signup"));
-  
-  // Update sidebar on load
-  const token = localStorage.getItem("text2llm.web.supabase.access_token");
-  if (token) {
-      const userNameEl = sidebarProfile.querySelector(".user-name");
-      if (userNameEl) userNameEl.textContent = "Logged In";
+  async function handleOAuth(provider) {
+    if (!supabaseClient) {
+      setError("Supabase client not initialized. Check SUPABASE_URL and SUPABASE_ANON_KEY on the server.");
+      return;
+    }
+    
+    setError("");
+    setSuccess("Redirecting to " + provider + "...");
+    
+    try {
+      const { data, error } = await supabaseClient.auth.signInWithOAuth({
+        provider: provider,
+        options: {
+          redirectTo: window.location.origin
+        }
+      });
+      
+      if (error) {
+        setError(error.message);
+        setSuccess("");
+        return;
+      }
+
+      if (data?.url) {
+        window.location.assign(data.url);
+      }
+    } catch (err) {
+      setError("Failed to start OAuth flow.");
+      setSuccess("");
+    }
   }
+
+  // Load Supabase configuration
+  async function initSupabase() {
+    try {
+      if (!window.supabase || typeof window.supabase.createClient !== "function") {
+        console.warn("Supabase SDK not available in window scope");
+        return;
+      }
+
+      const res = await fetch("/api/config");
+      const data = await res.json();
+      if (data.ok && data.supabaseUrl && data.supabaseAnonKey) {
+          supabaseClient = supabase.createClient(data.supabaseUrl, data.supabaseAnonKey);
+          
+          // Check if we are returning from an OAuth redirect
+          const { data: sessionData, error } = await supabaseClient.auth.getSession();
+          if (sessionData && sessionData.session) {
+             const token = sessionData.session.access_token;
+             if (token && !localStorage.getItem("text2llm.web.supabase.access_token")) {
+                 localStorage.setItem("text2llm.web.supabase.access_token", token);
+                 
+                 // Clean up the URL hash
+                 if (window.history.replaceState) {
+                     history.replaceState(null, null, window.location.pathname + window.location.search);
+                 }
+                 window.location.reload();
+             }
+          }
+          
+          updateSidebarProfile();
+      } else {
+          console.warn("Supabase OAuth not configured: missing SUPABASE_URL or SUPABASE_ANON_KEY");
+      }
+    } catch (e) {
+      console.warn("Failed to initialize Supabase client for OAuth:", e);
+    }
+  }
+  
+  initSupabase();
+
+  function handleGuestLogin() {
+    localStorage.setItem("text2llm.web.supabase.access_token", "guest-session");
+    setSuccess("Signed in as Guest!");
+    setTimeout(() => {
+      closeModal();
+      window.location.reload();
+    }, 1000);
+  }
+
+  if (signinBtn) signinBtn.addEventListener("click", () => handleAuth("login"));
+  if (signupBtn) signupBtn.addEventListener("click", () => handleAuth("signup"));
+  
+  if (btnGoogle) btnGoogle.addEventListener("click", () => handleOAuth("google"));
+  if (btnDiscord) btnDiscord.addEventListener("click", () => handleOAuth("discord"));
+  if (btnGithub) btnGithub.addEventListener("click", () => handleOAuth("github"));
+  if (btnFacebook) btnFacebook.addEventListener("click", () => handleOAuth("facebook"));
+  if (btnGuest) btnGuest.addEventListener("click", handleGuestLogin);
+  
+  async function updateSidebarProfile() {
+      const token = localStorage.getItem("text2llm.web.supabase.access_token");
+      if (!token) return;
+
+      const userNameEl = sidebarProfile.querySelector(".user-name");
+      const userPlanEl = sidebarProfile.querySelector(".user-plan");
+      const avatarContainer = sidebarProfile.querySelector(".avatar");
+      
+      if (token === "guest-session") {
+          if (userNameEl) userNameEl.textContent = "Guest";
+          if (userPlanEl) {
+              userPlanEl.textContent = "Changes may be lost";
+              userPlanEl.style.color = "var(--accent)";
+          }
+          if (avatarContainer) {
+              avatarContainer.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
+          }
+          return;
+      }
+      
+      if (supabaseClient) {
+          try {
+              const { data: { user } } = await supabaseClient.auth.getUser();
+              if (user) {
+                  const name = user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || "Logged In";
+                  const avatar = user.user_metadata?.avatar_url || user.user_metadata?.picture;
+                  
+                  if (userNameEl) userNameEl.textContent = name;
+                  if (userPlanEl) {
+                      userPlanEl.textContent = "Authenticated";
+                      userPlanEl.style.color = "var(--text-dim)";
+                  }
+                  if (avatarContainer && avatar) {
+                      avatarContainer.innerHTML = `<img src="${avatar}" alt="Avatar" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+                      avatarContainer.style.overflow = "hidden";
+                  }
+              }
+          } catch(e) {
+              console.warn("Could not fetch user profile", e);
+          }
+      } else {
+          // Fallback if supabase client not yet loaded but token exists
+          if (userNameEl) userNameEl.textContent = "Logged In";
+      }
+  }
+
+  // Update sidebar on load
+  updateSidebarProfile();
 })();

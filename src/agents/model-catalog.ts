@@ -33,41 +33,6 @@ export function resetModelCatalogCacheForTest() {
   importPiSdk = defaultImportPiSdk;
 }
 
-// Test-only escape hatch: allow mocking the dynamic imporimport { type TEXT2LLMConfig, loadConfig } from "../config/config.js";
-import { resolveTEXT2LLMAgentDir } from "./agent-paths.js";
-import { ensureTEXT2LLMModelsJson } from "./models-config.js";
-
-export type ModelCatalogEntry = {
-  id: string;
-  name: string;
-  provider: string;
-  contextWindow?: number;
-  reasoning?: boolean;
-  input?: Array<"text" | "image">;
-};
-
-type DiscoveredModel = {
-  id: string;
-  name?: string;
-  provider: string;
-  contextWindow?: number;
-  reasoning?: boolean;
-  input?: Array<"text" | "image">;
-};
-
-type PiSdkModule = typeof import("./pi-model-discovery.js");
-
-let modelCatalogPromise: Promise<ModelCatalogEntry[]> | null = null;
-let hasLoggedModelCatalogError = false;
-const defaultImportPiSdk = () => import("./pi-model-discovery.js");
-let importPiSdk = defaultImportPiSdk;
-
-export function resetModelCatalogCacheForTest() {
-  modelCatalogPromise = null;
-  hasLoggedModelCatalogError = false;
-  importPiSdk = defaultImportPiSdk;
-}
-
 // Test-only escape hatch: allow mocking the dynamic import to simulate transient failures.
 export function __setModelCatalogImportForTest(loader?: () => Promise<PiSdkModule>) {
   importPiSdk = loader ?? defaultImportPiSdk;

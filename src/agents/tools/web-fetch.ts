@@ -29,37 +29,6 @@ import {
 
 export { extractReadableContent } from "./web-fetch-utils.js";
 
-const EXTRimport { Type } from "@sinclair/typebox";
-import type { TEXT2LLMConfig } from "../../config/config.js";
-import type { AnyAgentTool } from "./common.js";
-import { fetchWithSsrFGuard } from "../../infra/net/fetch-guard.js";
-import { SsrFBlockedError } from "../../infra/net/ssrf.js";
-import { wrapExternalContent, wrapWebContent } from "../../security/external-content.js";
-import { normalizeSecretInput } from "../../utils/normalize-secret-input.js";
-import { stringEnum } from "../schema/typebox.js";
-import { jsonResult, readNumberParam, readStringParam } from "./common.js";
-import {
-  extractReadableContent,
-  htmlToMarkdown,
-  markdownToText,
-  truncateText,
-  type ExtractMode,
-} from "./web-fetch-utils.js";
-import {
-  CacheEntry,
-  DEFAULT_CACHE_TTL_MINUTES,
-  DEFAULT_TIMEOUT_SECONDS,
-  normalizeCacheKey,
-  readCache,
-  readResponseText,
-  resolveCacheTtlMs,
-  resolveTimeoutSeconds,
-  withTimeout,
-  writeCache,
-} from "./web-shared.js";
-
-export { extractReadableContent } from "./web-fetch-utils.js";
-
 const EXTRACT_MODES = ["markdown", "text"] as const;
 
 const DEFAULT_FETCH_MAX_CHARS = 50_000;

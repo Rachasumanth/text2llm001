@@ -51,6 +51,17 @@ Export artifacts in Hugging Face-compatible layout:
 
 Optionally include a small validation report (`tokenizer_report.md`) with metrics and chosen settings.
 
+## Handoff Protocol
+
+After training is complete, produce a handoff summary for the **model-architect** skill:
+
+- `vocab_size` (exact integer)
+- special token IDs (`bos_token_id`, `eos_token_id`, `pad_token_id`, `unk_token_id`)
+- `special_tokens_map.json` path
+- recommended `max_position_embeddings` based on tokenizer sequence length analysis
+
+The model-architect must import these values into `config.json` to ensure tokenizer-model compatibility.
+
 ## Tools/Libraries
 
 - Hugging Face `tokenizers`

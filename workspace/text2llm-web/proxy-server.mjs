@@ -170,6 +170,31 @@ async function validateSupabaseUser(req) {
   return { ok: true, userId };
 }
 
+async function getUserTier(userId, authHeader) {
+  if (parseBooleanEnv(process.env.PROXY_SKIP_AUTH, false)) return 'pro';
+
+  const supabaseUrl = process.env.SUPABASE_URL?.trim();
+  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY?.trim();
+  if (!supabaseUrl || !supabaseAnonKey || !authHeader) return 'free';
+
+  try {
+    const response = await fetch(`${supabaseUrl}/rest/v1/profiles?user_id=eq.${userId}&select=tier`, {
+      method: "GET",
+      headers: {
+        apikey: supabaseAnonKey,
+        Authorization: authHeader,
+      },
+    });
+    if (response.ok) {
+      const rows = await response.json();
+      return rows?.[0]?.tier || 'free';
+    }
+  } catch {
+    // default to free on error
+  }
+  return 'free';
+}
+
 async function logUsageEvent(event) {
   const supabaseUrl = process.env.SUPABASE_URL?.trim();
   const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
@@ -434,6 +459,178 @@ export function createProxyApp() {
       });
     }
   });
+
+  // ── Dataset Creator endpoints ─────────────────────────────────────────────
+  app.post("/v1/datasets/upload-url", async (req, res) => {
+    try {
+      const auth = await validateSupabaseUser(req);
+      if (!auth.ok) {
+        return res.status(auth.status).json({ error: auth.message });
+      }
+      
+      const authHeader = req.header("authorization")?.trim();
+      const tier = await getUserTier(auth.userId, authHeader);
+      if (tier !== "pro") {
+        return res.status(403).json({ error: "Pro tier required for custom multi-format datasets > 1GB." });
+      }
+
+      // Mock S3/R2 presigned URL generation (requires AWS SDK/credentials in production)
+      const fileKey = `dataset-${auth.userId}-${Date.now()}.raw`;
+      const uploadUrl = `https://storage.example.com/uploads/${fileKey}?signature=mock_presigned_s3_url`;
+
+      res.json({ uploadUrl, fileKey });
+    } catch (error) {
+      res.status(500).json({ error: "internal_error", message: error.message });
+    }
+  });
+
+  app.post("/v1/datasets/process", async (req, res) => {
+    try {
+      const auth = await validateSupabaseUser(req);
+      if (!auth.ok) {
+        return res.status(auth.status).json({ error: auth.message });
+      }
+
+      const authHeader = req.header("authorization")?.trim();
+      const tier = await getUserTier(auth.userId, authHeader);
+      if (tier !== "pro") {
+        return res.status(403).json({ error: "Pro tier required." });
+      }
+
+      const { fileKey, outputFormat } = req.body || {};
+      if (!fileKey) {
+        return res.status(400).json({ error: "missing_fileKey" });
+      }
+
+      const supabaseUrl = process.env.SUPABASE_URL?.trim();
+      const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+
+      if (!supabaseUrl || !serviceRole) {
+        return res.status(500).json({ error: "missing_supabase_env" });
+      }
+
+      const response = await fetch(`${supabaseUrl}/rest/v1/dataset_jobs`, {
+        method: "POST",
+        headers: {
+          apikey: serviceRole,
+          Authorization: `Bearer ${serviceRole}`,
+          "Content-Type": "application/json",
+          Prefer: "return=representation"
+        },
+        body: JSON.stringify({
+          user_id: auth.userId,
+          file_key: fileKey,
+          output_format: outputFormat || "jsonl",
+          status: "pending"
+        })
+      });
+
+      if (!response.ok) {
+        return res.status(500).json({ error: "failed_to_queue_job" });
+      }
+
+      const rows = await response.json();
+      res.json({ jobId: rows[0]?.id, status: "pending", message: "Job queued for background processing" });
+    } catch (error) {
+      res.status(500).json({ error: "internal_error", message: error.message });
+    }
+  });
+
+  app.get("/v1/datasets/status/:jobId", async (req, res) => {
+    try {
+      const auth = await validateSupabaseUser(req);
+      if (!auth.ok) {
+        return res.status(auth.status).json({ error: auth.message });
+      }
+
+      const { jobId } = req.params;
+      const supabaseUrl = process.env.SUPABASE_URL?.trim();
+      const supabaseAnonKey = process.env.SUPABASE_ANON_KEY?.trim();
+
+      if (!supabaseUrl || !supabaseAnonKey) {
+        return res.status(500).json({ error: "missing_supabase_env" });
+      }
+
+      const response = await fetch(`${supabaseUrl}/rest/v1/dataset_jobs?id=eq.${jobId}&select=*`, {
+        method: "GET",
+        headers: {
+          apikey: supabaseAnonKey,
+          Authorization: req.header("authorization")?.trim() || "",
+        }
+      });
+
+      if (!response.ok) {
+        return res.status(404).json({ error: "job_not_found" });
+      }
+
+      const rows = await response.json();
+      if (!rows.length || rows[0].user_id !== auth.userId) {
+        return res.status(404).json({ error: "job_not_found_or_unauthorized" });
+      }
+
+      res.json({ job: rows[0] });
+    } catch (error) {
+      res.status(500).json({ error: "internal_error", message: error.message });
+    }
+  });
+
+  // Web Mode Fallback: Mock AI Providers
+  app.get('/api/instances/providers', (req, res) => {
+    res.json({
+      ok: true,
+      providers: AI_PROVIDERS.map((p) => ({
+        ...p,
+        status: 'ready',
+        models: PROVIDER_MODEL_CATALOG[p.id] || [],
+        configured: true
+      }))
+    });
+  });
+
+  app.get('/api/instances/provider/:id/models', async (req, res) => {
+    const providerId = req.params.id;
+    let models = PROVIDER_MODEL_CATALOG[providerId] || [];
+    if (providerId === 'openrouter') {
+      models = await fetchOpenRouterModels();
+    }
+    res.json({ ok: true, models, currentModel: null });
+  });
+
+  // Web Mode Fallback: Mock Webapp Config
+  app.get('/api/config', (req, res) => {
+    res.json({
+      ok: true,
+      config: { web: { proxyMode: true }, agents: { defaults: { model: { primary: 'gpt-4o-mini' } } } }
+    });
+  });
+
+  app.post('/api/config', (req, res) => {
+    res.json({ ok: true });
+  });
+
+  // Cache for OpenRouter
+  let openRouterModelsCache = null;
+  let openRouterModelsCacheAt = 0;
+  const OPENROUTER_CACHE_TTL_MS = 15 * 60 * 1000;
+
+  async function fetchOpenRouterModels(apiKey) {
+    const now = Date.now();
+    if (openRouterModelsCache && (now - openRouterModelsCacheAt) < OPENROUTER_CACHE_TTL_MS) return openRouterModelsCache;
+    try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (apiKey) headers['Authorization'] = 'Bearer ' + apiKey;
+      const res = await fetch('https://openrouter.ai/api/v1/models', { headers, signal: AbortSignal.timeout(8000) });
+      const data = await res.json();
+      const models = (Array.isArray(data?.data) ? data.data : []).map(m => ({
+        id: m.id,
+        name: m.name || m.id,
+        desc: [ m.context_length ? Math.round(m.context_length/1000)+'k ctx' : null ].filter(Boolean).join(' · '),
+        reasoning: Boolean(m.id?.includes('think') || m.id?.includes('r1'))
+      })).slice(0, 100);
+      openRouterModelsCache = models; openRouterModelsCacheAt = now;
+      return models;
+    } catch (err) { return openRouterModelsCache || []; }
+  }
 
   // ── Supabase Auth endpoints (with Turnstile captcha) ──────────────────────
   app.post("/api/auth/login", async (req, res) => {

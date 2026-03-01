@@ -13,7 +13,9 @@
     "test:strict": "npm run test:phase9 ; npm run test:phase10"
   },
   "dependencies": {
+    "dotenv": "^17.3.1",
     "express": "^5.1.0",
+    "litegraph.js": "^0.7.18",
     "node-fetch": "^3.3.2",
     "node-pty": "^1.0.0",
     "ws": "^8.16.0",

@@ -28,36 +28,6 @@ export function isAddressInUseError(line: string): boolean {
 
 let watcherProcess: ChildProcess | null = null;
 let renewInterval: ReturnType<typeof setInterval> | null = null;
-let shuttingDown = fal/**
- * Gmail Watcher Service
- *
- * Automatically starts `gog gmail watch serve` when the gateway starts,
- * if hooks.gmail is configured with an account.
- */
-
-import { type ChildProcess, spawn } from "node:child_process";
-import type { TEXT2LLMConfig } from "../config/config.js";
-import { hasBinary } from "../agents/skills.js";
-import { createSubsystemLogger } from "../logging/subsystem.js";
-import { runCommandWithTimeout } from "../process/exec.js";
-import { ensureTailscaleEndpoint } from "./gmail-setup-utils.js";
-import {
-  buildGogWatchServeArgs,
-  buildGogWatchStartArgs,
-  type GmailHookRuntimeConfig,
-  resolveGmailHookRuntimeConfig,
-} from "./gmail.js";
-
-const log = createSubsystemLogger("gmail-watcher");
-
-const ADDRESS_IN_USE_RE = /address already in use|EADDRINUSE/i;
-
-export function isAddressInUseError(line: string): boolean {
-  return ADDRESS_IN_USE_RE.test(line);
-}
-
-let watcherProcess: ChildProcess | null = null;
-let renewInterval: ReturnType<typeof setInterval> | null = null;
 let shuttingDown = false;
 let currentConfig: GmailHookRuntimeConfig | null = null;
 

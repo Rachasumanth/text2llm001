@@ -15,23 +15,6 @@ import {
   type HeartbeatSummary,
   resolveHeartbeatSummaryForAgent,
 } from "../infra/heartbeat-runner.js";
-import { buildChannelAccountBindings, resolvePreferredAccountId } from "../routing/bindings.js"import type { ChannelAccountSnapshot } from "../channels/plugins/types.js";
-import type { TEXT2LLMConfig } from "../config/config.js";
-import type { RuntimeEnv } from "../runtime.js";
-import { resolveDefaultAgentId } from "../agents/agent-scope.js";
-import { resolveChannelDefaultAccountId } from "../channels/plugins/helpers.js";
-import { getChannelPlugin, listChannelPlugins } from "../channels/plugins/index.js";
-import { withProgress } from "../cli/progress.js";
-import { loadConfig } from "../config/config.js";
-import { loadSessionStore, resolveStorePath } from "../config/sessions.js";
-import { buildGatewayConnectionDetails, callGateway } from "../gateway/call.js";
-import { info } from "../globals.js";
-import { isTruthyEnvValue } from "../infra/env.js";
-import { formatErrorMessage } from "../infra/errors.js";
-import {
-  type HeartbeatSummary,
-  resolveHeartbeatSummaryForAgent,
-} from "../infra/heartbeat-runner.js";
 import { buildChannelAccountBindings, resolvePreferredAccountId } from "../routing/bindings.js";
 import { normalizeAgentId } from "../routing/session-key.js";
 import { theme } from "../terminal/theme.js";

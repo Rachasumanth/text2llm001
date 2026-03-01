@@ -1,0 +1,42 @@
+﻿WebSocket server ready at ws://localhost:8787/terminal
+Text2LLM web running at http://localhost:8787
+[chat/direct] Using google-gemini-cli:rachasathish55@gmail.com OAuth token
+[chat/direct] Using direct API call ΓåÆ google/gemini-2.0-flash-lite
+node : [chat/direct] Error from google: Gemini API error (404): {
+At line:1 char:56
++ ... M node.exe ; cd workspace/text2llm-web ; node server.mjs 2>&1 | Out-F ...
++                                              ~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([chat/direct] E... error (404): { 
+   :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  "error": {
+    "code": 404,
+    "message": "Requested entity was not found.",
+    "status": "NOT_FOUND"
+  }
+}
+
+[chat] Direct API call completed for session web-1772258776462
+[chat/direct] Using google-gemini-cli:rachasathish55@gmail.com OAuth token
+[chat/direct] Using direct API call ΓåÆ google/gemini-2.0-flash-lite
+[chat/direct] Error from google: Gemini API error (404): {
+  "error": {
+    "code": 404,
+    "message": "Requested entity was not found.",
+    "status": "NOT_FOUND"
+  }
+}
+
+[chat] Direct API call completed for session web-1772258776462
+[chat/direct] Using google-gemini-cli:rachasathish55@gmail.com OAuth token
+[chat/direct] Using direct API call ΓåÆ google/gemini-2.0-flash-lite
+[chat/direct] Error from google: Gemini API error (404): {
+  "error": {
+    "code": 404,
+    "message": "Requested entity was not found.",
+    "status": "NOT_FOUND"
+  }
+}
+
+[chat] Direct API call completed for session web-1772348786177

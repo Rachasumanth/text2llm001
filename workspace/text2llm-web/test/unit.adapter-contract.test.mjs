@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createGpuAdapterRegistry, GPU_PROVIDER_DEFINITIONS } from "../gpu-phase2.mjs";
 
-test("adapter registry exposes full Phase 2+6 contract for all providers", () => {
+test("adapter registry exposes full Phase 2+6 contract for all providers", async () => {
   const registry = createGpuAdapterRegistry();
   const requiredMethods = [
     "validateCredentials",
@@ -52,11 +52,11 @@ test("adapter registry exposes full Phase 2+6 contract for all providers", () =>
     assert.equal(deployed.status, "provisioning");
     assert.ok(deployed.runtime?.contract?.healthPath);
 
-    const ready = adapter.warmupRuntime(deployed, { maxChecks: 2 });
+    const ready = await adapter.warmupRuntime(deployed, { maxChecks: 2 });
     assert.equal(ready.status, "running");
     assert.equal(ready.health, "ready");
 
-    const health = adapter.checkRuntimeHealth(ready);
+    const health = await adapter.checkRuntimeHealth(ready);
     assert.equal(health.ok, true);
 
     const inference = adapter.runInference(ready, { prompt: "hello" });

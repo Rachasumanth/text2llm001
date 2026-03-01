@@ -5,7 +5,7 @@ import {
 } from "@mariozechner/pi-ai";
 import lockfile from "proper-lockfile";
 
-import type { ClawdbotConfig } from "../../config/config.js";
+import type { TEXT2LLMConfig } from "../../config/config.js";
 import { refreshChutesTokens } from "../chutes-oauth.js";
 import { writeClaudeCliCredentials } from "../cli-credentials.js";
 import { AUTH_STORE_LOCK_OPTIONS, CLAUDE_CLI_PROFILE_ID } from "./constants.js";
@@ -96,7 +96,7 @@ async function refreshOAuthTokenWithLock(params: {
 }
 
 async function tryResolveOAuthProfile(params: {
-  cfg?: ClawdbotConfig;
+  cfg?: TEXT2LLMConfig;
   store: AuthProfileStore;
   profileId: string;
   agentDir?: string;
@@ -129,7 +129,7 @@ async function tryResolveOAuthProfile(params: {
 }
 
 export async function resolveApiKeyForProfile(params: {
-  cfg?: ClawdbotConfig;
+  cfg?: TEXT2LLMConfig;
   store: AuthProfileStore;
   profileId: string;
   agentDir?: string;
@@ -145,7 +145,7 @@ export async function resolveApiKeyForProfile(params: {
   }
 
   if (cred.type === "api_key") {
-    return { apiKey: cred.key, provider: cred.provider, email: cred.email };
+    return { apiKey: cred.key ?? "", provider: cred.provider, email: cred.email };
   }
   if (cred.type === "token") {
     const token = cred.token?.trim();

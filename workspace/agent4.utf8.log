@@ -1,0 +1,7 @@
+﻿node : [90m08:35:33[39m [31m[diagnostic][39m [33mlane wait exceeded: lane=session:agent:main:main waitedMs=2164 queueAhead=0[39m
+At line:1 char:54
++ ... 2llm.json"; node scripts/run-node.mjs agent --agent main --local --me ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([90m08:35:33[...eueAhead=0[39m:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 

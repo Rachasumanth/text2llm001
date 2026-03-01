@@ -34,42 +34,6 @@ const NodeHostSchema = z
 
 const MemoryQmdPathSchema = z
   .object({
- import { z } from "zod";
-import { ToolsSchema } from "./zod-schema.agent-runtime.js";
-import { AgentsSchema, AudioSchema, BindingsSchema, BroadcastSchema } from "./zod-schema.agents.js";
-import { ApprovalsSchema } from "./zod-schema.approvals.js";
-import { HexColorSchema, ModelsConfigSchema } from "./zod-schema.core.js";
-import { HookMappingSchema, HooksGmailSchema, InternalHooksSchema } from "./zod-schema.hooks.js";
-import { ChannelsSchema } from "./zod-schema.providers.js";
-import {
-  CommandsSchema,
-  MessagesSchema,
-  SessionSchema,
-  SessionSendPolicySchema,
-} from "./zod-schema.session.js";
-
-const BrowserSnapshotDefaultsSchema = z
-  .object({
-    mode: z.literal("efficient").optional(),
-  })
-  .strict()
-  .optional();
-
-const NodeHostSchema = z
-  .object({
-    browserProxy: z
-      .object({
-        enabled: z.boolean().optional(),
-        allowProfiles: z.array(z.string()).optional(),
-      })
-      .strict()
-      .optional(),
-  })
-  .strict()
-  .optional();
-
-const MemoryQmdPathSchema = z
-  .object({
     path: z.string(),
     name: z.string().optional(),
     pattern: z.string().optional(),
@@ -365,6 +329,7 @@ export const TEXT2LLMSchema = z
           })
           .strict()
           .optional(),
+        providers: z.record(z.string(), z.any()).optional(),
       })
       .strict()
       .optional(),

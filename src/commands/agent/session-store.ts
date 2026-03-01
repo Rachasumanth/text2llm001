@@ -27,35 +27,6 @@ export async function updateSessionStoreAfterAgentRun(params: {
     cfg,
     sessionId,
     sessionKey,
-    storePatimport type { TEXT2LLMConfig } from "../../config/config.js";
-import { setCliSessionId } from "../../agents/cli-session.js";
-import { lookupContextTokens } from "../../agents/context.js";
-import { DEFAULT_CONTEXT_TOKENS } from "../../agents/defaults.js";
-import { isCliProvider } from "../../agents/model-selection.js";
-import { deriveSessionTotalTokens, hasNonzeroUsage } from "../../agents/usage.js";
-import { type SessionEntry, updateSessionStore } from "../../config/sessions.js";
-
-type RunResult = Awaited<
-  ReturnType<(typeof import("../../agents/pi-embedded.js"))["runEmbeddedPiAgent"]>
->;
-
-export async function updateSessionStoreAfterAgentRun(params: {
-  cfg: TEXT2LLMConfig;
-  contextTokensOverride?: number;
-  sessionId: string;
-  sessionKey: string;
-  storePath: string;
-  sessionStore: Record<string, SessionEntry>;
-  defaultProvider: string;
-  defaultModel: string;
-  fallbackProvider?: string;
-  fallbackModel?: string;
-  result: RunResult;
-}) {
-  const {
-    cfg,
-    sessionId,
-    sessionKey,
     storePath,
     sessionStore,
     defaultProvider,

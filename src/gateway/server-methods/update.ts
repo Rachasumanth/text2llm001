@@ -26,34 +26,6 @@ export const updateHandlers: GatewayRequestHandlers = {
           ErrorCodes.INVALID_REQUEST,
           `invalid update.run params: ${formatValidationErrors(validateUpdateRunParams.errors)}`,
         ),
- import type { GatewayRequestHandlers } from "./types.js";
-import { loadConfig } from "../../config/config.js";
-import { resolveTEXT2LLMPackageRoot } from "../../infra/text2llm-root.js";
-import {
-  formatDoctorNonInteractiveHint,
-  type RestartSentinelPayload,
-  writeRestartSentinel,
-} from "../../infra/restart-sentinel.js";
-import { scheduleGatewaySigusr1Restart } from "../../infra/restart.js";
-import { normalizeUpdateChannel } from "../../infra/update-channels.js";
-import { runGatewayUpdate } from "../../infra/update-runner.js";
-import {
-  ErrorCodes,
-  errorShape,
-  formatValidationErrors,
-  validateUpdateRunParams,
-} from "../protocol/index.js";
-
-export const updateHandlers: GatewayRequestHandlers = {
-  "update.run": async ({ params, respond }) => {
-    if (!validateUpdateRunParams(params)) {
-      respond(
-        false,
-        undefined,
-        errorShape(
-          ErrorCodes.INVALID_REQUEST,
-          `invalid update.run params: ${formatValidationErrors(validateUpdateRunParams.errors)}`,
-        ),
       );
       return;
     }

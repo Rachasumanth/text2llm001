@@ -92,6 +92,23 @@ For Kaggle, "provisioning" means verifying quota and kernel availability:
 
 Optional provider credentials may be added per user environment when needed.
 
+## Cost Ledger (Cross-Skill)
+
+Maintain a project-level `cost_ledger.json` that all cost-incurring skills can read and append to:
+
+- Each entry: `{"skill", "provider", "action", "amount_usd", "timestamp", "notes"}`
+- GPU provisioner writes entries for instance creation, hourly charges, and termination.
+- Training-runner and cloud-storage should append their own cost entries.
+- Provide a `cost_summary.md` on request with total spend, per-skill breakdown, and budget status.
+
+## Preflight Validation
+
+Before any provisioning action, validate:
+
+- Required env vars are set: `RUNPOD_API_KEY`, `VAST_API_KEY`, `KAGGLE_USERNAME`, `KAGGLE_KEY` (as applicable).
+- Provider API is reachable and credentials are valid.
+- Report clear error identifying which credentials are missing and where to set them.
+
 ## Deliverables
 
 1. `gpu_plan.md` (ranked options + recommendation)

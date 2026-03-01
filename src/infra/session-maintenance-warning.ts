@@ -31,39 +31,6 @@ function buildWarningContext(params: WarningParams): string {
 }
 
 function formatDuration(ms: number): string {
-  if (ms >= import type { TEXT2LLMConfig } from "../config/config.js";
-import type { SessionEntry, SessionMaintenanceWarning } from "../config/sessions.js";
-import { isDeliverableMessageChannel, normalizeMessageChannel } from "../utils/message-channel.js";
-import { resolveSessionDeliveryTarget } from "./outbound/targets.js";
-import { enqueueSystemEvent } from "./system-events.js";
-
-type WarningParams = {
-  cfg: TEXT2LLMConfig;
-  sessionKey: string;
-  entry: SessionEntry;
-  warning: SessionMaintenanceWarning;
-};
-
-const warnedContexts = new Map<string, string>();
-
-function shouldSendWarning(): boolean {
-  return !process.env.VITEST && process.env.NODE_ENV !== "test";
-}
-
-function buildWarningContext(params: WarningParams): string {
-  const { warning } = params;
-  return [
-    warning.activeSessionKey,
-    warning.pruneAfterMs,
-    warning.maxEntries,
-    warning.wouldPrune ? "prune" : "",
-    warning.wouldCap ? "cap" : "",
-  ]
-    .filter(Boolean)
-    .join("|");
-}
-
-function formatDuration(ms: number): string {
   if (ms >= 86_400_000) {
     const days = Math.round(ms / 86_400_000);
     return `${days} day${days === 1 ? "" : "s"}`;

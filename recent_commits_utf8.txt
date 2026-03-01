@@ -1,0 +1,211 @@
+﻿commit 4809054567fce29e1a679a4b2a0cce8e2ca986d1
+Author: Rachasumanth <sumanthracha81@gmail.com>
+Date:   Tue Feb 17 19:23:29 2026 +0530
+
+    01
+
+diff --git a/src/agents/pi-embedded-runner/run.ts b/src/agents/pi-embedded-runner/run.ts
+index 6cbd3dd4c..79c43fec8 100644
+--- a/src/agents/pi-embedded-runner/run.ts
++++ b/src/agents/pi-embedded-runner/run.ts
+@@ -4,7 +4,7 @@ import type { RunEmbeddedPiAgentParams } from "./run/params.js";
+ import type { EmbeddedPiAgentMeta, EmbeddedPiRunResult } from "./types.js";
+ import { enqueueCommandInLane } from "../../process/command-queue.js";
+ import { isMarkdownCapableMessageChannel } from "../../utils/message-channel.js";
+-import { resolveOpenClawAgentDir } from "../agent-paths.js";
++import { resolveTEXT2LLMAgentDir } from "../agent-paths.js";
+ import {
+   isProfileInCooldown,
+   markAuthProfileFailure,
+@@ -26,7 +26,7 @@ import {
+   type ResolvedProviderAuth,
+ } from "../model-auth.js";
+ import { normalizeProviderId } from "../model-selection.js";
+-import { ensureOpenClawModelsJson } from "../models-config.js";
++import { ensureTEXT2LLMModelsJson } from "../models-config.js";
+ import {
+   formatBillingErrorMessage,
+   classifyFailoverReason,
+@@ -141,7 +141,7 @@ const toNormalizedUsage = (usage: UsageAccumulator) => {
+   // The accumulated cacheRead/cacheWrite inflate context size because each tool-call
+   // round-trip reports cacheRead Γëê current_context_size, and summing N calls gives
+   // N ├ù context_size which gets clamped to contextWindow (e.g. 200k).
+-  // See: https://github.com/openclaw/openclaw/issues/13698
++  // See: https://github.com/text2llm/text2llm/issues/13698
+   //
+   // We use lastInput/lastCacheRead/lastCacheWrite (from the most recent API call) for
+   // cache-related fields, but keep accumulated output (total generated text this turn).
+@@ -196,10 +196,10 @@ export async function runEmbeddedPiAgent(
+ 
+       const provider = (params.provider ?? DEFAULT_PROVIDER).trim() || DEFAULT_PROVIDER;
+       const modelId = (params.model ?? DEFAULT_MODEL).trim() || DEFAULT_MODEL;
+-      const agentDir = params.agentDir ?? resolveOpenClawAgentDir();
++      const agentDir = params.agentDir ?? resolveTEXT2LLMAgentDir();
+       const fallbackConfigured =
+         (params.config?.agents?.defaults?.model?.fallbacks?.length ?? 0) > 0;
+-      await ensureOpenClawModelsJson(params.config, agentDir);
++      await ensureTEXT2LLMModelsJson(params.config, agentDir);
+ 
+       const { model, error, authStorage, modelRegistry } = resolveModel(
+         provider,
+diff --git a/src/agents/pi-embedded-runner/run/attempt.ts b/src/agents/pi-embedded-runner/run/attempt.ts
+index c1adef08b..5e0486cc4 100644
+--- a/src/agents/pi-embedded-runner/run/attempt.ts
++++ b/src/agents/pi-embedded-runner/run/attempt.ts
+@@ -18,7 +18,7 @@ import { buildTtsSystemPromptHint } from "../../../tts/tts.js";
+ import { resolveUserPath } from "../../../utils.js";
+ import { normalizeMessageChannel } from "../../../utils/message-channel.js";
+ import { isReasoningTagProvider } from "../../../utils/provider-utils.js";
+-import { resolveOpenClawAgentDir } from "../../agent-paths.js";
++import { resolveTEXT2LLMAgentDir } from "../../agent-paths.js";
+ import { resolveSessionAgentIds } from "../../agent-scope.js";
+ import { createAnthropicPayloadLogger } from "../../anthropic-payload-log.js";
+ import { makeBootstrapWarn, resolveBootstrapContextForRun } from "../../bootstrap-files.js";
+@@ -27,7 +27,7 @@ import {
+   listChannelSupportedActions,
+   resolveChannelMessageToolHints,
+ } from "../../channel-tools.js";
+-import { resolveOpenClawDocsPath } from "../../docs-path.js";
++import { resolveTEXT2LLMDocsPath } from "../../docs-path.js";
+ import { isTimeoutError } from "../../failover-error.js";
+ import { resolveModelAuthMode } from "../../model-auth.js";
+ import { resolveDefaultModelForAgent } from "../../model-selection.js";
+@@ -43,7 +43,7 @@ import {
+   resolveCompactionReserveTokensFloor,
+ } from "../../pi-settings.js";
+ import { toClientToolDefinitions } from "../../pi-tool-definition-adapter.js";
+-import { createOpenClawCodingTools } from "../../pi-tools.js";
++import { createTEXT2LLMCodingTools } from "../../pi-tools.js";
+ import { resolveSandboxContext } from "../../sandbox.js";
+ import { resolveSandboxRuntimeStatus } from "../../sandbox/runtime-status.js";
+ import { repairSessionFileIfNeeded } from "../../session-file-repair.js";
+@@ -204,13 +204,13 @@ export async function runEmbeddedAttempt(
+       ? ["Reminder: commit your changes in this workspace after edits."]
+       : undefined;
+ 
+-    const agentDir = params.agentDir ?? resolveOpenClawAgentDir();
++    const agentDir = params.agentDir ?? resolveTEXT2LLMAgentDir();
+ 
+     // Check if the model supports native image input
+     const modelHasVision = params.model.input?.includes("image") ?? false;
+     const toolsRaw = params.disableTools
+       ? []
+-      : createOpenClawCodingTools({
++      : createTEXT2LLMCodingTools({
+           exec: {
+             ...params.execOverrides,
+             elevated: params.bashElevated,
+@@ -342,7 +342,7 @@ export async function runEmbeddedAttempt(
+     });
+     const isDefaultAgent = sessionAgentId === defaultAgentId;
+     const promptMode = isSubagentSessionKey(params.sessionKey) ? "minimal" : "full";
+-    const docsPath = await resolveOpenClawDocsPath({
++    const docsPath = await resolveTEXT2LLMDocsPath({
+       workspaceDir: effectiveWorkspace,
+       argv1: process.argv[1],
+       cwd: process.cwd(),
+@@ -849,7 +849,7 @@ export async function runEmbeddedAttempt(
+         // Previously this was before the prompt, which caused a custom entry to be
+         // inserted between compaction and the next prompt ΓÇö breaking the
+         // prepareCompaction() guard that checks the last entry type, leading to
+-        // double-compaction. See: https://github.com/openclaw/openclaw/issues/9282
++        // double-compaction. See: https://github.com/text2llm/text2llm/issues/9282
+         const shouldTrackCacheTtl =
+           params.config?.agents?.defaults?.contextPruning?.mode === "cache-ttl" &&
+           isCacheTtlEligibleProvider(params.provider, params.modelId);
+diff --git a/src/agents/pi-embedded-runner/run/payloads.ts b/src/agents/pi-embedded-runner/run/payloads.ts
+index 440f7eaed..a99d8dc6c 100644
+--- a/src/agents/pi-embedded-runner/run/payloads.ts
++++ b/src/agents/pi-embedded-runner/run/payloads.ts
+@@ -1,6 +1,6 @@
+ import type { AssistantMessage } from "@mariozechner/pi-ai";
+ import type { ReasoningLevel, VerboseLevel } from "../../../auto-reply/thinking.js";
+-import type { OpenClawConfig } from "../../../config/config.js";
++import type { TEXT2LLMConfig } from "../../../config/config.js";
+ import type { ToolResultFormat } from "../../pi-embedded-subscribe.js";
+ import { parseReplyDirectives } from "../../../auto-reply/reply/reply-directives.js";
+ import { isSilentReplyText, SILENT_REPLY_TOKEN } from "../../../auto-reply/tokens.js";
+@@ -26,7 +26,7 @@ export function buildEmbeddedRunPayloads(params: {
+   toolMetas: ToolMetaEntry[];
+   lastAssistant: AssistantMessage | undefined;
+   lastToolError?: { toolName: string; meta?: string; error?: string };
+-  config?: OpenClawConfig;
++  config?: TEXT2LLMConfig;
+   sessionKey: string;
+   provider?: string;
+   verboseLevel?: VerboseLevel;
+
+commit 85409e401b6586f83954cb53552395d7aab04797
+Author: Peter Steinberger <steipete@gmail.com>
+Date:   Fri Feb 13 02:01:53 2026 +0100
+
+    fix: preserve inter-session input provenance (thanks @anbecker)
+
+diff --git a/src/agents/pi-embedded-runner/run.ts b/src/agents/pi-embedded-runner/run.ts
+index 467ddba5d..6cbd3dd4c 100644
+--- a/src/agents/pi-embedded-runner/run.ts
++++ b/src/agents/pi-embedded-runner/run.ts
+@@ -470,6 +470,7 @@ export async function runEmbeddedPiAgent(
+             onToolResult: params.onToolResult,
+             onAgentEvent: params.onAgentEvent,
+             extraSystemPrompt: params.extraSystemPrompt,
++            inputProvenance: params.inputProvenance,
+             streamParams: params.streamParams,
+             ownerNumbers: params.ownerNumbers,
+             enforceFinalTag: params.enforceFinalTag,
+diff --git a/src/agents/pi-embedded-runner/run/attempt.ts b/src/agents/pi-embedded-runner/run/attempt.ts
+index 79384f6c4..c1adef08b 100644
+--- a/src/agents/pi-embedded-runner/run/attempt.ts
++++ b/src/agents/pi-embedded-runner/run/attempt.ts
+@@ -428,6 +428,7 @@ export async function runEmbeddedAttempt(
+       sessionManager = guardSessionManager(SessionManager.open(params.sessionFile), {
+         agentId: sessionAgentId,
+         sessionKey: params.sessionKey,
++        inputProvenance: params.inputProvenance,
+         allowSyntheticToolResults: transcriptPolicy.allowSyntheticToolResults,
+       });
+       trackSessionManagerAccess(params.sessionFile);
+
+commit d34138dfee48d885f313d9e811446b0c97aa6c4b
+Author: Patrick Barletta <67929313+Patrick-Barletta@users.noreply.github.com>
+Date:   Thu Feb 12 16:48:11 2026 -0800
+
+    fix: dispatch before_tool_call and after_tool_call hooks from both tool execution paths (openclaw#15012) thanks @Patrick-Barletta
+    
+    Verified:
+    - pnpm check
+    
+    Co-authored-by: Patrick-Barletta <67929313+Patrick-Barletta@users.noreply.github.com>
+
+diff --git a/src/agents/pi-embedded-runner/run/attempt.ts b/src/agents/pi-embedded-runner/run/attempt.ts
+index 4735eab3d..79384f6c4 100644
+--- a/src/agents/pi-embedded-runner/run/attempt.ts
++++ b/src/agents/pi-embedded-runner/run/attempt.ts
+@@ -455,6 +455,9 @@ export async function runEmbeddedAttempt(
+         model: params.model,
+       });
+ 
++      // Get hook runner early so it's available when creating tools
++      const hookRunner = getGlobalHookRunner();
++
+       const { builtInTools, customTools } = splitSdkTools({
+         tools,
+         sandboxEnabled: !!sandbox?.enabled,
+@@ -632,6 +635,7 @@ export async function runEmbeddedAttempt(
+       const subscription = subscribeEmbeddedPiSession({
+         session: activeSession,
+         runId: params.runId,
++        hookRunner: getGlobalHookRunner() ?? undefined,
+         verboseLevel: params.verboseLevel,
+         reasoningMode: params.reasoningLevel ?? "off",
+         toolResultFormat: params.toolResultFormat,
+@@ -715,8 +719,7 @@ export async function runEmbeddedAttempt(
+         }
+       }
+ 
+-      // Get hook runner once for both before_agent_start and agent_end hooks
+-      const hookRunner = getGlobalHookRunner();
++      // Hook runner was already obtained earlier before tool creation
+       const hookAgentId =
+         typeof params.agentId === "string" && params.agentId.trim()
+           ? normalizeAgentId(params.agentId)

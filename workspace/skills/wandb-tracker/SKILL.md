@@ -64,3 +64,13 @@ Output concise recommendation on next experiment set.
 1. `wandb_setup.md` (project/entity/tagging conventions)
 2. `experiment_tracking_plan.md` (metrics + logging cadence)
 3. `run_comparison.md` (tuning summary + recommended next run)
+
+## Preflight Validation
+
+Before initializing any W&B run, validate:
+
+- `WANDB_API_KEY` is set and non-empty.
+- W&B API is reachable (`wandb login --verify`).
+- Project and entity exist or can be created.
+
+Report clear error if credentials are missing, with guidance on where to set them.

@@ -30,38 +30,6 @@ describe("provider usage formatting", () => {
         },
       ],
     };
-    const line = forimport fs from "node:fs";
-import path from "node:path";
-import { describe, expect, it, vi } from "vitest";
-import { withTempHome } from "../../test/helpers/temp-home.js";
-import { ensureAuthProfileStore, listProfilesForProvider } from "../agents/auth-profiles.js";
-import {
-  formatUsageReportLines,
-  formatUsageSummaryLine,
-  loadProviderUsageSummary,
-  type UsageSummary,
-} from "./provider-usage.js";
-
-describe("provider usage formatting", () => {
-  it("returns null when no usage is available", () => {
-    const summary: UsageSummary = { updatedAt: 0, providers: [] };
-    expect(formatUsageSummaryLine(summary)).toBeNull();
-  });
-
-  it("picks the most-used window for summary line", () => {
-    const summary: UsageSummary = {
-      updatedAt: 0,
-      providers: [
-        {
-          provider: "anthropic",
-          displayName: "Claude",
-          windows: [
-            { label: "5h", usedPercent: 10 },
-            { label: "Week", usedPercent: 60 },
-          ],
-        },
-      ],
-    };
     const line = formatUsageSummaryLine(summary, { now: 0 });
     expect(line).toContain("Claude");
     expect(line).toContain("40% left");

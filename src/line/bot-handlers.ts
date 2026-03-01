@@ -29,37 +29,6 @@ import { pushMessageLine, replyMessageLine } from "./send.js";
 
 interface MediaRef {
   path: string;
-  contentType?import type {
-  WebhookEvent,
-  MessageEvent,
-  FollowEvent,
-  UnfollowEvent,
-  JoinEvent,
-  LeaveEvent,
-  PostbackEvent,
-  EventSource,
-} from "@line/bot-sdk";
-import type { TEXT2LLMConfig } from "../config/config.js";
-import type { RuntimeEnv } from "../runtime.js";
-import type { LineGroupConfig, ResolvedLineAccount } from "./types.js";
-import { danger, logVerbose } from "../globals.js";
-import { resolvePairingIdLabel } from "../pairing/pairing-labels.js";
-import { buildPairingReply } from "../pairing/pairing-messages.js";
-import {
-  readChannelAllowFromStore,
-  upsertChannelPairingRequest,
-} from "../pairing/pairing-store.js";
-import { firstDefined, isSenderAllowed, normalizeAllowFromWithStore } from "./bot-access.js";
-import {
-  buildLineMessageContext,
-  buildLinePostbackContext,
-  type LineInboundContext,
-} from "./bot-message-context.js";
-import { downloadLineMedia } from "./download.js";
-import { pushMessageLine, replyMessageLine } from "./send.js";
-
-interface MediaRef {
-  path: string;
   contentType?: string;
 }
 

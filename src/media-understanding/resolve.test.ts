@@ -33,41 +33,6 @@ describe("resolveModelEntries", () => {
   });
 
   it("keeps per-capability entries even without explicit caps", () => {
-    const cfg: TEXT2LLMConfigimport { describe, expect, it } from "vitest";
-import type { TEXT2LLMConfig } from "../config/config.js";
-import { resolveEntriesWithActiveFallback, resolveModelEntries } from "./resolve.js";
-
-const providerRegistry = new Map([
-  ["openai", { capabilities: ["image"] }],
-  ["groq", { capabilities: ["audio"] }],
-]);
-
-describe("resolveModelEntries", () => {
-  it("uses provider capabilities for shared entries without explicit caps", () => {
-    const cfg: TEXT2LLMConfig = {
-      tools: {
-        media: {
-          models: [{ provider: "openai", model: "gpt-5.2" }],
-        },
-      },
-    };
-
-    const imageEntries = resolveModelEntries({
-      cfg,
-      capability: "image",
-      providerRegistry,
-    });
-    expect(imageEntries).toHaveLength(1);
-
-    const audioEntries = resolveModelEntries({
-      cfg,
-      capability: "audio",
-      providerRegistry,
-    });
-    expect(audioEntries).toHaveLength(0);
-  });
-
-  it("keeps per-capability entries even without explicit caps", () => {
     const cfg: TEXT2LLMConfig = {
       tools: {
         media: {

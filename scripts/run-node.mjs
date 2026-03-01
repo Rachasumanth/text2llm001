@@ -75,6 +75,9 @@ const findLatestMtime = (dirPath, shouldSkip) => {
 };
 
 const shouldBuild = () => {
+  if (env.TEXT2LLM_SKIP_BUILD === "1") {
+    return false;
+  }
   if (env.TEXT2LLM_FORCE_BUILD === "1") {
     return true;
   }

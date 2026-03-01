@@ -23,31 +23,6 @@ vi.mock("../../telegram/send.js", () => ({
 
 describe("handleTelegramAction", () => {
   beforeEach(() => {
-    reactMessimport { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { TEXT2LLMConfig } from "../../config/config.js";
-import { handleTelegramAction, readTelegramButtons } from "./telegram-actions.js";
-
-const reactMessageTelegram = vi.fn(async () => ({ ok: true }));
-const sendMessageTelegram = vi.fn(async () => ({
-  messageId: "789",
-  chatId: "123",
-}));
-const sendStickerTelegram = vi.fn(async () => ({
-  messageId: "456",
-  chatId: "123",
-}));
-const deleteMessageTelegram = vi.fn(async () => ({ ok: true }));
-const originalToken = process.env.TELEGRAM_BOT_TOKEN;
-
-vi.mock("../../telegram/send.js", () => ({
-  reactMessageTelegram: (...args: unknown[]) => reactMessageTelegram(...args),
-  sendMessageTelegram: (...args: unknown[]) => sendMessageTelegram(...args),
-  sendStickerTelegram: (...args: unknown[]) => sendStickerTelegram(...args),
-  deleteMessageTelegram: (...args: unknown[]) => deleteMessageTelegram(...args),
-}));
-
-describe("handleTelegramAction", () => {
-  beforeEach(() => {
     reactMessageTelegram.mockClear();
     sendMessageTelegram.mockClear();
     sendStickerTelegram.mockClear();

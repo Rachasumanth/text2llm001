@@ -35,43 +35,6 @@ export type ResolvedMemorySearchConfig = {
     driver: "sqlite";
     path: string;
     vector: {
-  import os from "node:os";
-import path from "node:path";
-import type { TEXT2LLMConfig, MemorySearchConfig } from "../config/config.js";
-import { resolveStateDir } from "../config/paths.js";
-import { clampInt, clampNumber, resolveUserPath } from "../utils.js";
-import { resolveAgentConfig } from "./agent-scope.js";
-
-export type ResolvedMemorySearchConfig = {
-  enabled: boolean;
-  sources: Array<"memory" | "sessions">;
-  extraPaths: string[];
-  provider: "openai" | "local" | "gemini" | "voyage" | "auto";
-  remote?: {
-    baseUrl?: string;
-    apiKey?: string;
-    headers?: Record<string, string>;
-    batch?: {
-      enabled: boolean;
-      wait: boolean;
-      concurrency: number;
-      pollIntervalMs: number;
-      timeoutMinutes: number;
-    };
-  };
-  experimental: {
-    sessionMemory: boolean;
-  };
-  fallback: "openai" | "gemini" | "local" | "voyage" | "none";
-  model: string;
-  local: {
-    modelPath?: string;
-    modelCacheDir?: string;
-  };
-  store: {
-    driver: "sqlite";
-    path: string;
-    vector: {
       enabled: boolean;
       extensionPath?: string;
     };

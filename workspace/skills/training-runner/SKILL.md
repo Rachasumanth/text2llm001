@@ -82,6 +82,15 @@ For each phase, define target steps/tokens, LR policy, and success criteria.
 - Support clean resume from last good checkpoint after interruption.
 - Maintain a concise checkpoint index with timestamp/step/metrics.
 
+## Cost Tracking
+
+Append compute cost entries to the project-level `cost_ledger.json`:
+
+- Track GPU-hours consumed per training phase.
+- Estimate cost based on provider hourly rate × elapsed time.
+- Write cost entries at checkpoint intervals and on training completion.
+- Include cost-per-token-trained metric for efficiency comparison across runs.
+
 ## Run Outputs
 
 1. `train.sh` or equivalent launcher script

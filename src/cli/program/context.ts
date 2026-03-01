@@ -1,5 +1,4 @@
 import { VERSION } from "../../version.js";
-import { resolveCliChannelOptions } from "../channel-options.js";
 
 export type ProgramContext = {
   programVersion: string;
@@ -8,12 +7,32 @@ export type ProgramContext = {
   agentChannelOptions: string;
 };
 
+let _cachedChannelOptions: string[] | null = null;
+
+export async function resolveChannelOptionsLazy(): Promise<string[]> {
+  if (!_cachedChannelOptions) {
+    const { resolveCliChannelOptions } = await import("../channel-options.js");
+    _cachedChannelOptions = await resolveCliChannelOptions();
+  }
+  return _cachedChannelOptions;
+}
+
+function getChannelOptionsSync(): string[] {
+  // After async initialization, this returns the cached value
+  return _cachedChannelOptions ?? [];
+}
+
 export function createProgramContext(): ProgramContext {
-  const channelOptions = resolveCliChannelOptions();
   return {
     programVersion: VERSION,
-    channelOptions,
-    messageChannelOptions: channelOptions.join("|"),
-    agentChannelOptions: ["last", ...channelOptions].join("|"),
+    get channelOptions() {
+      return getChannelOptionsSync();
+    },
+    get messageChannelOptions() {
+      return getChannelOptionsSync().join("|");
+    },
+    get agentChannelOptions() {
+      return ["last", ...getChannelOptionsSync()].join("|");
+    },
   };
 }

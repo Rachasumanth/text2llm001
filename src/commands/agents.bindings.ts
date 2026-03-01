@@ -25,33 +25,6 @@ export function describeBinding(binding: AgentBinding) {
     parts.push(`accountId=${match.accountId}`);
   }
   if (match.peer) {
-    parts.push(`peer=${match.peeimport type { ChannelId } from "../channels/plugins/types.js";
-import type { TEXT2LLMConfig } from "../config/config.js";
-import type { AgentBinding } from "../config/types.js";
-import type { ChannelChoice } from "./onboard-types.js";
-import { resolveChannelDefaultAccountId } from "../channels/plugins/helpers.js";
-import { getChannelPlugin, normalizeChannelId } from "../channels/plugins/index.js";
-import { DEFAULT_ACCOUNT_ID, normalizeAgentId } from "../routing/session-key.js";
-
-function bindingMatchKey(match: AgentBinding["match"]) {
-  const accountId = match.accountId?.trim() || DEFAULT_ACCOUNT_ID;
-  return [
-    match.channel,
-    accountId,
-    match.peer?.kind ?? "",
-    match.peer?.id ?? "",
-    match.guildId ?? "",
-    match.teamId ?? "",
-  ].join("|");
-}
-
-export function describeBinding(binding: AgentBinding) {
-  const match = binding.match;
-  const parts = [match.channel];
-  if (match.accountId) {
-    parts.push(`accountId=${match.accountId}`);
-  }
-  if (match.peer) {
     parts.push(`peer=${match.peer.kind}:${match.peer.id}`);
   }
   if (match.guildId) {

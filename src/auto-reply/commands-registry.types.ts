@@ -40,48 +40,6 @@ export type CommandArgMenuSpec = {
 };
 
 export type CommandArgValue = string | number | boolean | bigint;
-export type CommandArgimport type { TEXT2LLMConfig } from "../config/types.js";
-
-export type CommandScope = "text" | "native" | "both";
-
-export type CommandCategory =
-  | "session"
-  | "options"
-  | "status"
-  | "management"
-  | "media"
-  | "tools"
-  | "docks";
-
-export type CommandArgType = "string" | "number" | "boolean";
-
-export type CommandArgChoiceContext = {
-  cfg?: TEXT2LLMConfig;
-  provider?: string;
-  model?: string;
-  command: ChatCommandDefinition;
-  arg: CommandArgDefinition;
-};
-
-export type CommandArgChoice = string | { value: string; label: string };
-
-export type CommandArgChoicesProvider = (context: CommandArgChoiceContext) => CommandArgChoice[];
-
-export type CommandArgDefinition = {
-  name: string;
-  description: string;
-  type: CommandArgType;
-  required?: boolean;
-  choices?: CommandArgChoice[] | CommandArgChoicesProvider;
-  captureRemaining?: boolean;
-};
-
-export type CommandArgMenuSpec = {
-  arg: string;
-  title?: string;
-};
-
-export type CommandArgValue = string | number | boolean | bigint;
 export type CommandArgValues = Record<string, CommandArgValue>;
 
 export type CommandArgs = {

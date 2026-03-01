@@ -27,35 +27,6 @@ function createMockSessionContent(
     .map((entry) => {
       if ("role" in entry) {
         return JSON.stringify({
-          type: "messaimport fs from "node:fs/promises";
-import path from "node:path";
-import { beforeAll, describe, expect, it, vi } from "vitest";
-import type { TEXT2LLMConfig } from "../../../config/config.js";
-import type { HookHandler } from "../../hooks.js";
-import { makeTempWorkspace, writeWorkspaceFile } from "../../../test-helpers/workspace.js";
-import { createHookEvent } from "../../hooks.js";
-
-// Avoid calling the embedded Pi agent (global command lane); keep this unit test deterministic.
-vi.mock("../../llm-slug-generator.js", () => ({
-  generateSlugViaLLM: vi.fn().mockResolvedValue("simple-math"),
-}));
-
-let handler: HookHandler;
-
-beforeAll(async () => {
-  ({ default: handler } = await import("./handler.js"));
-});
-
-/**
- * Create a mock session JSONL file with various entry types
- */
-function createMockSessionContent(
-  entries: Array<{ role: string; content: string } | { type: string }>,
-): string {
-  return entries
-    .map((entry) => {
-      if ("role" in entry) {
-        return JSON.stringify({
           type: "message",
           message: {
             role: entry.role,

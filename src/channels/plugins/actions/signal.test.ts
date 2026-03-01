@@ -23,31 +23,6 @@ describe("signalMessageActions", () => {
     expect(signalMessageActions.listActions({ cfg })).toEqual(["send"]);
   });
 
-  it("enables react when import { describe, expect, it, vi } from "vitest";
-import type { TEXT2LLMConfig } from "../../../config/config.js";
-import { signalMessageActions } from "./signal.js";
-
-const sendReactionSignal = vi.fn(async () => ({ ok: true }));
-const removeReactionSignal = vi.fn(async () => ({ ok: true }));
-
-vi.mock("../../../signal/send-reactions.js", () => ({
-  sendReactionSignal: (...args: unknown[]) => sendReactionSignal(...args),
-  removeReactionSignal: (...args: unknown[]) => removeReactionSignal(...args),
-}));
-
-describe("signalMessageActions", () => {
-  it("returns no actions when no configured accounts exist", () => {
-    const cfg = {} as TEXT2LLMConfig;
-    expect(signalMessageActions.listActions({ cfg })).toEqual([]);
-  });
-
-  it("hides react when reactions are disabled", () => {
-    const cfg = {
-      channels: { signal: { account: "+15550001111", actions: { reactions: false } } },
-    } as TEXT2LLMConfig;
-    expect(signalMessageActions.listActions({ cfg })).toEqual(["send"]);
-  });
-
   it("enables react when at least one account allows reactions", () => {
     const cfg = {
       channels: {

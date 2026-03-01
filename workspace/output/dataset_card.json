@@ -1,0 +1,51 @@
+{
+  "dataset_name": "synth_animal-sensor_20260225",
+  "description": "dog sensors to speech",
+  "domain": "animal-sensor",
+  "total_records": 92,
+  "splits": {
+    "train": 68,
+    "validation": 8,
+    "test": 16
+  },
+  "state_distribution": {
+    "excited_playful": 10,
+    "pain_discomfort": 10,
+    "protective_alert": 10,
+    "curious_investigating": 10,
+    "calm_content": 10,
+    "sad_lonely": 10,
+    "fearful_anxious": 10,
+    "hungry_wanting": 10,
+    "protective_alert+hungry_wanting": 2,
+    "excited_playful+curious_investigating": 2,
+    "curious_investigating+excited_playful": 1,
+    "calm_content+fearful_anxious": 1,
+    "hungry_wanting+protective_alert": 1,
+    "pain_discomfort+protective_alert": 1,
+    "fearful_anxious+excited_playful": 1,
+    "pain_discomfort+curious_investigating": 1,
+    "sad_lonely+protective_alert": 1,
+    "calm_content+hungry_wanting": 1
+  },
+  "quality": {
+    "mean_score": 1.0,
+    "min_score": 1.0,
+    "max_score": 1.0,
+    "filtered_count": 0
+  },
+  "generation": {
+    "records_per_state": 10,
+    "transition_records": 12,
+    "augmentation": "template_expansion + word_substitution + intensity_modifiers",
+    "sensor_correlation": "beta_distribution_intensity + gaussian_noise",
+    "deduplication": "sha256_text_hash"
+  },
+  "sensor_channels": [
+    "heartbeat_bpm",
+    "bark_type",
+    "tail_movement"
+  ],
+  "generated_at": "2026-02-25T04:34:17Z",
+  "generator_version": "2.0.0"
+}

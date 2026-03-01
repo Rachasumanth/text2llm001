@@ -1,0 +1,134 @@
+/* Hugging Face Style Dataset Viewer */
+
+.hf-col-header {
+  min-width: 15rem;
+  max-width: 25rem;
+  padding: 12px;
+  vertical-align: top;
+  border-right: 1px solid var(--glass-border);
+  background: transparent;
+  text-align: left;
+}
+
+.hf-col-title {
+  display: flex;
+  align-items: center;
+  font-family: var(--mono);
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.hf-sort-icon {
+  opacity: 0.5;
+  font-size: 0.8em;
+  margin-right: 6px;
+  display: inline-flex;
+  flex-direction: column;
+  line-height: 0.6;
+}
+
+.hf-col-meta {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  margin-bottom: 12px;
+}
+
+.hf-type {
+  color: var(--text-secondary);
+}
+
+.hf-subtype {
+  font-style: italic;
+  opacity: 0.8;
+}
+
+.hf-col-chart {
+  margin-top: 12px;
+  width: 100%;
+}
+
+/* Categories Chart */
+.hf-unique-count {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+
+.hf-bar-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 4px;
+  font-size: 0.75rem;
+  gap: 8px;
+}
+
+.hf-bar-label {
+  width: 60px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-secondary);
+  font-family: var(--mono);
+}
+
+.hf-bar-track {
+  flex: 1;
+  height: 6px;
+  background: var(--glass-border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.hf-bar-fill {
+  height: 100%;
+  background: var(--primary); /* using platform primary theme color */
+  border-radius: 2px;
+}
+
+/* Histogram Chart */
+.hf-histogram {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.hf-histogram-bars {
+  display: flex;
+  align-items: flex-end;
+  height: 36px;
+  gap: 1px;
+  width: 100%;
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.hf-hist-bar {
+  flex: 1;
+  background: var(--glass-border-hover);
+  min-height: 1px;
+  transition: background 0.2s;
+}
+
+.hf-hist-bar:hover {
+  background: var(--primary);
+}
+
+.hf-histogram-labels {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  color: var(--text-dim);
+  margin-top: 4px;
+}
+
+.ds-editable-cell {
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding: 10px 12px;
+}

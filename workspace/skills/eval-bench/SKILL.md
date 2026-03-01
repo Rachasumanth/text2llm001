@@ -24,6 +24,37 @@ Benchmark requirements:
 - record prompt/eval configuration and decoding settings
 - keep scores comparable across model revisions
 
+## Safety & Bias Benchmarks
+
+Run safety-focused evaluations when applicable:
+
+- **TruthfulQA** — factual accuracy and hallucination resistance
+- **ToxiGen** — toxicity detection and generation safety
+- **BBQ** — bias detection across demographic categories
+- **CrowS-Pairs** — stereotypical association measurement
+
+Report safety scores alongside performance benchmarks. Flag models with concerning safety metrics.
+
+## Code Evaluation
+
+For code-capable models, include:
+
+- **HumanEval** — function-level code generation (pass@1, pass@10)
+- **MBPP** — mostly basic Python problems
+- **MultiPL-E** — multi-language code generation
+
+Report pass rates and common failure patterns.
+
+## Human Evaluation Protocol
+
+When automated benchmarks are insufficient:
+
+- Define evaluation criteria (helpfulness, correctness, safety, fluency).
+- Use side-by-side comparison with reference model when possible.
+- Sample minimum 100 diverse prompts across target use cases.
+- Report win/tie/loss rates and inter-annotator agreement.
+- Summarize qualitative strengths and weaknesses.
+
 ## RAG Evaluation (Ragas)
 
 When the target use case includes retrieval-augmented generation, run `Ragas` evaluation with documented settings.

@@ -66,6 +66,8 @@ export async function agentCommand(
   runtime: RuntimeEnv = defaultRuntime,
   deps: CliDeps = createDefaultDeps(),
 ) {
+  console.time("agentCommand_Total");
+  console.time("agentCommand_body");
   const body = (opts.message ?? "").trim();
   if (!body) {
     throw new Error("Message (--message) is required");
@@ -136,6 +138,8 @@ export async function agentCommand(
     overrideSeconds: timeoutSecondsRaw,
   });
 
+  console.timeEnd("agentCommand_body");
+  console.time("agentCommand_resolveSession");
   const sessionResolution = resolveSession({
     cfg,
     to: opts.to,
@@ -143,6 +147,7 @@ export async function agentCommand(
     sessionKey: opts.sessionKey,
     agentId: agentIdOverride,
   });
+  console.timeEnd("agentCommand_resolveSession");
 
   const {
     sessionId,
@@ -266,6 +271,7 @@ export async function agentCommand(
     let allowedModelCatalog: Awaited<ReturnType<typeof loadModelCatalog>> = [];
     let modelCatalog: Awaited<ReturnType<typeof loadModelCatalog>> | null = null;
 
+    console.time("agentCommand_loadModelCatalog");
     if (needsModelCatalog) {
       modelCatalog = await loadModelCatalog({ config: cfg });
       const allowed = buildAllowedModelSet({
@@ -277,6 +283,7 @@ export async function agentCommand(
       allowedModelKeys = allowed.allowedKeys;
       allowedModelCatalog = allowed.allowedCatalog;
     }
+    console.timeEnd("agentCommand_loadModelCatalog");
 
     if (sessionEntry && sessionStore && sessionKey && hasStoredOverride) {
       const entry = sessionEntry;
@@ -382,6 +389,7 @@ export async function agentCommand(
         opts.replyChannel ?? opts.channel,
       );
       const spawnedBy = opts.spawnedBy ?? sessionEntry?.spawnedBy;
+      console.time("agentCommand_runWithModelFallback");
       const fallbackResult = await runWithModelFallback({
         cfg,
         provider,
@@ -465,6 +473,7 @@ export async function agentCommand(
           });
         },
       });
+      console.timeEnd("agentCommand_runWithModelFallback");
       result = fallbackResult.result;
       fallbackProvider = fallbackResult.provider;
       fallbackModel = fallbackResult.model;
@@ -514,7 +523,7 @@ export async function agentCommand(
     }
 
     const payloads = result.payloads ?? [];
-    return await deliverAgentCommandResult({
+    const res = await deliverAgentCommandResult({
       cfg,
       deps,
       runtime,
@@ -523,6 +532,8 @@ export async function agentCommand(
       result,
       payloads,
     });
+    console.timeEnd("agentCommand_Total");
+    return res;
   } finally {
     clearAgentRunContext(runId);
   }

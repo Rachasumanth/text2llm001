@@ -17,25 +17,6 @@ import { getToolResult, runMessageAction } from "../../infra/outbound/message-ac
 import { normalizeTargetForProvider } from "../../infra/outbound/target-normalization.js";
 import { normalizeAccountId } from "../../routing/session-key.js";
 import { stripReasoningTagsFromText } from "../../shared/text/reasoning-tags.js";
-import { normalizeMessimport { Type } from "@sinclair/typebox";
-import type { TEXT2LLMConfig } from "../../config/config.js";
-import type { AnyAgentTool } from "./common.js";
-import { BLUEBUBBLES_GROUP_ACTIONS } from "../../channels/plugins/bluebubbles-actions.js";
-import {
-  listChannelMessageActions,
-  supportsChannelMessageButtons,
-  supportsChannelMessageCards,
-} from "../../channels/plugins/message-actions.js";
-import {
-  CHANNEL_MESSAGE_ACTION_NAMES,
-  type ChannelMessageActionName,
-} from "../../channels/plugins/types.js";
-import { loadConfig } from "../../config/config.js";
-import { GATEWAY_CLIENT_IDS, GATEWAY_CLIENT_MODES } from "../../gateway/protocol/client-info.js";
-import { getToolResult, runMessageAction } from "../../infra/outbound/message-action-runner.js";
-import { normalizeTargetForProvider } from "../../infra/outbound/target-normalization.js";
-import { normalizeAccountId } from "../../routing/session-key.js";
-import { stripReasoningTagsFromText } from "../../shared/text/reasoning-tags.js";
 import { normalizeMessageChannel } from "../../utils/message-channel.js";
 import { resolveSessionAgentId } from "../agent-scope.js";
 import { listChannelSupportedActions } from "../channel-tools.js";

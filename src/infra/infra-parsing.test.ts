@@ -19,27 +19,6 @@ describe("infra parsing", () => {
       expect(flags).toEqual(expect.arrayContaining(["telegram.http", "cache.*", "foo", "bar"]));
       expect(isDiagnosticFlagEnabled("telegram.http", cfg, env)).toBe(true);
       expect(isDiagnosticFlagEnabled("cache.hit", cfg, env)).toBe(true);
-      expect(isDiagnosticFlagEnabled("foo", cfg, env)).toimport { describe, expect, it } from "vitest";
-import type { TEXT2LLMConfig } from "../config/config.js";
-import { isDiagnosticFlagEnabled, resolveDiagnosticFlags } from "./diagnostic-flags.js";
-import { isMainModule } from "./is-main.js";
-import { buildNodeShellCommand } from "./node-shell.js";
-import { parseSshTarget } from "./ssh-tunnel.js";
-
-describe("infra parsing", () => {
-  describe("diagnostic flags", () => {
-    it("merges config + env flags", () => {
-      const cfg = {
-        diagnostics: { flags: ["telegram.http", "cache.*"] },
-      } as TEXT2LLMConfig;
-      const env = {
-        TEXT2LLM_DIAGNOSTICS: "foo,bar",
-      } as NodeJS.ProcessEnv;
-
-      const flags = resolveDiagnosticFlags(cfg, env);
-      expect(flags).toEqual(expect.arrayContaining(["telegram.http", "cache.*", "foo", "bar"]));
-      expect(isDiagnosticFlagEnabled("telegram.http", cfg, env)).toBe(true);
-      expect(isDiagnosticFlagEnabled("cache.hit", cfg, env)).toBe(true);
       expect(isDiagnosticFlagEnabled("foo", cfg, env)).toBe(true);
     });
 

@@ -34,42 +34,6 @@ beforeEach(() => {
     durationMs: 0,
   });
   legacyReadConfigFileSnapshot.mockReset().mockResolvedValue({
-    pathimport fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-let originalIsTTY: boolean | undefined;
-let originalStateDir: string | undefined;
-let originalUpdateInProgress: string | undefined;
-let tempStateDir: string | undefined;
-
-function setStdinTty(value: boolean | undefined) {
-  try {
-    Object.defineProperty(process.stdin, "isTTY", {
-      value,
-      configurable: true,
-    });
-  } catch {
-    // ignore
-  }
-}
-
-beforeEach(() => {
-  confirm.mockReset().mockResolvedValue(true);
-  select.mockReset().mockResolvedValue("node");
-  note.mockClear();
-
-  readConfigFileSnapshot.mockReset();
-  writeConfigFile.mockReset().mockResolvedValue(undefined);
-  resolveTEXT2LLMPackageRoot.mockReset().mockResolvedValue(null);
-  runGatewayUpdate.mockReset().mockResolvedValue({
-    status: "skipped",
-    mode: "unknown",
-    steps: [],
-    durationMs: 0,
-  });
-  legacyReadConfigFileSnapshot.mockReset().mockResolvedValue({
     path: "/tmp/text2llm.json",
     exists: false,
     raw: null,

@@ -196,7 +196,7 @@ const entries: SubCliEntry[] = [
     description: "Channel management",
     register: async (program) => {
       const mod = await import("../channels-cli.js");
-      mod.registerChannelsCli(program);
+      await mod.registerChannelsCli(program);
     },
   },
   {

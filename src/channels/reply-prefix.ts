@@ -27,35 +27,6 @@ export function createReplyPrefixContext(params: {
   accountId?: string;
 }): ReplyPrefixContextBundle {
   const { cfg, agentId } = params;
-  const prefixCoimport type { GetReplyOptions } from "../auto-reply/types.js";
-import type { TEXT2LLMConfig } from "../config/config.js";
-import { resolveEffectiveMessagesConfig, resolveIdentityName } from "../agents/identity.js";
-import {
-  extractShortModelName,
-  type ResponsePrefixContext,
-} from "../auto-reply/reply/response-prefix-template.js";
-
-type ModelSelectionContext = Parameters<NonNullable<GetReplyOptions["onModelSelected"]>>[0];
-
-export type ReplyPrefixContextBundle = {
-  prefixContext: ResponsePrefixContext;
-  responsePrefix?: string;
-  responsePrefixContextProvider: () => ResponsePrefixContext;
-  onModelSelected: (ctx: ModelSelectionContext) => void;
-};
-
-export type ReplyPrefixOptions = Pick<
-  ReplyPrefixContextBundle,
-  "responsePrefix" | "responsePrefixContextProvider" | "onModelSelected"
->;
-
-export function createReplyPrefixContext(params: {
-  cfg: TEXT2LLMConfig;
-  agentId: string;
-  channel?: string;
-  accountId?: string;
-}): ReplyPrefixContextBundle {
-  const { cfg, agentId } = params;
   const prefixContext: ResponsePrefixContext = {
     identityName: resolveIdentityName(cfg, agentId),
   };

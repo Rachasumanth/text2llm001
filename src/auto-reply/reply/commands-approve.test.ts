@@ -33,41 +33,6 @@ function buildParams(commandBody: string, cfg: TEXT2LLMConfig, ctxOverrides?: Pa
     cfg,
     command,
     directives: parseInlineDirectives(commandBody),
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { TEXT2LLMConfig } from "../../config/config.js";
-import type { MsgContext } from "../templating.js";
-import { callGateway } from "../../gateway/call.js";
-import { buildCommandContext, handleCommands } from "./commands.js";
-import { parseInlineDirectives } from "./directive-handling.js";
-
-vi.mock("../../gateway/call.js", () => ({
-  callGateway: vi.fn(),
-}));
-
-function buildParams(commandBody: string, cfg: TEXT2LLMConfig, ctxOverrides?: Partial<MsgContext>) {
-  const ctx = {
-    Body: commandBody,
-    CommandBody: commandBody,
-    CommandSource: "text",
-    CommandAuthorized: true,
-    Provider: "whatsapp",
-    Surface: "whatsapp",
-    ...ctxOverrides,
-  } as MsgContext;
-
-  const command = buildCommandContext({
-    ctx,
-    cfg,
-    isGroup: false,
-    triggerBodyNormalized: commandBody.trim().toLowerCase(),
-    commandAuthorized: true,
-  });
-
-  return {
-    ctx,
-    cfg,
-    command,
-    directives: parseInlineDirectives(commandBody),
     elevated: { enabled: true, allowed: true, failures: [] },
     sessionKey: "agent:main:main",
     workspaceDir: "/tmp",

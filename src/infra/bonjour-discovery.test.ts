@@ -22,30 +22,6 @@ describe("bonjour-discovery", () => {
               "",
             ].join("\n"),
             stderr: "",
-            import { describe, expect, it, vi } from "vitest";
-import type { runCommandWithTimeout } from "../process/exec.js";
-import { discoverGatewayBeacons } from "./bonjour-discovery.js";
-
-const WIDE_AREA_DOMAIN = "text2llm.internal.";
-
-describe("bonjour-discovery", () => {
-  it("discovers beacons on darwin across local + wide-area domains", async () => {
-    const calls: Array<{ argv: string[]; timeoutMs: number }> = [];
-    const studioInstance = "Peter’s Mac Studio Gateway";
-
-    const run = vi.fn(async (argv: string[], options: { timeoutMs: number }) => {
-      calls.push({ argv, timeoutMs: options.timeoutMs });
-      const domain = argv[3] ?? "";
-
-      if (argv[0] === "dns-sd" && argv[1] === "-B") {
-        if (domain === "local.") {
-          return {
-            stdout: [
-              "Add 2 3 local. _TEXT2LLM-gw._tcp. Peter\\226\\128\\153s Mac Studio Gateway",
-              "Add 2 3 local. _TEXT2LLM-gw._tcp. Laptop Gateway",
-              "",
-            ].join("\n"),
-            stderr: "",
             code: 0,
             signal: null,
             killed: false,

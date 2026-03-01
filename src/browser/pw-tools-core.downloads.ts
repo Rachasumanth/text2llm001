@@ -33,41 +33,6 @@ function createPageDownloadWaiter(page: Page, timeoutMs: number) {
     if (timer) {
       clearTimeout(timer);
     }
-   import type { Page } from "playwright-core";
-import crypto from "node:crypto";
-import fs from "node:fs/promises";
-import path from "node:path";
-import { resolvePreferredTEXT2LLMTmpDir } from "../infra/tmp-text2llm-dir.js";
-import {
-  ensurePageState,
-  getPageForTargetId,
-  refLocator,
-  restoreRoleRefsForTarget,
-} from "./pw-session.js";
-import {
-  bumpDialogArmId,
-  bumpDownloadArmId,
-  bumpUploadArmId,
-  normalizeTimeoutMs,
-  requireRef,
-  toAIFriendlyError,
-} from "./pw-tools-core.shared.js";
-
-function buildTempDownloadPath(fileName: string): string {
-  const id = crypto.randomUUID();
-  const safeName = fileName.trim() ? fileName.trim() : "download.bin";
-  return path.join(resolvePreferredTEXT2LLMTmpDir(), "downloads", `${id}-${safeName}`);
-}
-
-function createPageDownloadWaiter(page: Page, timeoutMs: number) {
-  let done = false;
-  let timer: NodeJS.Timeout | undefined;
-  let handler: ((download: unknown) => void) | undefined;
-
-  const cleanup = () => {
-    if (timer) {
-      clearTimeout(timer);
-    }
     timer = undefined;
     if (handler) {
       page.off("download", handler as never);

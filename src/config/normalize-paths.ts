@@ -31,39 +31,6 @@ function normalizeAny(key: string | undefined, value: unknown): unknown {
         return normalizeChildren ? normalizeStringValue(key, entry) : entry;
       }
       if (Array.isArray(entry)) {
- import type { TEXT2LLMConfig } from "./types.js";
-import { isPlainObject, resolveUserPath } from "../utils.js";
-
-const PATH_VALUE_RE = /^~(?=$|[\\/])/;
-
-const PATH_KEY_RE = /(dir|path|paths|file|root|workspace)$/i;
-const PATH_LIST_KEYS = new Set(["paths", "pathPrepend"]);
-
-function normalizeStringValue(key: string | undefined, value: string): string {
-  if (!PATH_VALUE_RE.test(value.trim())) {
-    return value;
-  }
-  if (!key) {
-    return value;
-  }
-  if (PATH_KEY_RE.test(key) || PATH_LIST_KEYS.has(key)) {
-    return resolveUserPath(value);
-  }
-  return value;
-}
-
-function normalizeAny(key: string | undefined, value: unknown): unknown {
-  if (typeof value === "string") {
-    return normalizeStringValue(key, value);
-  }
-
-  if (Array.isArray(value)) {
-    const normalizeChildren = Boolean(key && PATH_LIST_KEYS.has(key));
-    return value.map((entry) => {
-      if (typeof entry === "string") {
-        return normalizeChildren ? normalizeStringValue(key, entry) : entry;
-      }
-      if (Array.isArray(entry)) {
         return normalizeAny(undefined, entry);
       }
       if (isPlainObject(entry)) {

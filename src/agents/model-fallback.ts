@@ -38,46 +38,6 @@ type FallbackAttempt = {
  * Fallback abort check. Only treats explicit AbortError names as user aborts.
  * Message-based checks (e.g., "aborted") can mask timeouts and skip fallback.
  */
-function isFallbackAbortError(err: unknown): booleanimport type { TEXT2LLMConfig } from "../config/config.js";
-import type { FailoverReason } from "./pi-embedded-helpers.js";
-import {
-  ensureAuthProfileStore,
-  isProfileInCooldown,
-  resolveAuthProfileOrder,
-} from "./auth-profiles.js";
-import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "./defaults.js";
-import {
-  coerceToFailoverError,
-  describeFailoverError,
-  isFailoverError,
-  isTimeoutError,
-} from "./failover-error.js";
-import {
-  buildConfiguredAllowlistKeys,
-  buildModelAliasIndex,
-  modelKey,
-  resolveConfiguredModelRef,
-  resolveModelRefFromString,
-} from "./model-selection.js";
-
-type ModelCandidate = {
-  provider: string;
-  model: string;
-};
-
-type FallbackAttempt = {
-  provider: string;
-  model: string;
-  error: string;
-  reason?: FailoverReason;
-  status?: number;
-  code?: string;
-};
-
-/**
- * Fallback abort check. Only treats explicit AbortError names as user aborts.
- * Message-based checks (e.g., "aborted") can mask timeouts and skip fallback.
- */
 function isFallbackAbortError(err: unknown): boolean {
   if (!err || typeof err !== "object") {
     return false;

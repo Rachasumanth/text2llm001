@@ -21,29 +21,6 @@ vi.mock("../../config/config.js", async () => {
 
 const readChannelAllowFromStoreMock = vi.hoisted(() => vi.fn());
 const addChannelAllowFromStoreEntryMock = vi.hoisted(() => vi.fn());
-const removeChannelAllowFromStoreEimport { describe, expect, it, vi } from "vitest";
-import type { TEXT2LLMConfig } from "../../config/config.js";
-import type { MsgContext } from "../templating.js";
-import { buildCommandContext, handleCommands } from "./commands.js";
-import { parseInlineDirectives } from "./directive-handling.js";
-
-const readConfigFileSnapshotMock = vi.hoisted(() => vi.fn());
-const validateConfigObjectWithPluginsMock = vi.hoisted(() => vi.fn());
-const writeConfigFileMock = vi.hoisted(() => vi.fn());
-
-vi.mock("../../config/config.js", async () => {
-  const actual =
-    await vi.importActual<typeof import("../../config/config.js")>("../../config/config.js");
-  return {
-    ...actual,
-    readConfigFileSnapshot: readConfigFileSnapshotMock,
-    validateConfigObjectWithPlugins: validateConfigObjectWithPluginsMock,
-    writeConfigFile: writeConfigFileMock,
-  };
-});
-
-const readChannelAllowFromStoreMock = vi.hoisted(() => vi.fn());
-const addChannelAllowFromStoreEntryMock = vi.hoisted(() => vi.fn());
 const removeChannelAllowFromStoreEntryMock = vi.hoisted(() => vi.fn());
 
 vi.mock("../../pairing/pairing-store.js", async () => {

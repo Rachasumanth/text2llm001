@@ -34,6 +34,7 @@ import type {
 import type { ChatAttachment, ChatQueueItem, CronFormState } from "./ui-types.ts";
 import type { NostrProfileFormState } from "./views/channels.nostr-profile-form.ts";
 import type { SessionLogEntry } from "./views/usage.ts";
+import type { DatasetJob } from "./controllers/datasets.ts";
 
 export type AppViewState = {
   settings: UiSettings;
@@ -182,6 +183,11 @@ export type AppViewState = {
   usageLogFilterTools: string[];
   usageLogFilterHasTools: boolean;
   usageLogFilterQuery: string;
+  datasetsLoading: boolean;
+  datasetsError: string | null;
+  datasetsQueue: DatasetJob[];
+  datasetsActiveJob: DatasetJob | null;
+  datasetsUploadProgress: number;
   cronLoading: boolean;
   cronJobs: CronJob[];
   cronStatus: CronStatus | null;
@@ -266,6 +272,8 @@ export type AppViewState = {
   handleLoadSkills: () => Promise<void>;
   handleLoadDebug: () => Promise<void>;
   handleLoadLogs: () => Promise<void>;
+  handleDatasetsUpload: (file: File, format: string) => Promise<void>;
+  handleDatasetsRefresh: () => Promise<void>;
   handleDebugCall: () => Promise<void>;
   handleRunUpdate: () => Promise<void>;
   setPassword: (next: string) => void;

@@ -20,28 +20,6 @@ import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { applyVerboseOverride } from "../../sessions/level-overrides.js";
 import { applyModelOverrideToSessionEntry } from "../../sessions/model-overrides.js";
 import { resolveProfileOverride } from "./directive-handling.auth.js";
-import { formatElevatedEimport type { TEXT2LLMConfig } from "../../config/config.js";
-import type { InlineDirectives } from "./directive-handling.parse.js";
-import type { ElevatedLevel, ReasoningLevel } from "./directives.js";
-import {
-  resolveAgentDir,
-  resolveDefaultAgentId,
-  resolveSessionAgentId,
-} from "../../agents/agent-scope.js";
-import { lookupContextTokens } from "../../agents/context.js";
-import { DEFAULT_CONTEXT_TOKENS } from "../../agents/defaults.js";
-import {
-  buildModelAliasIndex,
-  type ModelAliasIndex,
-  modelKey,
-  resolveDefaultModelForAgent,
-  resolveModelRefFromString,
-} from "../../agents/model-selection.js";
-import { type SessionEntry, updateSessionStore } from "../../config/sessions.js";
-import { enqueueSystemEvent } from "../../infra/system-events.js";
-import { applyVerboseOverride } from "../../sessions/level-overrides.js";
-import { applyModelOverrideToSessionEntry } from "../../sessions/model-overrides.js";
-import { resolveProfileOverride } from "./directive-handling.auth.js";
 import { formatElevatedEvent, formatReasoningEvent } from "./directive-handling.shared.js";
 
 export async function persistInlineDirectives(params: {

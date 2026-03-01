@@ -27,35 +27,6 @@ export type SkillInstallRequest = {
   config?: TEXT2LLMConfig;
 };
 
-export type Skilimport type { ReadableStream as NodeReadableStream } from "node:stream/web";
-import fs from "node:fs";
-import path from "node:path";
-import { Readable } from "node:stream";
-import { pipeline } from "node:stream/promises";
-import type { TEXT2LLMConfig } from "../config/config.js";
-import { resolveBrewExecutable } from "../infra/brew.js";
-import { fetchWithSsrFGuard } from "../infra/net/fetch-guard.js";
-import { runCommandWithTimeout } from "../process/exec.js";
-import { scanDirectoryWithSummary } from "../security/skill-scanner.js";
-import { CONFIG_DIR, ensureDir, resolveUserPath } from "../utils.js";
-import {
-  hasBinary,
-  loadWorkspaceSkillEntries,
-  resolveSkillsInstallPreferences,
-  type SkillEntry,
-  type SkillInstallSpec,
-  type SkillsInstallPreferences,
-} from "./skills.js";
-import { resolveSkillKey } from "./skills/frontmatter.js";
-
-export type SkillInstallRequest = {
-  workspaceDir: string;
-  skillName: string;
-  installId: string;
-  timeoutMs?: number;
-  config?: TEXT2LLMConfig;
-};
-
 export type SkillInstallResult = {
   ok: boolean;
   message: string;

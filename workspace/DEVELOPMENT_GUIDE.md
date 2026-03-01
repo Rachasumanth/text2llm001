@@ -10,27 +10,29 @@ This guide is for adding a **multi-user web mode** to text2llm with **minimum cl
 
 Before planning new work, know what's built:
 
-| Layer | Status | Location |
-|---|---|---|
-| Chat UI (Lit 3.3.2 SPA) | **Shipped** | `ui/` — full dashboard, chat, settings, themes |
-| Gateway server (HTTP + WS) | **Shipped** | `src/gateway/` — JSON-RPC, OpenAI-compatible API |
-| Agent orchestration | **Shipped** | `src/agents/` — streaming, compaction, failover, sub-agents |
-| 20+ AI providers | **Shipped** | Anthropic, OpenAI, Gemini, Groq, Bedrock, Ollama, xAI, etc. |
-| Auth (token/password/Ed25519/Tailscale) | **Shipped** | `src/gateway/auth.ts`, `src/gateway/device-auth.ts` |
-| 8 core + 27 extension channels | **Shipped** | `src/telegram/`, `src/discord/`, `extensions/` |
-| Plugin system (jiti loader) | **Shipped** | `src/plugins/`, `src/plugin-sdk/` |
-| Memory/RAG (SQLite + sqlite-vec) | **Shipped** | `src/memory/` |
-| Native apps (macOS/iOS/Android) | **Shipped** | `apps/` |
-| Config system (JSON5 + Zod) | **Shipped** | `src/config/` |
-| Docker + Fly.io + Render deploy | **Shipped** | `Dockerfile`, `fly.toml`, `render.yaml` |
-| Browser-runtime storage adapters | **Partial** | `src/browser-runtime/` — IndexedDB, Web Crypto stubs |
-| Browser-compatible agent core | **Partial** | ~55% of agent logic has zero `node:` imports (see `WEB_VS_SERVER_SPLIT_REPORT.md`) |
+| Layer                                   | Status      | Location                                                                           |
+| --------------------------------------- | ----------- | ---------------------------------------------------------------------------------- |
+| Chat UI (Lit 3.3.2 SPA)                 | **Shipped** | `ui/` — full dashboard, chat, settings, themes                                     |
+| Gateway server (HTTP + WS)              | **Shipped** | `src/gateway/` — JSON-RPC, OpenAI-compatible API                                   |
+| Agent orchestration                     | **Shipped** | `src/agents/` — streaming, compaction, failover, sub-agents                        |
+| 20+ AI providers                        | **Shipped** | Anthropic, OpenAI, Gemini, Groq, Bedrock, Ollama, xAI, etc.                        |
+| Auth (token/password/Ed25519/Tailscale) | **Shipped** | `src/gateway/auth.ts`, `src/gateway/device-auth.ts`                                |
+| 8 core + 27 extension channels          | **Shipped** | `src/telegram/`, `src/discord/`, `extensions/`                                     |
+| Plugin system (jiti loader)             | **Shipped** | `src/plugins/`, `src/plugin-sdk/`                                                  |
+| Memory/RAG (SQLite + sqlite-vec)        | **Shipped** | `src/memory/`                                                                      |
+| Native apps (macOS/iOS/Android)         | **Shipped** | `apps/`                                                                            |
+| Config system (JSON5 + Zod)             | **Shipped** | `src/config/`                                                                      |
+| Docker + Fly.io + Render deploy         | **Shipped** | `Dockerfile`, `fly.toml`, `render.yaml`                                            |
+| Browser-runtime storage adapters        | **Partial** | `src/browser-runtime/` — IndexedDB, Web Crypto stubs                               |
+| Browser-compatible agent core           | **Partial** | ~55% of agent logic has zero `node:` imports (see `WEB_VS_SERVER_SPLIT_REPORT.md`) |
 
 ---
 
-## Architecture (3 Parts)
+## Architecture (4 Parts)
 
-### Part 1 — Browser Client (local-first default)
+Parts 1 through 3 are included in the **free** tier, providing the core chat and gateway experience. Part 4 is the **paid** tier, unlocking compute-heavy dataset and model features with strong security.
+
+### Part 1 — Browser Client (local-first default) [Free]
 
 Runs in the user's browser. Reuses existing modules where possible:
 
@@ -41,7 +43,7 @@ Runs in the user's browser. Reuses existing modules where possible:
 - **Config** — IndexedDB (replace `src/config/io.ts` filesystem reads with `BrowserConfigIO`)
 - **Credentials** — Web Crypto API + IndexedDB (encrypted at rest)
 
-### Part 2 — Shared Cloud Proxy (single stateless service)
+### Part 2 — Shared Cloud Proxy (single stateless service) [Free]
 
 This is **not** a fallback — it's the **primary path** for most LLM calls, because major providers (OpenAI, Anthropic, Google) block browser-origin CORS requests.
 
@@ -53,7 +55,7 @@ This is **not** a fallback — it's the **primary path** for most LLM calls, bec
 
 > **CORS reality check:** OpenAI, Anthropic, and Google Gemini all reject browser-origin requests. The proxy handles ~90% of traffic. Size and cost-model it as the default path, not a fallback.
 
-### Part 3 — Supabase (auth + metadata only)
+### Part 3 — Supabase (auth + metadata only) [Free]
 
 - OAuth login (Google, GitHub)
 - User profile + settings sync
@@ -61,6 +63,14 @@ This is **not** a fallback — it's the **primary path** for most LLM calls, bec
 - Optional cross-device session metadata sync
 
 **Not for:** chat history storage, credentials, or inference.
+
+### Part 4 — Compute & Processing Workers [Paid]
+
+Provides heavy lifting for data and model processing. This requires a paid subscription (managed via Stripe/Supabase) to offset compute costs and ensure strong security isolation.
+
+- **Multi-Format Dataset Creator**: Bypasses the shared proxy via presigned Cloud Storage URLs (S3/R2) to securely upload >1GB datasets.
+- **Background Workers**: Stateless Node workers utilizing the `data-pipeline` skill to clean, deduplicate, and format raw datasets into JSONL, Parquet, or CSV.
+- **Strong Security**: Enforces presigned URL expiration, strict CORS, Row-Level Security (RLS) in Supabase for jobs, and isolated worker environments to protect proprietary data.
 
 ---
 
@@ -80,19 +90,20 @@ For each LLM request, follow this order:
 
 The `@mariozechner/pi-coding-agent` SDK has `node:` imports in 20+ files. text2llm uses it for 5 things:
 
-| Function | Current Source | Browser Replacement |
-|---|---|---|
-| `createAgentSession()` | pi-coding-agent | `src/web/browser-agent-session.ts` — state container using in-memory arrays |
-| `SessionManager` | pi-coding-agent | `BrowserSessionManager` — IndexedDB read/write instead of JSONL files |
-| `codingTools` (read/write/edit) | pi-coding-agent | Disable in browser mode (no filesystem) |
-| `estimateTokens()` | pi-coding-agent | Port pure-JS tokenizer or use tiktoken WASM |
-| `generateSummary()` | pi-coding-agent | Already in `src/agents/compaction.ts` (browser-safe) |
+| Function                        | Current Source  | Browser Replacement                                                         |
+| ------------------------------- | --------------- | --------------------------------------------------------------------------- |
+| `createAgentSession()`          | pi-coding-agent | `src/web/browser-agent-session.ts` — state container using in-memory arrays |
+| `SessionManager`                | pi-coding-agent | `BrowserSessionManager` — IndexedDB read/write instead of JSONL files       |
+| `codingTools` (read/write/edit) | pi-coding-agent | Disable in browser mode (no filesystem)                                     |
+| `estimateTokens()`              | pi-coding-agent | Port pure-JS tokenizer or use tiktoken WASM                                 |
+| `generateSummary()`             | pi-coding-agent | Already in `src/agents/compaction.ts` (browser-safe)                        |
 
 **Effort:** ~5-7 days. See `ARCHITECTURE_SPLIT_PLAN.md` for the full file-by-file plan.
 
 ### Agent Runner Filesystem Removal
 
 `src/agents/pi-embedded-runner/run.ts` and `attempt.ts` use `node:fs/promises` for:
+
 - Reading workspace `AGENTS.md` → replace with bundled string or `fetch()`
 - Writing debug logs → remove or use `console`
 - Temp file paths via `node:os` → remove (browser has no temp dir)
@@ -103,6 +114,7 @@ The `@mariozechner/pi-coding-agent` SDK has `node:` imports in 20+ files. text2l
 ### Browser Config Adapter
 
 Replace `src/config/io.ts` (641 lines, `node:fs`) with a ~150-line IndexedDB adapter:
+
 - No `$include` directives (browser has no filesystem)
 - No `${ENV_VAR}` substitution (browser has no env vars)
 - Config edited via UI settings panel
@@ -113,6 +125,7 @@ Replace `src/config/io.ts` (641 lines, `node:fs`) with a ~150-line IndexedDB ada
 ### Browser Session Storage
 
 Replace `src/gateway/session-utils.fs.ts` (441 lines, JSONL files) with IndexedDB:
+
 - One IndexedDB object store per agent
 - Each session is a key → array of message objects
 - Existing `src/browser-runtime/` has partial adapters to build on
@@ -316,17 +329,17 @@ CREATE POLICY "Users read own events" ON usage_events FOR SELECT USING (auth.uid
 
 The web mode is **additive**, not a replacement:
 
-| Feature | Gateway Mode (existing) | Web Mode (new) |
-|---|---|---|
-| Runs on | User's machine / VPS / Docker | Browser tab |
-| LLM calls via | Gateway server → provider API | Browser → proxy → provider API |
-| Channels | All 35+ (WhatsApp, Telegram, etc.) | None (chat UI only in MVP) |
-| Tools | All 30+ (bash, file, browser, etc.) | Web-safe subset (web-fetch, search) |
-| Memory/RAG | SQLite + sqlite-vec | IndexedDB keyword search (MVP) |
-| Auth | Token / password / Ed25519 / Tailscale | Supabase OAuth |
-| Storage | Local filesystem | IndexedDB + Supabase metadata |
-| Native apps | macOS / iOS / Android | N/A |
-| Multi-user | Single-user (personal) | Multi-user (shared proxy) |
+| Feature       | Gateway Mode (existing)                | Web Mode (new)                      |
+| ------------- | -------------------------------------- | ----------------------------------- |
+| Runs on       | User's machine / VPS / Docker          | Browser tab                         |
+| LLM calls via | Gateway server → provider API          | Browser → proxy → provider API      |
+| Channels      | All 35+ (WhatsApp, Telegram, etc.)     | None (chat UI only in MVP)          |
+| Tools         | All 30+ (bash, file, browser, etc.)    | Web-safe subset (web-fetch, search) |
+| Memory/RAG    | SQLite + sqlite-vec                    | IndexedDB keyword search (MVP)      |
+| Auth          | Token / password / Ed25519 / Tailscale | Supabase OAuth                      |
+| Storage       | Local filesystem                       | IndexedDB + Supabase metadata       |
+| Native apps   | macOS / iOS / Android                  | N/A                                 |
+| Multi-user    | Single-user (personal)                 | Multi-user (shared proxy)           |
 
 Users who want the full experience (channels, tools, native apps) continue using gateway mode. Web mode is for users who want a quick browser-based chat without running infrastructure.
 

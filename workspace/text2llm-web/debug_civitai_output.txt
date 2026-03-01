@@ -1,0 +1,7 @@
+﻿Checking Civitai API...
+Fetching https://civitai.com/api/v1/models?query=anime&limit=12&sort=Most%20Downloaded...
+Metadata keys: [ 'nextCursor', 'nextPage' ]
+Total Items: undefined
+Next Cursor: 2404347
+Items count: 12
+issue: totalItems is missing or undefined

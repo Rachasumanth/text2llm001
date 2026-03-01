@@ -22,30 +22,6 @@ import { optionalStringEnum, stringEnum } from "../schema/typebox.js";
 import { sanitizeToolResultImages } from "../tool-images.js";
 import { type AnyAgentTool, jsonResult, readStringParam } from "./common.js";
 import { callGatewayTool, type GatewayCallOptions } from "./gateway.js";
-import type { AgentToolResult } from "@mariozechner/pi-agent-core";
-import { Type } from "@sinclair/typebox";
-import crypto from "node:crypto";
-import type { TEXT2LLMConfig } from "../../config/config.js";
-import {
-  type CameraFacing,
-  cameraTempPath,
-  parseCameraClipPayload,
-  parseCameraSnapPayload,
-  writeBase64ToFile,
-} from "../../cli/nodes-camera.js";
-import { parseEnvPairs, parseTimeoutMs } from "../../cli/nodes-run.js";
-import {
-  parseScreenRecordPayload,
-  screenRecordTempPath,
-  writeScreenRecordToFile,
-} from "../../cli/nodes-screen.js";
-import { parseDurationMs } from "../../cli/parse-duration.js";
-import { imageMimeFromFormat } from "../../media/mime.js";
-import { resolveSessionAgentId } from "../agent-scope.js";
-import { optionalStringEnum, stringEnum } from "../schema/typebox.js";
-import { sanitizeToolResultImages } from "../tool-images.js";
-import { type AnyAgentTool, jsonResult, readStringParam } from "./common.js";
-import { callGatewayTool, type GatewayCallOptions } from "./gateway.js";
 import { listNodes, resolveNodeIdFromList, resolveNodeId } from "./nodes-utils.js";
 
 const NODES_TOOL_ACTIONS = [

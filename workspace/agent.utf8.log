@@ -1,0 +1,7 @@
+﻿node : error: required option '-m, --message <text>' not specified
+At line:1 char:55
++ ... llm.json";  node scripts/run-node.mjs agent --agent main --local --ve ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (error: required...' not specified:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 

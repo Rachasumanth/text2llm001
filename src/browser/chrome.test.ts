@@ -31,39 +31,6 @@ describe("browser chrome profile decoration", () => {
   it("writes expected name + signed ARGB seed to Chrome prefs", async () => {
     const userDataDir = await fsp.mkdtemp(path.join(os.tmpdir(), "text2llm-chrome-test-"));
     try {
-      decimport fs from "node:fs";
-import fsp from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  decorateTEXT2LLMProfile,
-  ensureProfileCleanExit,
-  findChromeExecutableMac,
-  findChromeExecutableWindows,
-  isChromeReachable,
-  resolveBrowserExecutableForPlatform,
-  stopTEXT2LLMChrome,
-} from "./chrome.js";
-import {
-  DEFAULT_TEXT2LLM_BROWSER_COLOR,
-  DEFAULT_TEXT2LLM_BROWSER_PROFILE_NAME,
-} from "./constants.js";
-
-async function readJson(filePath: string): Promise<Record<string, unknown>> {
-  const raw = await fsp.readFile(filePath, "utf-8");
-  return JSON.parse(raw) as Record<string, unknown>;
-}
-
-describe("browser chrome profile decoration", () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-    vi.restoreAllMocks();
-  });
-
-  it("writes expected name + signed ARGB seed to Chrome prefs", async () => {
-    const userDataDir = await fsp.mkdtemp(path.join(os.tmpdir(), "text2llm-chrome-test-"));
-    try {
       decorateTEXT2LLMProfile(userDataDir, { color: DEFAULT_TEXT2LLM_BROWSER_COLOR });
 
       const expectedSignedArgb = ((0xff << 24) | 0xff4500) >> 0;

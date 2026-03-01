@@ -311,10 +311,14 @@ async function waitForLocalCallback(params: {
 
         res.statusCode = 200;
         res.setHeader("Content-Type", "text/html; charset=utf-8");
+        res.setHeader("Connection", "close");
         res.end(
           "<!doctype html><html><head><meta charset='utf-8'/></head>" +
             "<body><h2>Gemini CLI OAuth complete</h2>" +
             "<p>You can close this window and return to text2llm.</p></body></html>",
+          () => {
+            setTimeout(() => req.socket.destroy(), 100);
+          }
         );
 
         finish(undefined, { code, state });

@@ -33,8 +33,11 @@ test("GPU e2e: provider configure -> launch -> route -> infer -> stop", async ()
         },
       }),
     });
-    expectOk(launch);
-    const instanceId = launch.json.instance.id;
+    if (!launch.json.ok) {
+      console.error(JSON.stringify(launch, null, 2));
+      assert.fail("Launch failed");
+    }
+    const instanceId = launch.json.instance?.id;
     assert.ok(instanceId);
 
     const route = await requestJson(ctx.baseUrl, "/api/instances/gpu/routing", {

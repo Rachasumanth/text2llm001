@@ -54,6 +54,358 @@ const workspaceConfig = (() => {
 app.use(express.json({ limit: "10mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
+const terminalClients = new Set();
+const runtimeEventBuffer = [];
+const RUNTIME_EVENT_BUFFER_LIMIT = 2000;
+const RUNTIME_REPLAY_DEFAULT_TAIL = 200;
+const RUNTIME_MAX_LINE_LENGTH = 2000;
+
+const SENSITIVE_PATTERNS = [
+  /(authorization\s*[:=]\s*bearer\s+)[^\s"']+/gi,
+  /("?(?:api[_-]?key|token|secret|password|access[_-]?token|refresh[_-]?token)"?\s*[:=]\s*")([^"]+)(")/gi,
+  /((?:api[_-]?key|token|secret|password|access[_-]?token|refresh[_-]?token)\s*[:=]\s*)[^\s,;]+/gi,
+  /(cookie\s*[:=]\s*)[^\s,;]+/gi,
+];
+
+function redactRuntimeText(input) {
+  let output = String(input || "");
+
+  output = output.replace(SENSITIVE_PATTERNS[0], "$1***REDACTED***");
+  output = output.replace(SENSITIVE_PATTERNS[1], "$1***REDACTED***$3");
+  output = output.replace(SENSITIVE_PATTERNS[2], "$1***REDACTED***");
+  output = output.replace(SENSITIVE_PATTERNS[3], "$1***REDACTED***");
+
+  if (output.length > RUNTIME_MAX_LINE_LENGTH) {
+    return `${output.slice(0, RUNTIME_MAX_LINE_LENGTH)}…[truncated]`;
+  }
+  return output;
+}
+
+function runtimeNowIso() {
+  return new Date().toISOString();
+}
+
+function runtimeSafeString(value) {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  if (typeof value === "string") {
+    return redactRuntimeText(value);
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  try {
+    return redactRuntimeText(JSON.stringify(value));
+  } catch {
+    return redactRuntimeText(String(value));
+  }
+}
+
+function normalizeRuntimeEvent(event = {}) {
+  const ts = typeof event.ts === "string" && event.ts ? event.ts : runtimeNowIso();
+  const level = ["info", "warn", "error"].includes(event.level) ? event.level : "info";
+  const status = ["start", "stream", "success", "error", "failed", "end"].includes(event.status)
+    ? event.status
+    : "stream";
+
+  return {
+    ts,
+    source: event.source ? String(event.source) : "runtime",
+    scope: event.scope ? String(event.scope) : "system",
+    action: event.action ? String(event.action) : "event",
+    level,
+    status,
+    cmd: event.cmd ? String(event.cmd) : "",
+    message: runtimeSafeString(event.message ? String(event.message) : ""),
+    durationMs: Number.isFinite(event.durationMs) ? Number(event.durationMs) : null,
+    meta: event.meta && typeof event.meta === "object" ? event.meta : null,
+  };
+}
+
+function shouldRuntimeEventPassFilter(event, filter = "all") {
+  if (filter === "errors") {
+    return event.level === "error" || event.status === "error" || event.status === "failed";
+  }
+  if (filter === "commands") {
+    return event.status === "start" || Boolean(event.cmd);
+  }
+  if (filter === "verbose") {
+    return true;
+  }
+  return true;
+}
+
+function formatRuntimeEventLine(inputEvent) {
+  const event = normalizeRuntimeEvent(inputEvent);
+  const time = event.ts.includes("T")
+    ? event.ts.split("T")[1]?.split(".")[0] || event.ts
+    : event.ts;
+
+  const levelColor = event.level === "error" ? "\x1b[31m" : event.level === "warn" ? "\x1b[33m" : "\x1b[36m";
+  const context = `${event.source}/${event.scope}`;
+
+  let lineBody = event.message || event.action;
+  if (event.status === "start") {
+    lineBody = `$ ${event.cmd || event.action}`;
+  } else if (event.status === "stream") {
+    lineBody = `> ${event.message || event.action}`;
+  } else if (event.status === "success" || event.status === "end") {
+    lineBody = `✔ ${event.message || event.action}`;
+  } else if (event.status === "failed" || event.status === "error") {
+    lineBody = `✖ ${event.message || event.action}`;
+  }
+
+  const durationSuffix = event.durationMs !== null ? ` (${event.durationMs}ms)` : "";
+  return `\r\n\x1b[90m[${time}]\x1b[0m ${levelColor}[${context}]\x1b[0m ${lineBody}${durationSuffix}`;
+}
+
+function pushRuntimeEvent(event) {
+  runtimeEventBuffer.push(event);
+  if (runtimeEventBuffer.length > RUNTIME_EVENT_BUFFER_LIMIT) {
+    runtimeEventBuffer.splice(0, runtimeEventBuffer.length - RUNTIME_EVENT_BUFFER_LIMIT);
+  }
+}
+
+function sendTerminalFrame(ws, frame) {
+  if (!ws || ws.readyState !== 1) {
+    return;
+  }
+  try {
+    ws.send(JSON.stringify(frame));
+  } catch {
+    // Ignore send errors.
+  }
+}
+
+function broadcastRuntimeLine(line, event = null) {
+  if (terminalClients.size === 0) {
+    return;
+  }
+  for (const client of terminalClients) {
+    if (client.readyState !== 1) {
+      continue;
+    }
+    const filter = client.runtimeFilter || "all";
+    if (event && !shouldRuntimeEventPassFilter(event, filter)) {
+      continue;
+    }
+    try {
+      sendTerminalFrame(client, {
+        type: "runtime-event",
+        line,
+        event,
+      });
+    } catch {
+      // Ignore send errors for disconnected clients.
+    }
+  }
+}
+
+function emitRuntimeEvent(event) {
+  const normalized = normalizeRuntimeEvent(event);
+  pushRuntimeEvent(normalized);
+  const formatted = formatRuntimeEventLine(normalized);
+  broadcastRuntimeLine(formatted, normalized);
+  return normalized;
+}
+
+function sendRuntimeReplay(ws, tail = RUNTIME_REPLAY_DEFAULT_TAIL, filter = "all") {
+  const safeTail = Math.max(1, Math.min(Number(tail) || RUNTIME_REPLAY_DEFAULT_TAIL, RUNTIME_EVENT_BUFFER_LIMIT));
+  const replay = runtimeEventBuffer
+    .slice(-safeTail)
+    .filter((event) => shouldRuntimeEventPassFilter(event, filter));
+
+  sendTerminalFrame(ws, {
+    type: "runtime-replay-start",
+    count: replay.length,
+    filter,
+  });
+
+  for (const event of replay) {
+    if (ws.readyState !== 1) {
+      return;
+    }
+    try {
+      sendTerminalFrame(ws, {
+        type: "runtime-event",
+        replay: true,
+        line: formatRuntimeEventLine(event),
+        event,
+      });
+    } catch {
+      return;
+    }
+  }
+
+  sendTerminalFrame(ws, {
+    type: "runtime-replay-end",
+    count: replay.length,
+    filter,
+  });
+}
+
+function formatCommandSegment(segment) {
+  const value = runtimeSafeString(segment);
+  if (value.length === 0) {
+    return "''";
+  }
+  return /[\s"'`]/.test(value) ? JSON.stringify(value) : value;
+}
+
+function splitChunkLines(chunkText) {
+  return String(chunkText || "")
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .filter((line) => line.length > 0);
+}
+
+function runCommandWithRuntimeTrace(options = {}) {
+  const {
+    command,
+    args = [],
+    cwd = repoRoot,
+    env = process.env,
+    shell = false,
+    stdio = ["pipe", "pipe", "pipe"],
+    source = "runtime",
+    scope = "command",
+    action = "run",
+  } = options;
+
+  if (!command) {
+    return Promise.reject(new Error("runCommandWithRuntimeTrace requires a command"));
+  }
+
+  return new Promise((resolve, reject) => {
+    const startedAt = Date.now();
+    const cmdString = [command, ...args].map(formatCommandSegment).join(" ");
+
+    emitRuntimeEvent({
+      source,
+      scope,
+      action,
+      status: "start",
+      level: "info",
+      cmd: cmdString,
+      message: `started in ${cwd}`,
+      meta: { cwd },
+    });
+
+    const child = spawn(command, args, {
+      cwd,
+      env,
+      shell,
+      stdio,
+    });
+
+    let stdout = "";
+    let stderr = "";
+
+    if (child.stdout) {
+      child.stdout.on("data", (chunk) => {
+        const text = chunk.toString();
+        stdout += text;
+        const lines = splitChunkLines(text);
+        for (const line of lines) {
+          emitRuntimeEvent({
+            source,
+            scope,
+            action,
+            status: "stream",
+            level: "info",
+            cmd: cmdString,
+            message: line,
+          });
+        }
+      });
+    }
+
+    if (child.stderr) {
+      child.stderr.on("data", (chunk) => {
+        const text = chunk.toString();
+        stderr += text;
+        const lines = splitChunkLines(text);
+        for (const line of lines) {
+          emitRuntimeEvent({
+            source,
+            scope,
+            action,
+            status: "stream",
+            level: "error",
+            cmd: cmdString,
+            message: line,
+          });
+        }
+      });
+    }
+
+    child.on("error", (error) => {
+      const durationMs = Date.now() - startedAt;
+      emitRuntimeEvent({
+        source,
+        scope,
+        action,
+        status: "error",
+        level: "error",
+        cmd: cmdString,
+        message: error.message,
+        durationMs,
+      });
+      reject(error);
+    });
+
+    child.on("close", (code) => {
+      const durationMs = Date.now() - startedAt;
+      const ok = code === 0;
+      emitRuntimeEvent({
+        source,
+        scope,
+        action,
+        status: ok ? "success" : "failed",
+        level: ok ? "info" : "error",
+        cmd: cmdString,
+        message: ok ? "completed" : `exited with code ${code}`,
+        durationMs,
+      });
+      resolve({ code, stdout, stderr, durationMs });
+    });
+  });
+}
+
+app.use("/api", (req, res, next) => {
+  const startedAt = Date.now();
+  const routeTag = `${req.method} ${req.path}`;
+  emitRuntimeEvent({
+    source: "api",
+    scope: "http",
+    action: "request",
+    status: "start",
+    level: "info",
+    cmd: routeTag,
+    message: `incoming ${req.originalUrl || req.path}`,
+  });
+
+  res.on("finish", () => {
+    const durationMs = Date.now() - startedAt;
+    const ok = res.statusCode < 400;
+    emitRuntimeEvent({
+      source: "api",
+      scope: "http",
+      action: "response",
+      status: ok ? "success" : "failed",
+      level: res.statusCode >= 500 ? "error" : res.statusCode >= 400 ? "warn" : "info",
+      cmd: routeTag,
+      message: `status ${res.statusCode}`,
+      durationMs,
+      meta: { statusCode: res.statusCode },
+    });
+  });
+
+  next();
+});
+
 function buildPrompt(payload) {
   const {
     goal,
@@ -76,91 +428,59 @@ function buildPrompt(payload) {
 }
 
 function runTEXT2LLMAgent(message) {
-  return new Promise((resolve, reject) => {
-    const args = [
-      "scripts/run-node.mjs",
-      "agent",
-      "--agent",
-      "main",
-      "--message",
-      message,
-    ];
+  const args = [
+    path.join(repoRoot, "scripts/run-node.mjs"),
+    "agent",
+    "--agent",
+    "main",
+    "--message",
+    message,
+  ];
 
-    const env = {
-      ...process.env,
-      TEXT2LLM_CONFIG_PATH: process.env.TEXT2LLM_CONFIG_PATH || workspaceConfig,
-      TEXT2LLM_SKIP_BUILD: process.env.TEXT2LLM_SKIP_BUILD || "1",
-      RUNPOD_API_KEY: process.env.RUNPOD_API_KEY || "text2llm-web-local",
-      VAST_API_KEY: process.env.VAST_API_KEY || "text2llm-web-local",
-      WANDB_API_KEY: process.env.WANDB_API_KEY || "text2llm-web-local",
-      HF_TOKEN: process.env.HF_TOKEN || "text2llm-web-local",
-    };
+  const env = {
+    ...process.env,
+    TEXT2LLM_CONFIG_PATH: process.env.TEXT2LLM_CONFIG_PATH || workspaceConfig,
+    TEXT2LLM_SKIP_BUILD: process.env.TEXT2LLM_SKIP_BUILD || "1",
+    RUNPOD_API_KEY: process.env.RUNPOD_API_KEY || "text2llm-web-local",
+    VAST_API_KEY: process.env.VAST_API_KEY || "text2llm-web-local",
+    WANDB_API_KEY: process.env.WANDB_API_KEY || "text2llm-web-local",
+    HF_TOKEN: process.env.HF_TOKEN || "text2llm-web-local",
+  };
 
-    const child = spawn(process.execPath, args, {
-      cwd: repoRoot,
-      env,
-      shell: false,
-    });
-
-    let stdout = "";
-    let stderr = "";
-
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString();
-    });
-
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString();
-    });
-
-    child.on("error", (error) => {
-      reject(error);
-    });
-
-    child.on("close", (code) => {
-      resolve({ code, stdout, stderr });
-    });
+  return runCommandWithRuntimeTrace({
+    command: process.execPath,
+    args,
+    cwd: repoRoot,
+    env,
+    shell: false,
+    source: "text2llm",
+    scope: "agent",
+    action: "run",
   });
 }
 
 function runTEXT2LLMCommand(args, extraEnv = {}, options = {}) {
-  return new Promise((resolve, reject) => {
-    const env = {
-      ...process.env,
-      TEXT2LLM_CONFIG_PATH: process.env.TEXT2LLM_CONFIG_PATH || workspaceConfig,
-      TEXT2LLM_SKIP_BUILD: process.env.TEXT2LLM_SKIP_BUILD || "1",
-      RUNPOD_API_KEY: process.env.RUNPOD_API_KEY || "text2llm-web-local",
-      VAST_API_KEY: process.env.VAST_API_KEY || "text2llm-web-local",
-      WANDB_API_KEY: process.env.WANDB_API_KEY || "text2llm-web-local",
-      HF_TOKEN: process.env.HF_TOKEN || "text2llm-web-local",
-      ...extraEnv,
-    };
+  const env = {
+    ...process.env,
+    TEXT2LLM_CONFIG_PATH: process.env.TEXT2LLM_CONFIG_PATH || workspaceConfig,
+    TEXT2LLM_SKIP_BUILD: process.env.TEXT2LLM_SKIP_BUILD || "1",
+    RUNPOD_API_KEY: process.env.RUNPOD_API_KEY || "text2llm-web-local",
+    VAST_API_KEY: process.env.VAST_API_KEY || "text2llm-web-local",
+    WANDB_API_KEY: process.env.WANDB_API_KEY || "text2llm-web-local",
+    HF_TOKEN: process.env.HF_TOKEN || "text2llm-web-local",
+    ...extraEnv,
+  };
 
-    const child = spawn(process.execPath, args, {
-      cwd: repoRoot,
-      env,
-      shell: false,
-      stdio: options.ttyStdin ? ["inherit", "pipe", "pipe"] : ["pipe", "pipe", "pipe"],
-    });
-
-    let stdout = "";
-    let stderr = "";
-
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString();
-    });
-
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString();
-    });
-
-    child.on("error", (error) => {
-      reject(error);
-    });
-
-    child.on("close", (code) => {
-      resolve({ code, stdout, stderr });
-    });
+  return runCommandWithRuntimeTrace({
+    command: process.execPath,
+    args,
+    cwd: repoRoot,
+    env,
+    shell: false,
+    stdio: options.ttyStdin ? ["inherit", "pipe", "pipe"] : ["pipe", "pipe", "pipe"],
+    source: "text2llm",
+    scope: "command",
+    action: "run",
   });
 }
 
@@ -303,7 +623,9 @@ app.post("/api/plan", async (req, res) => {
 app.get("/api/config", async (_req, res) => {
   try {
     const config = await loadWorkspaceConfig();
-    res.json({ ok: true, config });
+    const supabaseUrl = process.env.SUPABASE_URL?.trim();
+    const supabaseAnonKey = process.env.SUPABASE_ANON_KEY?.trim();
+    res.json({ ok: true, config, supabaseUrl, supabaseAnonKey });
   } catch (error) {
     res.status(500).json({ ok: false, error: "Failed to load config" });
   }
@@ -722,7 +1044,7 @@ const PROVIDER_MODEL_CATALOG = {
     { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro", desc: "Best performance | 1M ctx", reasoning: true },
     { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash", desc: "Fast & efficient | 1M ctx", reasoning: false },
     { id: "gemini-2.0-flash", name: "Gemini 2.0 Flash", desc: "Next gen speed | 1M ctx", reasoning: false },
-    { id: "gemini-2.0-flash-lite", name: "Gemini 2.0 Flash Lite", desc: "Cost efficient | 1M ctx", reasoning: false },
+    { id: "gemini-2.0-flash-lite-preview-02-05", name: "Gemini 2.0 Flash Lite", desc: "Cost efficient | 1M ctx", reasoning: false },
     { id: "gemini-1.5-pro", name: "Gemini 1.5 Pro", desc: "Stable | 2M ctx", reasoning: false },
     { id: "gemini-1.5-flash", name: "Gemini 1.5 Flash", desc: "Fast & versatile | 1M ctx", reasoning: false },
   ],
@@ -746,7 +1068,7 @@ const PROVIDER_MODEL_CATALOG = {
     { id: "mistral-medium-latest", name: "Mistral Medium", desc: "Balanced | 128k ctx", reasoning: false },
     { id: "mistral-small-latest", name: "Mistral Small", desc: "Cost efficient | 32k ctx", reasoning: false },
     { id: "codestral-latest", name: "Codestral", desc: "Code specialized | 256k ctx", reasoning: false },
-    { id: "mistral-nemo", name: "Mixtral Nemo", desc: "Open model | 128k ctx", reasoning: false },
+    { id: "open-mistral-nemo", name: "Mixtral Nemo", desc: "Open model | 128k ctx", reasoning: false },
   ],
   "github-copilot": [
     { id: "gpt-4o", name: "GPT-4o", desc: "Via Copilot | 128k ctx", reasoning: false },
@@ -845,34 +1167,8 @@ function ensureSelectedProviderOptionMap(config) {
 }
 
 function setDefaultModelForProviderSelection(config, providerId, optionId) {
-  const provider = String(providerId || "").trim().toLowerCase();
-  const option = String(optionId || "").trim().toLowerCase();
-  let primary = null;
-
-  if (provider === "google") {
-    if (option === "antigravity") {
-      primary = "google-antigravity/gemini-3-flash";
-    } else if (option === "cli") {
-      primary = "google-gemini-cli/gemini-3-pro-preview";
-    } else {
-      primary = "google/gemini-3-flash-preview";
-    }
-  }
-
-  if (!primary) {
-    return;
-  }
-
-  if (!config.agents || typeof config.agents !== "object") {
-    config.agents = {};
-  }
-  if (!config.agents.defaults || typeof config.agents.defaults !== "object") {
-    config.agents.defaults = {};
-  }
-  if (!config.agents.defaults.model || typeof config.agents.defaults.model !== "object") {
-    config.agents.defaults.model = {};
-  }
-  config.agents.defaults.model.primary = primary;
+  // Do not fix any primary or secondary by default. 
+  // Just let user select which is primary via the UI input.
 }
 
 
@@ -1049,6 +1345,31 @@ const inferenceQueueState = new Map(); // instanceId -> pending requests
 // ── OAuth Job State ──
 // Tracks active OAuth jobs: jobId -> { status, providerId, logs, ... }
 const authJobs = new Map();
+const OAUTH_JOB_TIMEOUT_MS = Math.max(
+  60_000,
+  Number.parseInt(process.env.TEXT2LLM_WEB_OAUTH_TIMEOUT_MS || "", 10) || 12 * 60_000,
+);
+
+function stripAnsi(text) {
+  return String(text ?? "").replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, "");
+}
+
+function extractFirstUrl(text) {
+  const match = text.match(/https?:\/\/[^\s"'<>]+/);
+  return match ? match[0] : null;
+}
+
+function detectOAuthPromptText(text) {
+  const compact = text.replace(/\s+/g, " ").trim();
+  if (!compact) return null;
+  if (/paste.*redirect.*url/i.test(compact)) {
+    return "Paste the full redirect URL from your local browser.";
+  }
+  if (/paste.*authorization code/i.test(compact)) {
+    return "Paste the authorization code from your local browser.";
+  }
+  return null;
+}
 
 function createAuthJob(jobId, providerId) {
   const job = {
@@ -1059,6 +1380,13 @@ function createAuthJob(jobId, providerId) {
     startedAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     completedAt: null,
+    authUrl: null,
+    awaitingInput: false,
+    inputPrompt: null,
+    process: null,
+    timeout: null,
+    waitExpiresAt: null,
+    pid: null,
   };
   authJobs.set(jobId, job);
   return job;
@@ -1075,6 +1403,213 @@ function addAuthLog(jobId, message, level = "info") {
   const job = authJobs.get(jobId);
   if (!job) return;
   job.logs.push({ time: new Date().toISOString(), level, message });
+
+  const plain = stripAnsi(message);
+  const url = extractFirstUrl(plain);
+  if (url && !job.authUrl) {
+    if (url.includes("accounts.google.com") || url.includes("github.com/login/device")) {
+      job.authUrl = url;
+    }
+  }
+
+  const prompt = detectOAuthPromptText(plain);
+  if (prompt) {
+    job.awaitingInput = true;
+    job.inputPrompt = prompt;
+  }
+
+  if (/received callback url|exchanging authorization code|oauth complete|completed successfully/i.test(plain)) {
+    job.awaitingInput = false;
+    job.inputPrompt = null;
+  }
+}
+
+function setAuthJobProcess(jobId, child, timeoutMs = OAUTH_JOB_TIMEOUT_MS) {
+  const job = authJobs.get(jobId);
+  if (!job) return;
+
+  if (job.timeout) {
+    clearTimeout(job.timeout);
+  }
+
+  job.process = child;
+  job.pid = child?.pid ?? null;
+  job.waitExpiresAt = new Date(Date.now() + timeoutMs).toISOString();
+  job.timeout = setTimeout(() => {
+    const current = authJobs.get(jobId);
+    if (!current || current.status !== "running") {
+      return;
+    }
+    try {
+      current.process?.kill("SIGTERM");
+    } catch {}
+    updateAuthJob(jobId, {
+      status: "failed",
+      completedAt: new Date().toISOString(),
+      process: null,
+      timeout: null,
+      awaitingInput: false,
+      inputPrompt: null,
+      pid: null,
+      waitExpiresAt: null,
+    });
+    addAuthLog(
+      jobId,
+      `OAuth timed out after ${Math.round(timeoutMs / 60_000)} minutes. Please retry.`,
+      "error",
+    );
+  }, timeoutMs);
+  job.timeout.unref?.();
+}
+
+function finishAuthJob(jobId, updates) {
+  const job = authJobs.get(jobId);
+  if (!job) return null;
+
+  if (job.timeout) {
+    clearTimeout(job.timeout);
+    job.timeout = null;
+  }
+
+  return updateAuthJob(jobId, {
+    ...updates,
+    process: null,
+    awaitingInput: false,
+    inputPrompt: null,
+    pid: null,
+    waitExpiresAt: null,
+  });
+}
+
+// ── GitHub Device Code Flow (for Codex OAuth in Web UI) ──
+const GITHUB_CLIENT_ID = "Iv1.b507a08c87ecfe98";
+const GITHUB_DEVICE_CODE_URL = "https://github.com/login/device/code";
+const GITHUB_ACCESS_TOKEN_URL = "https://github.com/login/oauth/access_token";
+
+async function requestGitHubDeviceCode(scope = "read:user") {
+  const body = new URLSearchParams({
+    client_id: GITHUB_CLIENT_ID,
+    scope,
+  });
+
+  const res = await fetch(GITHUB_DEVICE_CODE_URL, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body,
+  });
+
+  if (!res.ok) {
+    throw new Error(`GitHub device code failed: HTTP ${res.status}`);
+  }
+
+  const json = await res.json();
+  if (!json.device_code || !json.user_code || !json.verification_uri) {
+    throw new Error("GitHub device code response missing fields");
+  }
+  return json;
+}
+
+async function pollGitHubAccessToken(deviceCode, intervalMs, expiresAt) {
+  const bodyBase = new URLSearchParams({
+    client_id: GITHUB_CLIENT_ID,
+    device_code: deviceCode,
+    grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+  });
+
+  while (Date.now() < expiresAt) {
+    const res = await fetch(GITHUB_ACCESS_TOKEN_URL, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: bodyBase,
+    });
+
+    if (!res.ok) {
+      throw new Error(`GitHub device token failed: HTTP ${res.status}`);
+    }
+
+    const json = await res.json();
+    if (json.access_token && typeof json.access_token === "string") {
+      return json.access_token;
+    }
+
+    const err = json.error || "unknown";
+    if (err === "authorization_pending") {
+      await new Promise((r) => setTimeout(r, intervalMs));
+      continue;
+    }
+    if (err === "slow_down") {
+      await new Promise((r) => setTimeout(r, intervalMs + 2000));
+      continue;
+    }
+    if (err === "expired_token") {
+      throw new Error("GitHub device code expired; run login again");
+    }
+    if (err === "access_denied") {
+      throw new Error("GitHub login cancelled by user");
+    }
+    throw new Error(`GitHub device flow error: ${err}`);
+  }
+
+  throw new Error("GitHub device code expired; run login again");
+}
+
+async function saveGitHubCopilotAuthProfile(accessToken) {
+  const homeDir = process.env.USERPROFILE || process.env.HOME;
+  if (!homeDir) {
+    throw new Error("Cannot determine home directory");
+  }
+
+  const agentDir = path.resolve(homeDir, ".text2llm", "agents", "main", "agent");
+  const authStorePath = path.join(agentDir, "auth-profiles.json");
+
+  // Ensure directory exists
+  await mkdir(agentDir, { recursive: true });
+
+  // Read existing store or create new
+  let store = { profiles: {} };
+  try {
+    const raw = await readFile(authStorePath, "utf-8");
+    store = JSON.parse(raw);
+    if (!store.profiles || typeof store.profiles !== "object") {
+      store.profiles = {};
+    }
+  } catch {
+    // File doesn't exist yet, use empty store
+  }
+
+  // Upsert the profile
+  const profileId = "github-copilot:github";
+  store.profiles[profileId] = {
+    type: "token",
+    provider: "github-copilot",
+    token: accessToken,
+  };
+
+  await writeFile(authStorePath, JSON.stringify(store, null, 2) + "\n", "utf-8");
+
+  // Also update the workspace config to register the auth profile
+  const config = await loadWorkspaceConfig();
+  if (!config.auth) config.auth = {};
+  if (!config.auth.profiles) config.auth.profiles = {};
+  config.auth.profiles[profileId] = {
+    provider: "github-copilot",
+    mode: "token",
+  };
+  if (!config.auth.order) config.auth.order = {};
+  if (!config.auth.order["github-copilot"]) {
+    config.auth.order["github-copilot"] = [profileId];
+  } else if (!config.auth.order["github-copilot"].includes(profileId)) {
+    config.auth.order["github-copilot"].push(profileId);
+  }
+  await saveWorkspaceConfig(config);
+
+  return profileId;
 }
 
 // ── Kaggle Finetune Engine ──
@@ -2523,8 +3058,8 @@ function ensureDataStudioState(config) {
   return config.dataStudio;
 }
 
-const DATA_STUDIO_REMOTE_LIMIT_BYTES = 8 * 1024 * 1024;
-const DATA_STUDIO_INLINE_ASSET_MAX_BYTES = 2 * 1024 * 1024;
+const DATA_STUDIO_REMOTE_LIMIT_BYTES = Infinity; // No limit as requested by user
+const DATA_STUDIO_INLINE_ASSET_MAX_BYTES = Infinity;
 
 function createDatasetRowId() {
   return `dsr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -2842,12 +3377,55 @@ async function fetchHuggingFaceDatasetRows(datasetId, options = {}) {
   };
 
   const resolvedDatasetId = await resolveCanonicalDatasetId(normalizedId);
+  const runPythonFallback = async (errMessage) => {
+    return new Promise((resolve, reject) => {
+      const args = [
+        path.join(__dirname, "hf_dataset_loader.py"),
+        resolvedDatasetId,
+        options.config || "default",
+        options.split || "train",
+        "100"
+      ];
+      
+      const child = spawn("python", args, { cwd: __dirname, timeout: 300_000 });
+      let out = "";
+      let err = "";
+      child.stdout.on("data", d => out += d);
+      child.stderr.on("data", d => err += d);
+      child.on("close", code => {
+        try {
+          const parsed = JSON.parse(out);
+          if (parsed.ok && Array.isArray(parsed.rows)) {
+             return resolve(parsed.rows);
+          }
+          throw new Error(parsed.error || "Unknown python script error");
+        } catch (e) {
+          reject(new Error(`Fallback script failed: ${errMessage}\nPython error: ${err.trim() || out.trim() || e.message}`));
+        }
+      });
+      child.on("error", (e) => reject(new Error(`Failed to spawn python fallback: ${e.message}`)));
+    });
+  };
+
   const splitResp = await fetch(
     `https://datasets-server.huggingface.co/splits?dataset=${encodeURIComponent(resolvedDatasetId)}`,
     { signal: AbortSignal.timeout(Number(options.timeoutMs || 10000)) },
   );
   if (!splitResp.ok) {
-    throw new Error(`Unable to load Hugging Face splits (${splitResp.status})`);
+    let errMsg = `Unable to load Hugging Face splits (${splitResp.status})`;
+    try {
+      const errPayload = await splitResp.json();
+      if (errPayload.cause_message || errPayload.error) {
+        errMsg += `: ${errPayload.cause_message || errPayload.error}`;
+      }
+    } catch {}
+    
+    // Fallback if the error contains "script" or 500
+    if (errMsg.toLowerCase().includes("script") || splitResp.status >= 500) {
+      return await runPythonFallback(errMsg);
+    }
+    
+    throw new Error(errMsg);
   }
   const splitPayload = await splitResp.json();
   const splits = Array.isArray(splitPayload?.splits) ? splitPayload.splits : [];
@@ -2857,18 +3435,48 @@ async function fetchHuggingFaceDatasetRows(datasetId, options = {}) {
 
   const selectedConfig = String(options.config || splits[0]?.config || "").trim();
   const selectedSplit = String(options.split || splits[0]?.split || "train").trim();
-  const rowsResp = await fetch(
-    `https://datasets-server.huggingface.co/first-rows?dataset=${encodeURIComponent(resolvedDatasetId)}&config=${encodeURIComponent(selectedConfig)}&split=${encodeURIComponent(selectedSplit)}`,
-    { signal: AbortSignal.timeout(Number(options.timeoutMs || 10000)) },
-  );
-  if (!rowsResp.ok) {
-    throw new Error(`Unable to load Hugging Face rows (${rowsResp.status})`);
+  
+  // Fetch all rows
+  let allRows = [];
+  let currentOffset = 0;
+  const pageSize = 100; // HuggingFace public API max rows per request
+  
+  while (true) {
+    const rowsResp = await fetch(
+      `https://datasets-server.huggingface.co/rows?dataset=${encodeURIComponent(resolvedDatasetId)}&config=${encodeURIComponent(selectedConfig)}&split=${encodeURIComponent(selectedSplit)}&offset=${currentOffset}&length=${pageSize}`,
+      { signal: AbortSignal.timeout(Number(options.timeoutMs || 10000)) },
+    );
+    if (!rowsResp.ok) {
+      if (allRows.length > 0) break; // Return what we have if partial success
+      let errMsg = `Unable to load Hugging Face rows (${rowsResp.status})`;
+      try {
+        const errPayload = await rowsResp.json();
+        if (errPayload.cause_message || errPayload.error) {
+          errMsg += `: ${errPayload.cause_message || errPayload.error}`;
+        }
+      } catch {}
+      
+      if (errMsg.toLowerCase().includes("script") || rowsResp.status >= 500) {
+        return await runPythonFallback(errMsg);
+      }
+      
+      throw new Error(errMsg);
+    }
+    const rowsPayload = await rowsResp.json();
+    const rows = Array.isArray(rowsPayload?.rows)
+      ? rowsPayload.rows.map((item) => item?.row).filter((item) => item && typeof item === "object")
+      : [];
+      
+    if (rows.length === 0) break;
+    
+    allRows.push(...rows);
+    currentOffset += rows.length;
+    
+    // Safety check: if response gave us fewer rows than requested, we're at the end
+    if (rows.length < pageSize) break;
   }
-  const rowsPayload = await rowsResp.json();
-  const rows = Array.isArray(rowsPayload?.rows)
-    ? rowsPayload.rows.map((item) => item?.row).filter((item) => item && typeof item === "object")
-    : [];
-  return rows.map((row) => ({ ...row }));
+  
+  return allRows.map((row) => ({ ...row }));
 }
 
 async function fetchZenodoDatasetRows(recordId) {
@@ -2900,6 +3508,92 @@ async function fetchZenodoDatasetRows(recordId) {
     return [{ source: "zenodo", recordId: normalizedId, url: fileUrl, note: "No rows parsed from file" }];
   }
   return rows;
+}
+
+async function fetchKaggleDatasetRows(kaggleUrl, options = {}) {
+  // Extract owner/dataset-slug from Kaggle URL
+  // e.g. https://www.kaggle.com/datasets/rikdifos/credit-card-approval-prediction
+  const urlStr = String(kaggleUrl || "").trim();
+  const match = /kaggle\.com\/datasets\/([^/?#]+\/[^/?#]+)/i.exec(urlStr);
+  if (!match) {
+    return [{ source: "kaggle", url: urlStr, note: "Could not parse Kaggle dataset identifier from URL" }];
+  }
+  const kaggleId = match[1]; // e.g. "rikdifos/credit-card-approval-prediction"
+  
+  // Try the Kaggle public API to get dataset metadata and file list
+  const kaggleUser = process.env.KAGGLE_USERNAME || "";
+  const kaggleKey = process.env.KAGGLE_KEY || "";
+  const hasAuth = !!(kaggleUser && kaggleKey);
+  const authHeaders = hasAuth
+    ? { Authorization: "Basic " + Buffer.from(`${kaggleUser}:${kaggleKey}`).toString("base64") }
+    : {};
+
+  // Step 1: List files in the dataset via Kaggle API
+  try {
+    const listResp = await fetch(
+      `https://www.kaggle.com/api/v1/datasets/list-files/${kaggleId}`,
+      {
+        headers: { ...authHeaders, Accept: "application/json" },
+        signal: AbortSignal.timeout(15000),
+      }
+    );
+    if (!listResp.ok) {
+      throw new Error(`Kaggle API returned ${listResp.status}`);
+    }
+    const listPayload = await listResp.json();
+    const files = Array.isArray(listPayload?.datasetFiles) ? listPayload.datasetFiles : [];
+    
+    // Find the first CSV or JSON file
+    const csvFile = files.find(f => /\.(csv|tsv|json|jsonl)$/i.test(String(f?.fileName || "")));
+    if (!csvFile) {
+      // No parseable file found — return file list as metadata
+      return files.map(f => ({
+        source: "kaggle",
+        dataset: kaggleId,
+        fileName: String(f?.fileName || ""),
+        fileSize: f?.totalBytes || 0,
+        note: "File listing imported. No CSV/JSON found for automatic parsing."
+      }));
+    }
+    
+    // Step 2: Download the specific file
+    const fileName = String(csvFile.fileName || "");
+    const downloadUrl = `https://www.kaggle.com/api/v1/datasets/download/${kaggleId}/${encodeURIComponent(fileName)}`;
+    const downloadResp = await fetch(downloadUrl, {
+      headers: authHeaders,
+      signal: AbortSignal.timeout(30000),
+    });
+    if (!downloadResp.ok) {
+      throw new Error(`Kaggle download returned ${downloadResp.status}`);
+    }
+    
+    const buffer = Buffer.from(await downloadResp.arrayBuffer());
+    if (buffer.length > DATA_STUDIO_REMOTE_LIMIT_BYTES) {
+      // Too large — import a sample
+      const textContent = buffer.toString("utf-8");
+      const lines = textContent.split("\n").filter(l => l.trim());
+      const sampleLines = lines.slice(0, Math.min(201, lines.length)); // header + 200 rows
+      const sampleContent = sampleLines.join("\n");
+      const format = inferDataFormatFromUrl(fileName, "auto");
+      return normalizeRowsFromInput({ content: sampleContent, format });
+    }
+    
+    const format = inferDataFormatFromUrl(fileName, "auto");
+    const rows = normalizeRowsFromInput({ content: buffer.toString("utf-8"), format });
+    if (rows.length > 0) {
+      return rows;
+    }
+  } catch (apiError) {
+    // Kaggle API failed — fall through to metadata stub
+  }
+
+  // Fallback: return metadata if API isn't reachable
+  return [{
+    source: "kaggle",
+    dataset: kaggleId,
+    url: urlStr,
+    note: "Imported as metadata only. Set KAGGLE_USERNAME and KAGGLE_KEY env vars for full data import."
+  }];
 }
 
 function parseCsvLine(line) {
@@ -3447,9 +4141,14 @@ async function resolveRowsFromRemoteSource(params) {
   if (provider === "kaggle") {
     const idOrUrl = datasetId || sourceUrl;
     if (sourceUrl && /^https?:\/\//i.test(sourceUrl)) {
-      return fetchRemoteDatasetRows(sourceUrl, { source: "kaggle", format });
+      return fetchKaggleDatasetRows(sourceUrl);
     }
-    return [{ source: "kaggle", dataset: idOrUrl, note: "Dataset metadata imported. Add a direct file URL for row-level data." }];
+    // Build a Kaggle URL from dataset ID if possible
+    if (idOrUrl && !idOrUrl.startsWith("http")) {
+      const kaggleUrl = `https://www.kaggle.com/datasets/${idOrUrl}`;
+      return fetchKaggleDatasetRows(kaggleUrl);
+    }
+    return [{ source: "kaggle", dataset: idOrUrl, note: "Dataset metadata imported. Set KAGGLE_USERNAME and KAGGLE_KEY for full data." }];
   }
 
   const remoteUrl = sourceUrl || datasetId;
@@ -3962,7 +4661,7 @@ function summarizeStorageState(config, storage, project) {
       artifactCount: usage.artifactCount,
       estimatedMonthlyCostUsd,
       lowSpace: usageRatio >= 0.9,
-      isPrimary: config?.web?.primaryProviders?.storage === provider.id,
+      isPrimary: config?.web?.providers?.primary?.storage === provider.id,
     };
   });
 
@@ -4010,7 +4709,7 @@ app.get("/api/instances/providers", async (req, res) => {
         return apiPreferred?.id || configured[0]?.id || processedOptions[0]?.id || null;
       })();
       
-      const isPrimary = config?.web?.primaryProviders?.ai === p.id;
+      const isPrimary = config?.web?.providers?.primary?.ai === p.id;
 
       return {
         ...p,
@@ -4080,9 +4779,43 @@ app.post("/api/instances/provider/oauth", async (req, res) => {
     createAuthJob(jobId, mapped.providerId);
     addAuthLog(jobId, `Starting OAuth flow for ${option.name}...`);
 
-    // Spawn the process in the background
+    // ── openai-codex: Direct GitHub device code flow (no CLI spawn) ──
+    if (oauthProvider === "openai-codex") {
+      (async () => {
+        try {
+          addAuthLog(jobId, "Requesting GitHub device code...");
+          const device = await requestGitHubDeviceCode("read:user");
+
+          addAuthLog(jobId, `Visit: ${device.verification_uri}`);
+          addAuthLog(jobId, `Enter code: ${device.user_code}`);
+
+          const expiresAt = Date.now() + device.expires_in * 1000;
+          const intervalMs = Math.max(1000, device.interval * 1000);
+
+          addAuthLog(jobId, "Waiting for GitHub authorization...");
+          const accessToken = await pollGitHubAccessToken(device.device_code, intervalMs, expiresAt);
+
+          addAuthLog(jobId, "Saving credentials...");
+          await saveGitHubCopilotAuthProfile(accessToken);
+
+          finishAuthJob(jobId, { status: "completed", completedAt: new Date().toISOString() });
+          addAuthLog(jobId, "Authentication completed successfully!");
+        } catch (err) {
+          finishAuthJob(jobId, { status: "failed", completedAt: new Date().toISOString() });
+          addAuthLog(jobId, `${err.message}`, "error");
+        }
+      })();
+
+      return res.json({
+        ok: true,
+        jobId,
+        message: "GitHub device code flow started",
+      });
+    }
+
+    // ── Other providers: Spawn CLI process ──
     const args = [
-      "scripts/run-node.mjs",
+      path.join(repoRoot, "scripts/run-node.mjs"),
       "models",
       "auth",
       "login",
@@ -4094,15 +4827,15 @@ app.post("/api/instances/provider/oauth", async (req, res) => {
       ...process.env,
       TEXT2LLM_CONFIG_PATH: process.env.TEXT2LLM_CONFIG_PATH || workspaceConfig,
       TEXT2LLM_ALLOW_HEADLESS_AUTH: "1",
-      CI: "1", // Hint to sub-processes to run non-interactively where possible
     };
 
     const child = spawn(process.execPath, args, {
       cwd: repoRoot,
       env,
       shell: false,
-       // We want to capture stdout/stderr but pipe stdin if needed (though we can't easily pipe stdin in this async fire-and-forget model without more complex websocket logic, so we assume the CLI command outputs a URL for the user to visit)
     });
+    setAuthJobProcess(jobId, child);
+    addAuthLog(jobId, "Please complete the login in your browser if a new window opened.");
 
     child.stdout.on("data", (chunk) => {
       const text = chunk.toString();
@@ -4115,16 +4848,16 @@ app.post("/api/instances/provider/oauth", async (req, res) => {
     });
 
     child.on("error", (error) => {
-      updateAuthJob(jobId, { status: "failed" });
+      finishAuthJob(jobId, { status: "failed", completedAt: new Date().toISOString() });
       addAuthLog(jobId, `Process error: ${error.message}`, "error");
     });
 
     child.on("close", (code) => {
       if (code === 0) {
-        updateAuthJob(jobId, { status: "completed", completedAt: new Date().toISOString() });
+        finishAuthJob(jobId, { status: "completed", completedAt: new Date().toISOString() });
         addAuthLog(jobId, "Authentication completed successfully!");
       } else {
-        updateAuthJob(jobId, { status: "failed", completedAt: new Date().toISOString() });
+        finishAuthJob(jobId, { status: "failed", completedAt: new Date().toISOString() });
         addAuthLog(jobId, `Process exited with code ${code}`, "error");
       }
     });
@@ -4136,6 +4869,35 @@ app.post("/api/instances/provider/oauth", async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+app.post("/api/auth/input", (req, res) => {
+  try {
+    const jobId = String(req.body?.jobId || "").trim();
+    const input = String(req.body?.input || "").trim();
+    if (!jobId || !input) {
+      return res.status(400).json({ ok: false, error: "jobId and input are required" });
+    }
+
+    const job = authJobs.get(jobId);
+    if (!job) {
+      return res.status(404).json({ ok: false, error: "Job not found" });
+    }
+    if (job.status !== "running") {
+      return res.status(409).json({ ok: false, error: "OAuth job is no longer running" });
+    }
+    if (!job.process?.stdin || job.process.stdin.destroyed) {
+      return res.status(409).json({ ok: false, error: "OAuth process cannot accept input" });
+    }
+
+    job.process.stdin.write(`${input}\n`);
+    updateAuthJob(jobId, { awaitingInput: false, inputPrompt: null });
+    addAuthLog(jobId, "Received callback URL from web UI. Continuing OAuth...");
+
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error.message });
   }
 });
 
@@ -4157,6 +4919,11 @@ app.get("/api/auth/status", (req, res) => {
       status: job.status,
       providerId: job.providerId,
       logs: job.logs,
+      authUrl: job.authUrl,
+      awaitingInput: job.awaitingInput,
+      inputPrompt: job.inputPrompt,
+      pid: job.pid,
+      waitExpiresAt: job.waitExpiresAt,
       startedAt: job.startedAt,
       updatedAt: job.updatedAt,
       completedAt: job.completedAt,
@@ -4221,9 +4988,10 @@ app.post("/api/instances/primary", async (req, res) => {
 
     const config = await loadWorkspaceConfig();
     if (!config.web) config.web = {};
-    if (!config.web.primaryProviders) config.web.primaryProviders = {};
+    if (!config.web.providers) config.web.providers = {};
+    if (!config.web.providers.primary) config.web.providers.primary = {};
     
-    config.web.primaryProviders[category] = providerId;
+    config.web.providers.primary[category] = providerId;
 
     await writeFile(workspaceConfig, JSON.stringify(config, null, 2) + "\n", "utf-8");
 
@@ -4331,7 +5099,7 @@ app.post("/api/auth/test", async (req, res) => {
     const isGoogleProvider = provider.id === "google";
     const args = isGoogleProvider
       ? [
-          "scripts/run-node.mjs",
+          path.join(repoRoot, "scripts/run-node.mjs"),
           "agent",
           "--agent",
           "main",
@@ -4340,7 +5108,7 @@ app.post("/api/auth/test", async (req, res) => {
           "Reply with exactly OK.",
         ]
       : [
-          "scripts/run-node.mjs",
+          path.join(repoRoot, "scripts/run-node.mjs"),
           "models",
           "list",
           "--provider",
@@ -4352,7 +5120,17 @@ app.post("/api/auth/test", async (req, res) => {
 
     if (isGoogleProvider) {
       const probeConfig = JSON.parse(JSON.stringify(config || {}));
-      setDefaultModelForProviderSelection(probeConfig, provider.id, selectedOption.id);
+      if (!probeConfig.agents) probeConfig.agents = {};
+      if (!probeConfig.agents.defaults) probeConfig.agents.defaults = {};
+      if (!probeConfig.agents.defaults.model) probeConfig.agents.defaults.model = {};
+
+      const targetProviderId = selectedOption.type === "oauth"
+        ? (selectedOption.oauthProviderId || provider.id)
+        : provider.id;
+
+      // Force the embedded agent to use this provider with a Gemini model
+      probeConfig.agents.defaults.model.primary = `${targetProviderId}/gemini-2.5-flash`;
+
       probeConfigPath = path.resolve(
         repoRoot,
         "workspace",
@@ -5152,7 +5930,7 @@ app.get("/api/instances/gpu/providers", async (_req, res) => {
         credentialStatus: account?.status || "not-configured",
         lastValidatedAt: account?.lastValidatedAt || null,
         permissionsMissingCount: missingPermissions.length,
-        isPrimary: config?.web?.primaryProviders?.gpu === provider.id,
+        isPrimary: config?.web?.providers?.primary?.gpu === provider.id,
       };
     });
 
@@ -5263,6 +6041,13 @@ app.post("/api/instances/gpu/provider/test", async (req, res) => {
     const validation = adapter.validateCredentials(credentialPayload);
     if (!validation.ok) {
       return res.status(400).json({ ok: false, error: validation.error || "Invalid credentials" });
+    }
+
+    if (typeof adapter.testConnection === "function") {
+      const connTest = await adapter.testConnection(credentialPayload);
+      if (!connTest.ok) {
+        return res.status(400).json({ ok: false, error: connTest.error || "Connection failed" });
+      }
     }
 
     const candidateGranted = sanitizeGrantedPermissions(grantedPermissions);
@@ -5446,6 +6231,42 @@ app.post("/api/notebook/cells/:cellId/run", async (req, res) => {
     const config = ensureGpuConfigShape(await loadWorkspaceConfig());
     ensureNotebookCells(config);
 
+    // ── Try Kaggle execution first ──
+    // Kaggle is a push-based kernel API — it doesn't need a running instance,
+    // only valid credentials. Check credentials directly.
+    const instance = createGpuRoutingService().resolveInstance({ config, projectId });
+    const isKaggleInstance = instance && instance.providerId === "kaggle";
+    const kaggleIsPrimary = config?.web?.providers?.primary?.gpu === "kaggle";
+    const hasKaggleAccount = (config.gpu?.providerAccounts || []).some(a => a.providerId === "kaggle");
+
+    console.log(`[run-cell ${cellId}] GPU instance: ${instance?.providerId || "none"}, kagglePrimary: ${kaggleIsPrimary}, hasKaggleAcct: ${hasKaggleAccount}`);
+
+    if (isKaggleInstance || kaggleIsPrimary || hasKaggleAccount) {
+       const creds = await getKaggleCredentials();
+       console.log(`[run-cell ${cellId}] Kaggle credentials found: ${!!creds}`);
+       if (creds) {
+          const idx = config.notebook.cells.findIndex((c) => c.id === cellId && recordProjectId(c) === projectId);
+          if (idx !== -1 && config.notebook.cells[idx].type === "code") {
+              console.log(`[run-cell ${cellId}] Dispatching to Kaggle GPU...`);
+              try {
+                  const { executeNotebookOnKaggle } = await import("./kaggle-runner.mjs");
+                  const updatedCells = await executeNotebookOnKaggle([config.notebook.cells[idx]], creds, repoRoot);
+                  console.log(`[run-cell ${cellId}] ✓ Kaggle execution finished.`);
+                  config.notebook.cells[idx] = updatedCells[0];
+                  await saveWorkspaceConfig(config);
+                  return res.json({ ok: true, cell: normalizeCellRecord(config.notebook.cells[idx]) });
+              } catch (kaggleErr) {
+                  console.error(`[run-cell ${cellId}] ✗ Kaggle execution failed:`, kaggleErr.message || kaggleErr);
+                  return res.status(500).json({ ok: false, error: `Kaggle GPU error: ${kaggleErr.message || kaggleErr}` });
+              }
+          }
+       } else {
+          console.log(`[run-cell ${cellId}] No Kaggle credentials found — falling back to simulation`);
+       }
+    }
+
+    // ── Fallback: simulated execution ──
+    console.log(`[run-cell ${cellId}] Using simulated execution (no GPU provider matched)`);
     const idx = config.notebook.cells.findIndex((c) => c.id === cellId && recordProjectId(c) === projectId);
     if (idx === -1) {
       return res.status(404).json({ ok: false, error: "Cell not found" });
@@ -5470,6 +6291,48 @@ app.post("/api/notebook/run-all", async (req, res) => {
     const config = ensureGpuConfigShape(await loadWorkspaceConfig());
     ensureNotebookCells(config);
 
+    // ── Try Kaggle execution first ──
+    const instance = createGpuRoutingService().resolveInstance({ config, projectId });
+    const isKaggleInstance = instance && instance.providerId === "kaggle";
+    const kaggleIsPrimary = config?.web?.providers?.primary?.gpu === "kaggle";
+    const hasKaggleAccount = (config.gpu?.providerAccounts || []).some(a => a.providerId === "kaggle");
+
+    console.log(`[run-all] GPU instance: ${instance?.providerId || "none"}, kagglePrimary: ${kaggleIsPrimary}, hasKaggleAcct: ${hasKaggleAccount}`);
+
+    if (isKaggleInstance || kaggleIsPrimary || hasKaggleAccount) {
+       const creds = await getKaggleCredentials();
+       console.log("[run-all] Kaggle credentials found:", !!creds);
+       if (creds) {
+          const codeCells = config.notebook.cells.filter(c => recordProjectId(c) === projectId && c.type === "code");
+          console.log("[run-all] Code cells to execute:", codeCells.length);
+          if (codeCells.length > 0) {
+              console.log("[run-all] Dispatching", codeCells.length, "cells to Kaggle GPU...");
+              try {
+                  const { executeNotebookOnKaggle } = await import("./kaggle-runner.mjs");
+                  const updatedCodeCells = await executeNotebookOnKaggle(codeCells, creds, repoRoot);
+                  console.log("[run-all] ✓ Kaggle execution finished.");
+                  config.notebook.cells = config.notebook.cells.map(cell => {
+                      if (recordProjectId(cell) === projectId && cell.type === "code") {
+                          const updated = updatedCodeCells.find(c => c.id === cell.id);
+                          return updated || cell;
+                      }
+                      return cell;
+                  });
+                  await saveWorkspaceConfig(config);
+                  const cells = config.notebook.cells.map(normalizeCellRecord);
+                  return res.json({ ok: true, cells });
+              } catch (kaggleErr) {
+                  console.error("[run-all] ✗ Kaggle execution failed:", kaggleErr.message || kaggleErr);
+                  return res.status(500).json({ ok: false, error: `Kaggle GPU error: ${kaggleErr.message || kaggleErr}` });
+              }
+          }
+       } else {
+          console.log("[run-all] No Kaggle credentials — falling back to simulation");
+       }
+    }
+
+    // ── Fallback: simulated execution ──
+    console.log("[run-all] Using simulated execution (no GPU provider matched)");
     config.notebook.cells = config.notebook.cells.map((cell) => {
       if (recordProjectId(cell) === projectId && cell.type === "code") return simulateCellExecution(cell);
       return cell;
@@ -5532,6 +6395,65 @@ app.post("/api/data-studio/datasets", async (req, res) => {
     let rows = [];
 
     const normalizedSourceType = String(sourceType || "").toLowerCase();
+    
+    // Dataset Creator: If scraping, API, synthetic, or autonomous, we don't have immediate rows. 
+    // We create a "queuing" job for the worker.
+    if (normalizedSourceType === "scrape" || normalizedSourceType === "api" || normalizedSourceType === "synthetic" || normalizedSourceType === "autonomous") {
+      const { scrapeConfig, apiConfig, synthConfig, autonomousConfig } = req.body;
+      const config = ensureGpuConfigShape(await loadWorkspaceConfig());
+      const dataStudio = ensureDataStudioState(config);
+      
+      const dataset = createDatasetRecord({
+        name,
+        sourceType: normalizedSourceType,
+        format: effectiveFormat,
+        rows: [{ 
+          status: 'job-queued', 
+          source: normalizedSourceType, 
+          message: normalizedSourceType === 'autonomous' 
+            ? 'AI Dataset Creator job dispatched — collecting from multiple sources' 
+            : 'Data collection job dispatched to workers'
+        }],
+        projectId,
+      });
+
+      // Save configurations for local worker polling
+      dataset.scrapeConfig = scrapeConfig || null;
+      dataset.apiConfig = apiConfig || null;
+      dataset.synthConfig = synthConfig || null;
+      dataset.autonomousConfig = autonomousConfig || null;
+
+      // Insert job into Supabase for workers to pick up
+      const supabaseUrl = process.env.SUPABASE_URL?.trim();
+      const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+      
+      if (supabaseUrl && serviceKey) {
+        await fetch(`${supabaseUrl}/rest/v1/dataset_jobs`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: serviceKey,
+            Authorization: `Bearer ${serviceKey}`,
+            Prefer: "return=representation"
+          },
+          body: JSON.stringify({
+            user_id: req.user?.id || '00000000-0000-0000-0000-000000000000',
+            file_key: null,
+            output_format: effectiveFormat,
+            status: "pending",
+            scrape_config: scrapeConfig || null,
+            api_config: apiConfig || null,
+            synth_config: synthConfig || null,
+            autonomous_config: autonomousConfig || null
+          })
+        });
+      }
+
+      dataStudio.datasets.unshift(dataset);
+      await saveWorkspaceConfig(config);
+      return res.json({ ok: true, dataset: normalizeDataset(dataset) });
+    }
+
     if (normalizedSourceType === "url") {
       const safeUrl = String(url || "").trim();
       if (!safeUrl) {
@@ -5585,6 +6507,8 @@ app.get("/api/data-studio/library/resources", async (req, res) => {
 });
 
 app.post("/api/data-studio/datasets/import/library", async (req, res) => {
+  req.setTimeout(600_000); // 10 minutes
+  res.setTimeout(600_000);
   try {
     const projectId = resolveRequestProjectId(req);
     const { resourceId, name, format = "auto" } = req.body || {};
@@ -5605,14 +6529,17 @@ app.post("/api/data-studio/datasets/import/library", async (req, res) => {
       const hfId = normalizedResourceId.startsWith("hf:dataset:")
         ? normalizedResourceId.slice("hf:dataset:".length)
         : String(resource?.name || "");
-      try {
-        rows = await fetchHuggingFaceDatasetRows(hfId);
-      } catch {
-        rows = [{ source: "huggingface", dataset: hfId, note: "Imported as metadata only; row sampling unavailable." }];
-      }
+      rows = await fetchHuggingFaceDatasetRows(hfId);
     } else if (source === "zenodo") {
       const zenodoId = String(resource?.name || "").split("/").at(-1) || normalizedResourceId;
       rows = await fetchZenodoDatasetRows(zenodoId);
+    } else if (source === "kaggle") {
+      const kaggleUrl = String(resource?.url || "").trim();
+      if (kaggleUrl) {
+        rows = await fetchKaggleDatasetRows(kaggleUrl);
+      } else {
+        rows = [{ source: "kaggle", resourceId: normalizedResourceId, note: "No URL available for Kaggle dataset" }];
+      }
     } else if (resource?.url) {
       rows = await fetchRemoteDatasetRows(resource.url, {
         source: "library",
@@ -5741,6 +6668,35 @@ app.get("/api/data-studio/datasets/:datasetId/rows", async (req, res) => {
       pageSize,
       totalRows,
       totalPages,
+    });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error instanceof Error ? error.message : "Unknown error" });
+  }
+});
+
+app.get("/api/data-studio/datasets/:datasetId/rows/all", async (req, res) => {
+  try {
+    const projectId = resolveRequestProjectId(req);
+    const datasetId = String(req.params.datasetId || "").trim();
+
+    const config = ensureGpuConfigShape(await loadWorkspaceConfig());
+    const dataStudio = ensureDataStudioState(config);
+    const dataset = findProjectDataset(dataStudio, projectId, datasetId);
+    if (!dataset) {
+      return res.status(404).json({ ok: false, error: "Dataset not found" });
+    }
+
+    if (!hasCompleteDatasetRowIds(dataset.rows)) {
+      dataset.rows = ensureDatasetRowIds(dataset.rows, { forceNew: true });
+      dataset.updatedAt = nowIso();
+      await saveWorkspaceConfig(config);
+    }
+    const rows = Array.isArray(dataset.rows) ? dataset.rows : [];
+
+    return res.json({
+      ok: true,
+      rows,
+      totalRows: rows.length,
     });
   } catch (error) {
     return res.status(500).json({ ok: false, error: error instanceof Error ? error.message : "Unknown error" });
@@ -5970,6 +6926,569 @@ app.delete("/api/data-studio/datasets/:datasetId", async (req, res) => {
     }
     await saveWorkspaceConfig(config);
     return res.json({ ok: true });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error instanceof Error ? error.message : "Unknown error" });
+  }
+});
+
+function getDefaultAiCredentials(config) {
+  const { key: masterKey } = ensureGpuMasterKey(config);
+  
+  const oaiAccount = getProviderAccount(config, "openai");
+  if (oaiAccount?.credentialRef) {
+    const creds = decryptCredentialEnvelope(oaiAccount.credentialRef, masterKey);
+    if (creds?.OPENAI_API_KEY) return { provider: "openai", key: creds.OPENAI_API_KEY, model: "gpt-4o-mini" };
+  }
+  
+  const orAccount = getProviderAccount(config, "openrouter");
+  if (orAccount?.credentialRef) {
+    const creds = decryptCredentialEnvelope(orAccount.credentialRef, masterKey);
+    if (creds?.OPENROUTER_API_KEY) return { provider: "openrouter", key: creds.OPENROUTER_API_KEY, model: "openai/gpt-4o-mini" };
+  }
+  
+  throw new Error("No AI credentials configured for semantic filtering or augmentation. Please add OpenAI or OpenRouter keys in Settings.");
+}
+
+async function callAIProvider(systemPrompt, userPrompt, config) {
+  const creds = getDefaultAiCredentials(config);
+  
+  const payload = {
+    model: creds.model,
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt }
+    ],
+    temperature: 0.2
+  };
+
+  const headers = { "Content-Type": "application/json", "Authorization": `Bearer ${creds.key}` };
+  const url = creds.provider === "openai" 
+    ? "https://api.openai.com/v1/chat/completions" 
+    : "https://openrouter.ai/api/v1/chat/completions";
+
+  const response = await fetch(url, { method: "POST", headers, body: JSON.stringify(payload) });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`AI Provider error: ${text}`);
+  }
+
+  const data = await response.json();
+  return data.choices?.[0]?.message?.content || "";
+}
+
+app.post("/api/data-studio/datasets/:datasetId/deduplicate", async (req, res) => {
+  try {
+    const projectId = resolveRequestProjectId(req);
+    const datasetId = String(req.params.datasetId || "").trim();
+    const config = ensureGpuConfigShape(await loadWorkspaceConfig());
+    const dataStudio = ensureDataStudioState(config);
+    const dataset = findProjectDataset(dataStudio, projectId, datasetId);
+    if (!dataset) return res.status(404).json({ ok: false, error: "Dataset not found" });
+
+    const { field, mode } = req.body || {};
+    const targetField = String(field || "").trim();
+    const isNormalized = mode === "normalized";
+    const seen = new Set();
+    const rows = dataset.rows || [];
+
+    dataset.rows = rows.filter(row => {
+      let val = row[targetField];
+      if (val === undefined || val === null) val = "";
+      let key = String(val);
+      if (isNormalized) {
+        key = key.toLowerCase().replace(/\s+/g, "");
+      }
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    updateDatasetAfterMutation(dataset, "deduplicate");
+    await saveWorkspaceConfig(config);
+
+    return res.json({ ok: true, dataset: normalizeDataset(dataset) });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error instanceof Error ? error.message : "Unknown error" });
+  }
+});
+
+app.post("/api/data-studio/datasets/:datasetId/redact", async (req, res) => {
+  try {
+    const projectId = resolveRequestProjectId(req);
+    const datasetId = String(req.params.datasetId || "").trim();
+    const config = ensureGpuConfigShape(await loadWorkspaceConfig());
+    const dataStudio = ensureDataStudioState(config);
+    const dataset = findProjectDataset(dataStudio, projectId, datasetId);
+    if (!dataset) return res.status(404).json({ ok: false, error: "Dataset not found" });
+
+    const { field, types } = req.body || {};
+    const targetField = String(field || "").trim();
+    const targetTypes = String(types || "all");
+    const rows = dataset.rows || [];
+
+    const emailRegex = /([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/gi;
+    const phoneRegex = /(\+?\d{1,2}\s)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/g;
+    const ccRegex = /\b(?:\d{4}[ -]?){3}\d{4}\b/g;
+
+    dataset.rows = rows.map(row => {
+      if (!row[targetField] || typeof row[targetField] !== "string") return row;
+      let text = row[targetField];
+      if (targetTypes === "email" || targetTypes === "all") text = text.replace(emailRegex, "[EMAIL]");
+      if (targetTypes === "phone" || targetTypes === "all") text = text.replace(phoneRegex, "[PHONE]");
+      if (targetTypes === "creditcard" || targetTypes === "all") text = text.replace(ccRegex, "[CREDIT_CARD]");
+      return { ...row, [targetField]: text };
+    });
+
+    updateDatasetAfterMutation(dataset, "redact");
+    await saveWorkspaceConfig(config);
+
+    return res.json({ ok: true, dataset: normalizeDataset(dataset) });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error instanceof Error ? error.message : "Unknown error" });
+  }
+});
+
+app.post("/api/data-studio/datasets/:datasetId/semantic-filter", async (req, res) => {
+  try {
+    const projectId = resolveRequestProjectId(req);
+    const datasetId = String(req.params.datasetId || "").trim();
+    const config = ensureGpuConfigShape(await loadWorkspaceConfig());
+    const dataStudio = ensureDataStudioState(config);
+    const dataset = findProjectDataset(dataStudio, projectId, datasetId);
+    if (!dataset) return res.status(404).json({ ok: false, error: "Dataset not found" });
+
+    const { field, prompt } = req.body || {};
+    const targetField = String(field || "").trim();
+    const userPrompt = String(prompt || "").trim();
+    const rows = dataset.rows || [];
+    const keptRows = [];
+
+    const systemPrompt = `You are a dataset curator. Evaluate the provided text based on this criteria: "${userPrompt}". 
+If the text meets the criteria, reply with exactly "KEEP". If it does not, reply with exactly "DROP". Say nothing else.`;
+
+    const maxRows = Math.min(rows.length, 100); 
+    
+    for (let i = 0; i < maxRows; i++) {
+        const row = rows[i];
+        if (!row[targetField]) {
+            keptRows.push(row);
+            continue;
+        }
+        
+        try {
+            const result = await callAIProvider(systemPrompt, String(row[targetField]), config);
+            if (result.trim().toUpperCase() !== "DROP") {
+                keptRows.push(row);
+            }
+        } catch (e) {
+            keptRows.push(row); 
+        }
+    }
+
+    for (let i = maxRows; i < rows.length; i++) {
+        keptRows.push(rows[i]);
+    }
+
+    dataset.rows = keptRows;
+    updateDatasetAfterMutation(dataset, "semantic-filter");
+    await saveWorkspaceConfig(config);
+
+    return res.json({ ok: true, dataset: normalizeDataset(dataset) });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error instanceof Error ? error.message : "Unknown error" });
+  }
+});
+
+app.post("/api/data-studio/datasets/:datasetId/format", async (req, res) => {
+  try {
+    const projectId = resolveRequestProjectId(req);
+    const datasetId = String(req.params.datasetId || "").trim();
+    const config = ensureGpuConfigShape(await loadWorkspaceConfig());
+    const dataStudio = ensureDataStudioState(config);
+    const dataset = findProjectDataset(dataStudio, projectId, datasetId);
+    if (!dataset) return res.status(404).json({ ok: false, error: "Dataset not found" });
+
+    const { template, inputCol, outputCol } = req.body || {};
+    const rows = dataset.rows || [];
+
+    dataset.rows = rows.map(row => {
+      const input = String(row[inputCol] || "");
+      const output = String(row[outputCol] || "");
+      let formattedText = "";
+
+      if (template === "alpaca") {
+        formattedText = `Below is an instruction that describes a task. Write a response that appropriately completes the request.\n\n### Instruction:\n${input}\n\n### Response:\n${output}`;
+      } else if (template === "chatml") {
+        formattedText = `<|im_start|>user\n${input}<|im_end|>\n<|im_start|>assistant\n${output}<|im_end|>`;
+      } else if (template === "llama3") {
+        formattedText = `<|start_header_id|>user<|end_header_id|>\n\n${input}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n${output}<|eot_id|>`;
+      }
+
+      return { ...row, formatted_prompt: formattedText };
+    });
+
+    updateDatasetAfterMutation(dataset, "format");
+    await saveWorkspaceConfig(config);
+
+    return res.json({ ok: true, dataset: normalizeDataset(dataset) });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error instanceof Error ? error.message : "Unknown error" });
+  }
+});
+
+app.post("/api/data-studio/datasets/:datasetId/augment", async (req, res) => {
+  try {
+    const projectId = resolveRequestProjectId(req);
+    const datasetId = String(req.params.datasetId || "").trim();
+    const config = ensureGpuConfigShape(await loadWorkspaceConfig());
+    const dataStudio = ensureDataStudioState(config);
+    const dataset = findProjectDataset(dataStudio, projectId, datasetId);
+    if (!dataset) return res.status(404).json({ ok: false, error: "Dataset not found" });
+
+    const { field, prompt } = req.body || {};
+    const targetField = String(field || "").trim();
+    const userPrompt = String(prompt || "").trim();
+    const rows = dataset.rows || [];
+
+    const systemPrompt = `You are an expert data augmentor. Modify the following text according to the instructions: "${userPrompt}". 
+Respond ONLY with the modified text and nothing else. Do not output any preamble or explanation.`;
+
+    const maxRows = Math.min(rows.length, 100); 
+    
+    for (let i = 0; i < maxRows; i++) {
+        const row = rows[i];
+        if (!row[targetField]) continue;
+        
+        try {
+            const result = await callAIProvider(systemPrompt, String(row[targetField]), config);
+            if (result && result.trim()) {
+                row[targetField] = result.trim();
+            }
+        } catch (e) {
+            // keep orig
+        }
+    }
+
+    updateDatasetAfterMutation(dataset, "augment");
+    await saveWorkspaceConfig(config);
+
+    return res.json({ ok: true, dataset: normalizeDataset(dataset) });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error instanceof Error ? error.message : "Unknown error" });
+  }
+});
+
+app.post("/api/data-studio/datasets/:datasetId/filter", async (req, res) => {
+  try {
+    const projectId = resolveRequestProjectId(req);
+    const datasetId = String(req.params.datasetId || "").trim();
+    const config = ensureGpuConfigShape(await loadWorkspaceConfig());
+    const dataStudio = ensureDataStudioState(config);
+    const dataset = findProjectDataset(dataStudio, projectId, datasetId);
+    if (!dataset) return res.status(404).json({ ok: false, error: "Dataset not found" });
+
+    const { condition, field, value } = req.body || {};
+    const targetField = String(field || "").trim();
+    const conditionVal = String(value || "");
+    const rows = dataset.rows || [];
+
+    dataset.rows = rows.filter(row => {
+      let val = row[targetField];
+      if (val === undefined || val === null) val = "";
+      const strVal = String(val);
+
+      switch (condition) {
+        case "contains":
+          return strVal.toLowerCase().includes(conditionVal.toLowerCase());
+        case "equals":
+          return strVal === conditionVal;
+        case "regex":
+          try {
+            return new RegExp(conditionVal, 'i').test(strVal);
+          } catch (e) {
+            return false;
+          }
+        case "empty":
+          return strVal.trim() === "";
+        case "not_empty":
+          return strVal.trim() !== "";
+        case "length_gt":
+          return strVal.length > Number(conditionVal);
+        case "length_lt":
+          return strVal.length < Number(conditionVal);
+        default:
+          return true;
+      }
+    });
+
+    updateDatasetAfterMutation(dataset, "filter");
+    await saveWorkspaceConfig(config);
+    return res.json({ ok: true, dataset: normalizeDataset(dataset) });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error instanceof Error ? error.message : "Unknown error" });
+  }
+});
+
+app.post("/api/data-studio/datasets/:datasetId/replace", async (req, res) => {
+  try {
+    const projectId = resolveRequestProjectId(req);
+    const datasetId = String(req.params.datasetId || "").trim();
+    const config = ensureGpuConfigShape(await loadWorkspaceConfig());
+    const dataStudio = ensureDataStudioState(config);
+    const dataset = findProjectDataset(dataStudio, projectId, datasetId);
+    if (!dataset) return res.status(404).json({ ok: false, error: "Dataset not found" });
+
+    const { field, search, target, isRegex } = req.body || {};
+    const targetField = String(field || "").trim();
+    const searchVal = String(search || "");
+    const targetVal = String(target || "");
+    const isReg = Boolean(isRegex);
+    const rows = dataset.rows || [];
+
+    dataset.rows = rows.map(row => {
+      let val = row[targetField];
+      if (val === undefined || val === null) return row;
+      let strVal = String(val);
+      
+      if (isReg) {
+        try {
+          const regex = new RegExp(searchVal, 'g');
+          strVal = strVal.replace(regex, targetVal);
+        } catch (e) {
+          // ignore invalid regex
+        }
+      } else {
+        strVal = strVal.split(searchVal).join(targetVal);
+      }
+      return { ...row, [targetField]: strVal };
+    });
+
+    updateDatasetAfterMutation(dataset, "replace");
+    await saveWorkspaceConfig(config);
+    return res.json({ ok: true, dataset: normalizeDataset(dataset) });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error instanceof Error ? error.message : "Unknown error" });
+  }
+});
+
+app.post("/api/data-studio/datasets/:datasetId/sample", async (req, res) => {
+  try {
+    const projectId = resolveRequestProjectId(req);
+    const datasetId = String(req.params.datasetId || "").trim();
+    const config = ensureGpuConfigShape(await loadWorkspaceConfig());
+    const dataStudio = ensureDataStudioState(config);
+    const dataset = findProjectDataset(dataStudio, projectId, datasetId);
+    if (!dataset) return res.status(404).json({ ok: false, error: "Dataset not found" });
+
+    const { mode, value } = req.body || {};
+    const sampleMode = String(mode || "shuffle");
+    const numValue = Number(value || 0);
+    let rows = [...(dataset.rows || [])];
+
+    // Fisher-Yates shuffle
+    for (let i = rows.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [rows[i], rows[j]] = [rows[j], rows[i]];
+    }
+
+    if (sampleMode === "sample_n" && numValue > 0) {
+      rows = rows.slice(0, numValue);
+    } else if (sampleMode === "sample_percent" && numValue > 0 && numValue <= 100) {
+      const takeCount = Math.ceil(rows.length * (numValue / 100));
+      rows = rows.slice(0, takeCount);
+    }
+
+    dataset.rows = rows;
+    updateDatasetAfterMutation(dataset, "sample");
+    await saveWorkspaceConfig(config);
+    return res.json({ ok: true, dataset: normalizeDataset(dataset) });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error instanceof Error ? error.message : "Unknown error" });
+  }
+});
+
+app.post("/api/data-studio/datasets/:datasetId/sort", async (req, res) => {
+  try {
+    const projectId = resolveRequestProjectId(req);
+    const datasetId = String(req.params.datasetId || "").trim();
+    const config = ensureGpuConfigShape(await loadWorkspaceConfig());
+    const dataStudio = ensureDataStudioState(config);
+    const dataset = findProjectDataset(dataStudio, projectId, datasetId);
+    if (!dataset) return res.status(404).json({ ok: false, error: "Dataset not found" });
+
+    const { field, order } = req.body || {};
+    const targetField = String(field || "").trim();
+    const sortOrder = String(order || "asc");
+    const rows = [...(dataset.rows || [])];
+
+    rows.sort((a, b) => {
+      let valA = a[targetField];
+      let valB = b[targetField];
+      if (valA === undefined || valA === null) valA = "";
+      if (valB === undefined || valB === null) valB = "";
+
+      const strA = String(valA);
+      const strB = String(valB);
+
+      if (sortOrder === "asc") {
+        const numA = Number(strA);
+        const numB = Number(strB);
+        if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+        return strA.localeCompare(strB);
+      } else if (sortOrder === "desc") {
+        const numA = Number(strA);
+        const numB = Number(strB);
+        if (!isNaN(numA) && !isNaN(numB)) return numB - numA;
+        return strB.localeCompare(strA);
+      } else if (sortOrder === "length_asc") {
+        return strA.length - strB.length;
+      } else if (sortOrder === "length_desc") {
+        return strB.length - strA.length;
+      }
+      return 0;
+    });
+
+    dataset.rows = rows;
+    updateDatasetAfterMutation(dataset, "sort");
+    await saveWorkspaceConfig(config);
+    return res.json({ ok: true, dataset: normalizeDataset(dataset) });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error instanceof Error ? error.message : "Unknown error" });
+  }
+});
+
+app.post("/api/data-studio/datasets/:datasetId/extract", async (req, res) => {
+  try {
+    const projectId = resolveRequestProjectId(req);
+    const datasetId = String(req.params.datasetId || "").trim();
+    const config = ensureGpuConfigShape(await loadWorkspaceConfig());
+    const dataStudio = ensureDataStudioState(config);
+    const dataset = findProjectDataset(dataStudio, projectId, datasetId);
+    if (!dataset) return res.status(404).json({ ok: false, error: "Dataset not found" });
+
+    const { field, pattern, newField } = req.body || {};
+    const targetField = String(field || "").trim();
+    const regexPattern = String(pattern || "");
+    const newFieldName = String(newField || "").trim();
+    const rows = dataset.rows || [];
+
+    let regex = null;
+    try {
+      regex = new RegExp(regexPattern);
+    } catch (e) {
+      return res.status(400).json({ ok: false, error: "Invalid Regex pattern" });
+    }
+
+    dataset.rows = rows.map(row => {
+      let val = row[targetField];
+      if (val === undefined || val === null) return { ...row, [newFieldName]: "" };
+      let strVal = String(val);
+      
+      const match = regex.exec(strVal);
+      const extracted = match && match.length > 1 ? match[1] : (match ? match[0] : "");
+      
+      return { ...row, [newFieldName]: extracted };
+    });
+
+    updateDatasetAfterMutation(dataset, "extract");
+    await saveWorkspaceConfig(config);
+    return res.json({ ok: true, dataset: normalizeDataset(dataset) });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error instanceof Error ? error.message : "Unknown error" });
+  }
+});
+
+app.post("/api/data-studio/datasets/:datasetId/cast", async (req, res) => {
+  try {
+    const projectId = resolveRequestProjectId(req);
+    const datasetId = String(req.params.datasetId || "").trim();
+    const config = ensureGpuConfigShape(await loadWorkspaceConfig());
+    const dataStudio = ensureDataStudioState(config);
+    const dataset = findProjectDataset(dataStudio, projectId, datasetId);
+    if (!dataset) return res.status(404).json({ ok: false, error: "Dataset not found" });
+
+    const { field, type } = req.body || {};
+    const targetField = String(field || "").trim();
+    const targetType = String(type || "string");
+    const rows = dataset.rows || [];
+
+    dataset.rows = rows.map(row => {
+      let val = row[targetField];
+      if (val === undefined || val === null) return row;
+      let castedVal = val;
+      
+      try {
+        if (targetType === "string") {
+          castedVal = typeof val === "object" ? JSON.stringify(val) : String(val);
+        } else if (targetType === "number") {
+          castedVal = Number(val);
+        } else if (targetType === "boolean") {
+          castedVal = Boolean(val);
+        } else if (targetType === "json") {
+          castedVal = typeof val === "string" ? JSON.parse(val) : val;
+        }
+      } catch (e) {
+        // if cast fails, keep original
+      }
+      
+      return { ...row, [targetField]: castedVal };
+    });
+
+    updateDatasetAfterMutation(dataset, "cast");
+    await saveWorkspaceConfig(config);
+    return res.json({ ok: true, dataset: normalizeDataset(dataset) });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error instanceof Error ? error.message : "Unknown error" });
+  }
+});
+
+app.post("/api/data-studio/datasets/:datasetId/join", async (req, res) => {
+  try {
+    const projectId = resolveRequestProjectId(req);
+    const datasetId = String(req.params.datasetId || "").trim();
+    const config = ensureGpuConfigShape(await loadWorkspaceConfig());
+    const dataStudio = ensureDataStudioState(config);
+    
+    const sourceDataset = findProjectDataset(dataStudio, projectId, datasetId);
+    if (!sourceDataset) return res.status(404).json({ ok: false, error: "Source Dataset not found" });
+
+    const { targetDatasetId, sourceKey, targetKey, prefix } = req.body || {};
+    
+    const targetDataset = findProjectDataset(dataStudio, projectId, String(targetDatasetId || ""));
+    if (!targetDataset) return res.status(404).json({ ok: false, error: "Target Dataset not found" });
+
+    const sourceKeyField = String(sourceKey || "").trim();
+    const targetKeyField = String(targetKey || "").trim();
+    const joinPrefix = String(prefix || "");
+    const sourceRows = sourceDataset.rows || [];
+    const targetRows = targetDataset.rows || [];
+
+    // Build target lookup map
+    const targetMap = new Map();
+    for (const row of targetRows) {
+      if (row[targetKeyField] !== undefined) {
+        targetMap.set(String(row[targetKeyField]), row);
+      }
+    }
+
+    // Join
+    sourceDataset.rows = sourceRows.map(row => {
+      const keyValue = String(row[sourceKeyField] || "");
+      const match = targetMap.get(keyValue);
+      if (!match) return row;
+
+      const joinedRow = { ...row };
+      for (const [key, val] of Object.entries(match)) {
+        if (!key.startsWith("__")) {
+          joinedRow[`${joinPrefix}${key}`] = val;
+        }
+      }
+      return joinedRow;
+    });
+
+    updateDatasetAfterMutation(sourceDataset, "join");
+    await saveWorkspaceConfig(config);
+    return res.json({ ok: true, dataset: normalizeDataset(sourceDataset) });
   } catch (error) {
     return res.status(500).json({ ok: false, error: error instanceof Error ? error.message : "Unknown error" });
   }
@@ -7041,11 +8560,33 @@ function isChatDiagnosticLine(line) {
     return true;
   }
 
+  // General console.time() / console.timeEnd() output pattern:
+  // Matches lines like "someLabel: 12.34ms" or "discover_looping_C:\path: 5.2ms"
+  // or "agentCommand_Total: 1:56.394 (m:ss.mmm)"
+  const isTimingLine =
+    /:\s+[\d.:]+\s*(m?s|ms)\b/i.test(trimmed) &&
+    /^[a-zA-Z_]/.test(trimmed) &&
+    !/:\/\//.test(trimmed); // exclude URLs
+
+  if (isTimingLine) {
+    return true;
+  }
+
+  // Matches lines that look like "labelName: duration (format)" at the end
+  const isTimingWithSuffix =
+    /:\s+[\d.:]+\s*\([^)]*\)\s*$/.test(trimmed) &&
+    /^[a-zA-Z_]/.test(trimmed);
+
+  if (isTimingWithSuffix) {
+    return true;
+  }
+
   return (
     trimmed.startsWith("[tools]") ||
     trimmed.startsWith("[agent/embedded]") ||
     trimmed.startsWith("[diagnostic]") ||
     trimmed.startsWith("🦞 text2llm") ||
+    trimmed.startsWith("🦞 openclaw") ||
     trimmed.includes("google tool schema snapshot") ||
     trimmed.includes("allowlist contains unknown entries") ||
     trimmed.startsWith("At line:") ||
@@ -7053,7 +8594,23 @@ function isChatDiagnosticLine(line) {
     trimmed.startsWith("FullyQualifiedErrorId") ||
     trimmed.startsWith("+") ||
     trimmed.startsWith("~") ||
-    /\b(Command exited with code|CannotConvertArgumentNoMessage|ParameterBindingException)\b/i.test(trimmed)
+    trimmed.startsWith("DEBUG:") ||
+    trimmed.startsWith("[text2llm]") ||
+    trimmed.startsWith("[openclaw]") ||
+    trimmed.startsWith("Doctor changes") ||
+    trimmed.startsWith("Doctor") ||
+    trimmed.startsWith("Run:") ||
+    trimmed.startsWith("Config invalid") ||
+    trimmed.startsWith("File:") ||
+    trimmed.startsWith("Problem:") ||
+    trimmed.startsWith("[chat]") ||
+    /^(runCli|agentCommand|discoverTEXT2LLMPlugins|discoverInDirectory|listChannelPluginCatalogEntries|resolveChannelOptions|resolveCliChannelOptions|resolveConfiguredModelRef)\b/i.test(trimmed) ||
+    /\b(Command exited with code|CannotConvertArgumentNoMessage|ParameterBindingException)\b/i.test(trimmed) ||
+    /^\s*google-gemini-cli auth configured/i.test(trimmed) ||
+    /^\s*Run "text2llm doctor/i.test(trimmed) ||
+    /^[│|+o\-─╭╯╰┐┘┌└═╔╗╚╝╬╩╦╠╣]+\s*$/.test(trimmed) ||
+    /^[│|]\s+.*\s+[│|]$/.test(trimmed) ||
+    /^\d{1,2}:\d{2}:\d{2}\s+\[/.test(trimmed)
   );
 }
 
@@ -7370,8 +8927,487 @@ async function runKaggleQwenFinetuneWorkflow({ sessionId, persona, sendSSE }) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Direct Provider API — bypass agent subprocess for fast chat responses
+// ---------------------------------------------------------------------------
+
+/**
+ * Map provider IDs to their OpenAI-compatible (or custom) chat completion endpoints.
+ * Most LLM providers expose an OpenAI-compatible `/v1/chat/completions` route.
+ */
+const PROVIDER_DIRECT_API = {
+  google: {
+    url: "https://generativelanguage.googleapis.com/v1beta/models",
+    envKey: "GEMINI_API_KEY",
+    format: "google",
+  },
+  groq: {
+    url: "https://api.groq.com/openai/v1/chat/completions",
+    envKey: "GROQ_API_KEY",
+    format: "openai",
+  },
+  openai: {
+    url: "https://api.openai.com/v1/chat/completions",
+    envKey: "OPENAI_API_KEY",
+    format: "openai",
+  },
+  anthropic: {
+    url: "https://api.anthropic.com/v1/messages",
+    envKey: "ANTHROPIC_API_KEY",
+    format: "anthropic",
+  },
+  openrouter: {
+    url: "https://openrouter.ai/api/v1/chat/completions",
+    envKey: "OPENROUTER_API_KEY",
+    format: "openai",
+  },
+  xai: {
+    url: "https://api.x.ai/v1/chat/completions",
+    envKey: "XAI_API_KEY",
+    format: "openai",
+  },
+  mistral: {
+    url: "https://api.mistral.ai/v1/chat/completions",
+    envKey: "MISTRAL_API_KEY",
+    format: "openai",
+  },
+  together: {
+    url: "https://api.together.xyz/v1/chat/completions",
+    envKey: "TOGETHER_API_KEY",
+    format: "openai",
+  },
+  cerebras: {
+    url: "https://api.cerebras.ai/v1/chat/completions",
+    envKey: "CEREBRAS_API_KEY",
+    format: "openai",
+  },
+  deepseek: {
+    url: "https://api.deepseek.com/v1/chat/completions",
+    envKey: "DEEPSEEK_API_KEY",
+    format: "openai",
+  },
+  "github-copilot": {
+    url: "https://api.githubcopilot.com/chat/completions",
+    envKey: "GITHUB_TOKEN",
+    format: "openai",
+  },
+  moonshot: {
+    url: "https://api.moonshot.cn/v1/chat/completions",
+    envKey: "MOONSHOT_API_KEY",
+    format: "openai",
+  },
+  "qwen-portal": {
+    url: "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+    envKey: "QWEN_PORTAL_API_KEY",
+    format: "openai",
+  },
+  venice: {
+    url: "https://api.venice.ai/api/v1/chat/completions",
+    envKey: "VENICE_API_KEY",
+    format: "openai",
+  },
+};
+
+/**
+ * Parse a "provider/model" string into { provider, modelId }.
+ * Returns null if the format is unrecognised.
+ */
+function parseProviderModel(qualified) {
+  if (!qualified || typeof qualified !== "string") return null;
+  const idx = qualified.indexOf("/");
+  if (idx <= 0) return null;
+  return { provider: qualified.slice(0, idx), modelId: qualified.slice(idx + 1) };
+}
+
+/**
+ * Resolve the API key for a provider from (a) client-supplied key,
+ * (b) process.env, or (c) workspace config env section.
+ */
+function resolveProviderApiKey(provider, configEnv, clientApiKey) {
+  if (clientApiKey && typeof clientApiKey === "string" && clientApiKey.trim()) {
+    return clientApiKey.trim();
+  }
+  const apiDef = PROVIDER_DIRECT_API[provider];
+  if (!apiDef) return null;
+  
+  const envKeys = Array.isArray(apiDef.envKey) ? apiDef.envKey : [apiDef.envKey];
+  for (const envKey of envKeys) {
+    const val = process.env[envKey] || (configEnv && configEnv[envKey]);
+    if (val) return val;
+  }
+  return null;
+}
+
+/**
+ * Build the messages array from context parts + conversation history.
+ */
+function buildChatMessages(systemPrompt, conversationHistory, userMessage) {
+  const messages = [];
+  if (systemPrompt) {
+    messages.push({ role: "system", content: systemPrompt });
+  }
+  if (Array.isArray(conversationHistory)) {
+    for (const msg of conversationHistory.slice(-20)) {
+      const role = msg.role === "user" ? "user" : "assistant";
+      const content = String(msg.content || "").slice(0, 4000);
+      if (content.trim()) {
+        messages.push({ role, content });
+      }
+    }
+  }
+  messages.push({ role: "user", content: userMessage });
+  return messages;
+}
+
+/**
+ * Stream a chat response from an OpenAI-compatible provider.
+ * Calls `onChunk(text)` for each content delta and `onDone()` when finished.
+ */
+async function streamOpenAICompatible({ url, apiKey, model, messages, onChunk, onDone, onError }) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages,
+      stream: true,
+      temperature: 0.7,
+      max_tokens: 4096,
+    }),
+  });
+
+  if (!response.ok) {
+    const errBody = await response.text().catch(() => "");
+    throw new Error(`Provider API error (${response.status}): ${errBody.slice(0, 500)}`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith("data: ")) continue;
+        const data = trimmed.slice(6);
+        if (data === "[DONE]") {
+          onDone();
+          return;
+        }
+        try {
+          const parsed = JSON.parse(data);
+          const delta = parsed.choices?.[0]?.delta?.content;
+          if (delta) {
+            onChunk(delta);
+          }
+        } catch (_) {
+          // skip malformed JSON lines
+        }
+      }
+    }
+    onDone();
+  } catch (err) {
+    onError(err);
+  }
+}
+
+/**
+ * Stream a chat response from the Anthropic Messages API.
+ */
+async function streamAnthropicMessages({ apiKey, model, messages, onChunk, onDone, onError }) {
+  // Anthropic uses a different format: system goes in a separate field
+  const systemMsg = messages.find(m => m.role === "system");
+  const nonSystem = messages.filter(m => m.role !== "system");
+
+  const body = {
+    model,
+    max_tokens: 4096,
+    stream: true,
+    messages: nonSystem,
+  };
+  if (systemMsg) {
+    body.system = systemMsg.content;
+  }
+
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const errBody = await response.text().catch(() => "");
+    throw new Error(`Anthropic API error (${response.status}): ${errBody.slice(0, 500)}`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split("\n");
+      buf = lines.pop() || "";
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith("data: ")) continue;
+        try {
+          const evt = JSON.parse(trimmed.slice(6));
+          if (evt.type === "content_block_delta" && evt.delta?.text) {
+            onChunk(evt.delta.text);
+          }
+          if (evt.type === "message_stop") {
+            onDone();
+            return;
+          }
+        } catch (_) {}
+      }
+    }
+    onDone();
+  } catch (err) {
+    onError(err);
+  }
+}
+
+/**
+ * Stream a chat response from Google Gemini API.
+ */
+async function streamGeminiMessages({ apiKey, model, messages, onChunk, onDone, onError, isOAuth, projectId }) {
+  // Convert OpenAI-style messages to Gemini format
+  const systemMsg = messages.find(m => m.role === "system");
+  const nonSystem = messages.filter(m => m.role !== "system");
+  const contents = nonSystem.map(m => ({
+    role: m.role === "assistant" ? "model" : "user",
+    parts: [{ text: m.content }],
+  }));
+
+  let body = { contents };
+  if (systemMsg) {
+    body.systemInstruction = { parts: [{ text: systemMsg.content }] };
+  }
+  body.generationConfig = { temperature: 0.7, maxOutputTokens: 4096 };
+
+  let url;
+  const headers = { "Content-Type": "application/json" };
+
+  if (isOAuth) {
+    url = "https://cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse";
+    headers["Authorization"] = `Bearer ${apiKey}`;
+    headers["User-Agent"] = "google-cloud-sdk vscode_cloudshelleditor/0.1";
+    headers["X-Goog-Api-Client"] = "gl-node/22.17.0";
+    headers["Client-Metadata"] = JSON.stringify({
+      ideType: "IDE_UNSPECIFIED",
+      platform: "PLATFORM_UNSPECIFIED",
+      pluginType: "GEMINI",
+    });
+
+    body = {
+      project: projectId,
+      model: model,
+      request: body,
+      userAgent: "pi-coding-agent",
+      requestId: `pi-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
+    };
+  } else {
+    url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${apiKey}`;
+  }
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const errBody = await response.text().catch(() => "");
+    throw new Error(`Gemini API error (${response.status}): ${errBody.slice(0, 500)}`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split("\n");
+      buf = lines.pop() || "";
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith("data: ")) continue;
+        try {
+          const evt = JSON.parse(trimmed.slice(6));
+          const text = evt.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (text) {
+            onChunk(text);
+          }
+        } catch (_) {}
+      }
+    }
+    onDone();
+  } catch (err) {
+    onError(err);
+  }
+}
+
+/**
+ * Attempt a direct streaming API call to the provider.
+ * Returns true if we handled the request, false if the caller should fall back
+ * to the agent subprocess.
+ */
+async function tryDirectProviderChat({
+  resolvedModel,
+  messages,
+  config,
+  clientApiKey,
+  sendSSE,
+  progress,
+  res,
+}) {
+  const parsed = parseProviderModel(resolvedModel);
+  if (!parsed) return false;
+
+  const { provider, modelId } = parsed;
+
+  // Resolve the canonical provider key (e.g. "google-gemini-cli" → "google")
+  let providerKey = provider;
+  if (provider === "google-gemini-cli" || provider === "google-antigravity") {
+    providerKey = "google";
+  } else if (provider === "openai-codex") {
+    providerKey = "openai";
+  }
+
+  const apiDef = PROVIDER_DIRECT_API[providerKey];
+  if (!apiDef) return false;
+
+  const configEnv = config?.env || {};
+  const isOAuth = provider === "google-gemini-cli" || provider === "google-antigravity";
+  let apiKey = null;
+
+  if (isOAuth) {
+    const oauthEnvKey = provider === "google-gemini-cli" ? "GOOGLE_GEMINI_CLI_TOKEN" : "GOOGLE_ANTIGRAVITY_TOKEN";
+    apiKey = process.env[oauthEnvKey] || configEnv[oauthEnvKey] || null;
+  } else {
+    apiKey = resolveProviderApiKey(providerKey, configEnv, clientApiKey);
+  }
+
+  let projectId = null;
+
+  // Special case for Google CLI OAuth token
+  if (!apiKey && isOAuth) {
+    try {
+      const os = await import("node:os");
+      const stateDir = process.env.TEXT2LLM_STATE_DIR || path.join(os.homedir(), ".text2llm");
+      const agentDir = process.env.TEXT2LLM_AGENT_DIR || path.join(stateDir, "agents", "main", "agent");
+      const authPath = path.join(agentDir, "auth-profiles.json");
+      if (existsSync(authPath)) {
+        const data = JSON.parse(readFileSync(authPath, "utf8"));
+        const activeProfileId = data?.lastGood?.[provider] || `${provider}:default`;
+        const profileInfo = data?.profiles?.[activeProfileId];
+        if (profileInfo && profileInfo.type === "oauth" && profileInfo.access) {
+          apiKey = profileInfo.access;
+          projectId = profileInfo.projectId;
+          console.log(`[chat/direct] Using ${activeProfileId} OAuth token`);
+        }
+      }
+    } catch (err) {
+      console.log(`[chat/direct] Failed to read ${provider} token from auth-profiles: ${err.message}`);
+    }
+  }
+
+  if (!apiKey) {
+    console.log(`[chat/direct] No API key found for provider "${providerKey}", falling back to agent`);
+    return false;
+  }
+
+  console.log(`[chat/direct] Using direct API call → ${providerKey}/${modelId}`);
+  progress.done("launch-agent", "Direct API (fast path)");
+  progress.start("stream-output", "Stream response", `Calling ${providerKey} API`);
+
+  const onChunk = (text) => {
+    sendSSE("chunk", { text });
+  };
+
+  let finished = false;
+  const onDone = () => {
+    if (finished) return;
+    finished = true;
+    progress.done("stream-output", "Completed");
+    progress.done("request", "Completed");
+    sendSSE("done", { code: 0, direct: true });
+    if (!res.writableEnded) res.end();
+  };
+
+  const onError = (err) => {
+    if (finished) return;
+    finished = true;
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[chat/direct] Error from ${providerKey}: ${msg}`);
+    progress.error("stream-output", "Provider error");
+    progress.error("request", "Failed");
+    sendSSE("error", {
+      code: "provider_error",
+      title: "Provider API Error",
+      message: msg.slice(0, 500),
+      hints: [
+        "Check your API key in Settings.",
+        "The provider might be temporarily down — retry in a moment.",
+        "Try switching to a different model.",
+      ],
+    });
+    sendSSE("done", { code: 1, direct: true });
+    if (!res.writableEnded) res.end();
+  };
+
+  try {
+    if (apiDef.format === "anthropic") {
+      await streamAnthropicMessages({ apiKey, model: modelId, messages, onChunk, onDone, onError });
+    } else if (providerKey === "google") {
+      await streamGeminiMessages({ apiKey, model: modelId, messages, onChunk, onDone, onError, isOAuth, projectId });
+    } else {
+      await streamOpenAICompatible({
+        url: apiDef.url,
+        apiKey,
+        model: modelId,
+        messages,
+        onChunk,
+        onDone,
+        onError,
+      });
+    }
+  } catch (err) {
+    onError(err);
+  }
+
+  return true;
+}
+
 app.post("/api/chat", async (req, res) => {
-  const { message, sessionId, history, projectId } = req.body || {};
+  const { message, sessionId, history, projectId, model: clientModel, provider: clientProvider, apiKey: clientApiKey } = req.body || {};
   const body = (message || "").trim();
   if (!body) {
     return res.status(400).json({ ok: false, error: "Message is required" });
@@ -7380,22 +9416,38 @@ app.post("/api/chat", async (req, res) => {
   const sid = sessionId || `web-${Date.now()}`;
   const conversationHistory = Array.isArray(history) ? history : [];
 
+  // Resolve the model to use: client-supplied model > config model
+  let resolvedModel = null;
   try {
     const config = await loadWorkspaceConfig();
-    const selectedMap =
-      config?.web?.providers?.selectedOptionByProvider &&
-      typeof config.web.providers.selectedOptionByProvider === "object"
-        ? config.web.providers.selectedOptionByProvider
-        : null;
-    const selectedGoogleOption =
-      selectedMap && typeof selectedMap.google === "string" ? selectedMap.google : null;
-    if (selectedGoogleOption) {
-      const before = config?.agents?.defaults?.model?.primary || null;
-      setDefaultModelForProviderSelection(config, "google", selectedGoogleOption);
-      const after = config?.agents?.defaults?.model?.primary || null;
-      if (after && after !== before) {
-        await saveWorkspaceConfig(config);
+
+    // If the client sent a model from the UI, apply it to the config
+    if (clientModel && clientModel !== "Auto" && typeof clientModel === "string") {
+      resolvedModel = clientModel.trim();
+      if (!config.agents) config.agents = {};
+      if (!config.agents.defaults) config.agents.defaults = {};
+      if (!config.agents.defaults.model) config.agents.defaults.model = {};
+      config.agents.defaults.model.primary = resolvedModel;
+      await saveWorkspaceConfig(config);
+      console.log(`[chat] Client-selected model applied: ${resolvedModel}`);
+    } else {
+      // Fallback: use existing config model or provider selection
+      const selectedMap =
+        config?.web?.providers?.selectedOptionByProvider &&
+        typeof config.web.providers.selectedOptionByProvider === "object"
+          ? config.web.providers.selectedOptionByProvider
+          : null;
+      const selectedGoogleOption =
+        selectedMap && typeof selectedMap.google === "string" ? selectedMap.google : null;
+      if (selectedGoogleOption) {
+        const before = config?.agents?.defaults?.model?.primary || null;
+        setDefaultModelForProviderSelection(config, "google", selectedGoogleOption);
+        const after = config?.agents?.defaults?.model?.primary || null;
+        if (after && after !== before) {
+          await saveWorkspaceConfig(config);
+        }
       }
+      resolvedModel = config?.agents?.defaults?.model?.primary || null;
     }
   } catch (_) {
     // non-blocking preflight; continue chat even if this sync fails
@@ -7606,16 +9658,158 @@ app.post("/api/chat", async (req, res) => {
   progress.start("launch-agent", "Launch agent", "Starting runtime process");
   let currentPhase = "Starting agent";
 
+  // Fallback to primary web provider model if no resolvedModel could be found
+  try {
+    if (!resolvedModel) {
+      const config = await loadWorkspaceConfig();
+      const primaryProvider = config?.web?.providers?.primary?.ai;
+      if (primaryProvider && PROVIDER_MODEL_CATALOG[primaryProvider] && PROVIDER_MODEL_CATALOG[primaryProvider].length > 0) {
+        let actualProvider = primaryProvider;
+        const selectedOption = config?.web?.providers?.selectedOptionByProvider?.[primaryProvider];
+        
+        if (primaryProvider === "google") {
+          if (selectedOption === "cli") actualProvider = "google-gemini-cli";
+          else if (selectedOption === "antigravity") actualProvider = "google-antigravity";
+        } else if (primaryProvider === "openai") {
+          if (selectedOption === "codex") actualProvider = "openai-codex";
+        }
+        
+        resolvedModel = `${actualProvider}/${PROVIDER_MODEL_CATALOG[primaryProvider][0].id}`;
+
+        if (!config.agents) config.agents = {};
+        if (!config.agents.defaults) config.agents.defaults = {};
+        if (!config.agents.defaults.model) config.agents.defaults.model = {};
+        config.agents.defaults.model.primary = resolvedModel;
+        await saveWorkspaceConfig(config);
+        console.log(`[chat] Fallback model applied: ${resolvedModel}`);
+      }
+    }
+  } catch (_) {}
+
+  // Ensure the resolved model has a provider prefix, otherwise openclaw defaults to 'anthropic'
+  if (resolvedModel && typeof resolvedModel === "string" && !resolvedModel.includes("/")) {
+    try {
+      const config = await loadWorkspaceConfig();
+      let prefixed = false;
+      for (const [providerKey, providerModels] of Object.entries(PROVIDER_MODEL_CATALOG)) {
+        if (providerModels.some(m => m.id === resolvedModel)) {
+          let actualProvider = providerKey;
+          if (providerKey === "google") {
+            const selectedOption = config?.web?.providers?.selectedOptionByProvider?.google;
+            if (selectedOption === "cli") {
+              actualProvider = "google-gemini-cli";
+            } else if (selectedOption === "antigravity") {
+              actualProvider = "google-antigravity";
+            } else {
+              actualProvider = "google";
+            }
+          } else if (providerKey === "openai") {
+            const selectedOption = config?.web?.providers?.selectedOptionByProvider?.openai;
+            if (selectedOption === "codex") {
+              actualProvider = "openai-codex";
+            }
+          }
+          resolvedModel = `${actualProvider}/${resolvedModel}`;
+          console.log(`[chat] Automatically prefixed model with provider: ${resolvedModel}`);
+          prefixed = true;
+          
+          // Update config with the fully qualified model
+          if (!config.agents) config.agents = {};
+          if (!config.agents.defaults) config.agents.defaults = {};
+          if (!config.agents.defaults.model) config.agents.defaults.model = {};
+          config.agents.defaults.model.primary = resolvedModel;
+          await saveWorkspaceConfig(config);
+          break;
+        }
+      }
+      // Fallback: use the primary web provider from config if catalog lookup missed
+      if (!prefixed) {
+        const primaryProvider = config?.web?.providers?.primary?.ai;
+        if (primaryProvider) {
+          let actualProvider = primaryProvider;
+          const selectedOption = config?.web?.providers?.selectedOptionByProvider?.[primaryProvider];
+          if (primaryProvider === "google") {
+            if (selectedOption === "cli") {
+              actualProvider = "google-gemini-cli";
+            } else if (selectedOption === "antigravity") {
+              actualProvider = "google-antigravity";
+            } else {
+              actualProvider = "google";
+            }
+          } else if (primaryProvider === "openai") {
+            if (selectedOption === "codex") actualProvider = "openai-codex";
+          }
+          resolvedModel = `${actualProvider}/${resolvedModel}`;
+          console.log(`[chat] Prefixed model with primary provider fallback: ${resolvedModel}`);
+
+          if (!config.agents) config.agents = {};
+          if (!config.agents.defaults) config.agents.defaults = {};
+          if (!config.agents.defaults.model) config.agents.defaults.model = {};
+          config.agents.defaults.model.primary = resolvedModel;
+          await saveWorkspaceConfig(config);
+        }
+      }
+    } catch (err) {
+      console.error(`[chat] Failed to prefix model with provider: ${err.message}`);
+    }
+  }
+
+  // ---- Fast path: direct provider API call (no agent subprocess) ----
+  try {
+    const directConfig = await loadWorkspaceConfig();
+    const systemPrompt = contextParts
+      .slice(0, contextParts.findIndex(p => p.startsWith("User: ")))
+      .filter(p => !p.startsWith("== Recent Conversation") && !p.startsWith("== End Conversation") && !p.match(/^(User|Assistant): /))
+      .join("\n")
+      .trim();
+    const chatMessages = buildChatMessages(systemPrompt, conversationHistory, body);
+
+    const handled = await tryDirectProviderChat({
+      resolvedModel,
+      messages: chatMessages,
+      config: directConfig,
+      clientApiKey,
+      sendSSE,
+      progress,
+      res,
+    });
+
+    if (handled) {
+      console.log(`[chat] Direct API call completed for session ${sid}`);
+      return;
+    }
+    console.log(`[chat] Direct API not available for model "${resolvedModel}", falling back to agent subprocess`);
+  } catch (directErr) {
+    console.error(`[chat] Direct API attempt failed, falling back to agent: ${directErr.message}`);
+  }
+
+  // ---- Slow path: agent subprocess fallback ----
   const args = [
-    "scripts/run-node.mjs",
+    path.join(repoRoot, "scripts/run-node.mjs"),
     "agent",
     "--agent", "main",
     "--local",
     "--message", contextMessage,
   ];
 
+  // Build env, injecting the client-provided API key for the selected provider
+  const providerEnvKeys = {
+    openai: "OPENAI_API_KEY",
+    openrouter: "OPENROUTER_API_KEY",
+    anthropic: "ANTHROPIC_API_KEY",
+    google: "GOOGLE_API_KEY",
+  };
+  const providerKeyEnv = {};
+  if (clientApiKey && typeof clientApiKey === "string" && clientApiKey.trim()) {
+    const providerName = (clientProvider || "openai").toLowerCase().trim();
+    const envName = providerEnvKeys[providerName] || `${providerName.toUpperCase()}_API_KEY`;
+    providerKeyEnv[envName] = clientApiKey.trim();
+    console.log(`[chat] Provider API key injected as ${envName} for provider ${providerName}`);
+  }
+
   const env = {
     ...process.env,
+    ...providerKeyEnv,
     TEXT2LLM_CONFIG_PATH: process.env.TEXT2LLM_CONFIG_PATH || workspaceConfig,
     TEXT2LLM_SKIP_BUILD: process.env.TEXT2LLM_SKIP_BUILD || "1",
     RUNPOD_API_KEY: process.env.RUNPOD_API_KEY || "text2llm-web-local",
@@ -9596,9 +11790,38 @@ app.get("/api/store/project-resources", async (req, res) => {
 
 
 
+// --- TERMINAL LOG BROADCASTING ---
+const broadcastToTerminal = (level, ...args) => {
+  const message = args.map((value) => runtimeSafeString(value)).join(" ");
+  emitRuntimeEvent({
+    source: "console",
+    scope: "server",
+    action: level,
+    status: level === "error" ? "error" : "stream",
+    level: ["info", "warn", "error"].includes(level) ? level : "info",
+    message,
+  });
+};
+
+// Hook console methods
+const originalConsole = {
+  log: console.log,
+  info: console.info,
+  warn: console.warn,
+  error: console.error,
+};
+
+['log', 'info', 'warn', 'error'].forEach((level) => {
+  console[level] = (...args) => {
+    originalConsole[level].apply(console, args);
+    broadcastToTerminal(level, ...args);
+  };
+});
+// ---------------------------------
+
 // Create HTTP server
 const server = app.listen(port, () => {
-  console.log(`Text2LLM web running at http://localhost:${port}`);
+  originalConsole.log(`Text2LLM web running at http://localhost:${port}`);
 });
 
 // Create WebSocket server for terminal
@@ -9606,6 +11829,9 @@ const wss = new WebSocketServer({ server, path: '/terminal' });
 
 wss.on('connection', (ws) => {
   console.log('Terminal WebSocket client connected');
+  ws.runtimeFilter = "all";
+  terminalClients.add(ws);
+  sendRuntimeReplay(ws, RUNTIME_REPLAY_DEFAULT_TAIL, ws.runtimeFilter);
   
   // Determine shell based on OS
   const shell = process.platform === 'win32' ? 'powershell.exe' : 'bash';
@@ -9624,7 +11850,11 @@ wss.on('connection', (ws) => {
   // Send process output to WebSocket client
   shellProcess.stdout.on('data', (data) => {
     try {
-      ws.send(data.toString());
+      sendTerminalFrame(ws, {
+        type: "shell-output",
+        stream: "stdout",
+        data: data.toString(),
+      });
     } catch (ex) {
       console.error('Error sending stdout to client:', ex);
     }
@@ -9632,7 +11862,11 @@ wss.on('connection', (ws) => {
   
   shellProcess.stderr.on('data', (data) => {
     try {
-      ws.send(data.toString());
+      sendTerminalFrame(ws, {
+        type: "shell-output",
+        stream: "stderr",
+        data: data.toString(),
+      });
     } catch (ex) {
       console.error('Error sending stderr to client:', ex);
     }
@@ -9649,6 +11883,17 @@ wss.on('connection', (ws) => {
       } else if (msg.type === 'resize') {
         // Resize not supported with basic child_process
         console.log(`Resize requested: ${msg.cols}x${msg.rows} (not supported)`);
+      } else if (msg.type === 'runtime:filter') {
+        ws.runtimeFilter = ["all", "commands", "errors", "verbose"].includes(msg.filter)
+          ? msg.filter
+          : "all";
+        sendTerminalFrame(ws, {
+          type: "runtime-filter-ack",
+          filter: ws.runtimeFilter,
+        });
+      } else if (msg.type === 'runtime:replay') {
+        const tail = Math.max(1, Math.min(Number(msg.tail) || RUNTIME_REPLAY_DEFAULT_TAIL, RUNTIME_EVENT_BUFFER_LIMIT));
+        sendRuntimeReplay(ws, tail, ws.runtimeFilter || "all");
       }
     } catch (ex) {
       console.error('Error handling message:', ex);
@@ -9658,6 +11903,7 @@ wss.on('connection', (ws) => {
   // Handle client disconnect
   ws.on('close', () => {
     console.log('Terminal WebSocket client disconnected');
+    terminalClients.delete(ws);
     shellProcess.kill();
   });
   

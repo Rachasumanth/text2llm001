@@ -17,25 +17,6 @@ async function withTempConfig(params: { cfg: unknown; run: () => Promise<void> }
   const configPath = path.join(dir, "text2llm.json");
 
   process.env.TEXT2LLM_CONFIG_PATH = configPath;
-  process.env.TEXT2LLM_DISABLE_CONFIGimport { mkdtemp, rm, writeFile } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import { describe, expect, test } from "vitest";
-import { WebSocket, WebSocketServer } from "ws";
-import type { CanvasHostHandler } from "../canvas-host/server.js";
-import type { ResolvedGatewayAuth } from "./auth.js";
-import type { GatewayWsClient } from "./server/ws-types.js";
-import { A2UI_PATH, CANVAS_HOST_PATH, CANVAS_WS_PATH } from "../canvas-host/a2ui.js";
-import { attachGatewayUpgradeHandler, createGatewayHttpServer } from "./server-http.js";
-
-async function withTempConfig(params: { cfg: unknown; run: () => Promise<void> }): Promise<void> {
-  const prevConfigPath = process.env.TEXT2LLM_CONFIG_PATH;
-  const prevDisableCache = process.env.TEXT2LLM_DISABLE_CONFIG_CACHE;
-
-  const dir = await mkdtemp(path.join(os.tmpdir(), "text2llm-canvas-auth-test-"));
-  const configPath = path.join(dir, "text2llm.json");
-
-  process.env.TEXT2LLM_CONFIG_PATH = configPath;
   process.env.TEXT2LLM_DISABLE_CONFIG_CACHE = "1";
 
   try {

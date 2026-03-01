@@ -1,0 +1,13 @@
+import_channel_options: 4.536ms
+discoverTEXT2LLMPlugins_extra: 0.015ms
+discoverTEXT2LLMPlugins_workspace: 0.057ms
+discoverTEXT2LLMPlugins_global: 0.872ms
+discoverInDirectory_looping_c:\Users\4HIN\source\openclaw\extensions: 9.901ms
+discoverTEXT2LLMPlugins_bundled: 12.637ms
+discoverTEXT2LLMPlugins_Total: 22.322ms
+listChannelPluginCatalogEntries_discover: 24.125ms
+listChannelPluginCatalogEntries_build: 0.515ms
+listChannelPluginCatalogEntries_external_load: 0.433ms
+listChannelPluginCatalogEntries_sort: 1.154ms
+listChannelPluginCatalogEntries_Total: 32.88ms
+resolve_channel_options_func: 35.218ms

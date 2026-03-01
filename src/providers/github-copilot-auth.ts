@@ -118,7 +118,7 @@ export async function githubCopilotLoginCommand(
   opts: { profileId?: string; yes?: boolean },
   runtime: RuntimeEnv,
 ) {
-  if (!process.stdin.isTTY) {
+  if (!process.stdin.isTTY && !process.env.TEXT2LLM_ALLOW_HEADLESS_AUTH) {
     throw new Error("github-copilot login requires an interactive TTY.");
   }
 

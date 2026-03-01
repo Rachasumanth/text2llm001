@@ -1,0 +1,14 @@
+{
+  "id": "sumu143/text2llm-nb-d10155c2",
+  "title": "Text2LLM Notebook nb-d10155c2",
+  "code_file": "script.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "dataset_sources": [],
+  "competition_sources": [],
+  "kernel_sources": [],
+  "model_sources": []
+}

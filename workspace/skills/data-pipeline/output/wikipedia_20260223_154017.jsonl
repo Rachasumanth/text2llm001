@@ -1,0 +1,1 @@
+{"provider": "wikipedia", "query": "dog heartbeat", "error": "URL can't contain control characters. '/w/api.php?action=query&list=search&srsearch=dog heartbeat&srlimit=50&format=json' (found at least ' ')"}

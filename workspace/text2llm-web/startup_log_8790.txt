@@ -1,0 +1,2 @@
+﻿WebSocket server ready at ws://localhost:8790/terminal
+Text2LLM web running at http://localhost:8790

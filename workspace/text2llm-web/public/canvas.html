@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Canvas: Visual LLM Parameter Editor</title>
+  <link rel="stylesheet" type="text/css" href="/litegraph-css/litegraph.css">
+  <link rel="stylesheet" href="/styles.css"> <!-- reuse the main app styles -->
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background-color: #1a1a1a;
+      color: #eaeaea;
+      font-family: 'Inter', system-ui, sans-serif;
+      display: flex;
+      height: 100vh;
+    }
+    #canvas-container {
+      flex: 1;
+      height: 100%;
+      position: relative;
+    }
+    #mycanvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    #side-panel {
+      width: 350px;
+      background: #2a2a2a;
+      border-left: 1px solid #444;
+      display: flex;
+      flex-direction: column;
+      padding: 1rem;
+      box-sizing: border-box;
+      box-shadow: -4px 0 15px rgba(0,0,0,0.3);
+    }
+    .panel-header {
+      font-size: 1.2rem;
+      font-weight: 600;
+      margin-bottom: 1rem;
+      border-bottom: 1px solid #444;
+      padding-bottom: 0.5rem;
+    }
+    .panel-section {
+      margin-bottom: 1.5rem;
+    }
+    .metric-box {
+      background: #333;
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 0.5rem;
+      text-align: center;
+    }
+    .metric-value {
+      font-size: 1.8rem;
+      font-weight: bold;
+      color: #64ffda;
+    }
+    .metric-label {
+      font-size: 0.8rem;
+      color: #aaa;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .action-btn {
+      background: #007bff;
+      color: white;
+      border: none;
+      padding: 0.8rem 1rem;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+      width: 100%;
+      margin-top: auto;
+    }
+    .action-btn:hover {
+      background: #0056b3;
+    }
+    .error-toast {
+      position: absolute;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #dc3545;
+      color: white;
+      padding: 10px 20px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      opacity: 0;
+      transition: opacity 0.3s;
+      pointer-events: none;
+      z-index: 100;
+    }
+    .error-toast.visible {
+      opacity: 1;
+    }
+    .node-palette {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .palette-item {
+      background: #444;
+      padding: 0.5rem;
+      border-radius: 4px;
+      cursor: grab;
+      user-select: none;
+      font-size: 0.9rem;
+    }
+    .palette-item:active {
+      cursor: grabbing;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="canvas-container">
+    <canvas id="mycanvas" width="1024" height="768"></canvas>
+    <div id="error-toast" class="error-toast">Error message here</div>
+  </div>
+
+  <div id="side-panel">
+    <div class="panel-header">LLM Architecture Physics</div>
+    
+    <div class="panel-section">
+      <div class="metric-box">
+        <div class="metric-value" id="vram-val">0 GB</div>
+        <div class="metric-label">Estimated VRAM (Train)</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-value" id="params-val">0 M</div>
+        <div class="metric-label">Total Parameters</div>
+      </div>
+    </div>
+
+    <div class="panel-section" style="flex:1; overflow-y:auto;">
+      <div class="panel-header" style="font-size: 1rem; margin-top:1rem;">Component Palette</div>
+      <p style="font-size: 0.8rem; color: #aaa;">Right-click canvas to add nodes</p>
+      <div class="node-palette">
+         <!-- Elements here can be draggable if we implemented drag-and-drop to canvas, 
+              but standard litegraph uses Right-Click Context Menu -->
+      </div>
+    </div>
+
+    <button class="action-btn" id="export-btn">Export to Training (PyTorch)</button>
+  </div>
+
+  <script src="/litegraph/litegraph.js"></script>
+  <script src="/canvas.js" type="module"></script>
+</body>
+</html>

@@ -97,6 +97,28 @@ export type TEXT2LLMConfig = {
   talk?: TalkConfig;
   gateway?: GatewayConfig;
   memory?: MemoryConfig;
+
+  /**
+   * Resources added to the text2llm-web store.
+   * This property is injected dynamically by the web UI backend.
+   */
+  storeResourcesByProject?: Record<
+    string,
+    Array<{
+      id: string;
+      projectId?: string;
+      type: string;
+      source: string;
+      name: string;
+      author?: string;
+      description?: string;
+      url?: string;
+      metrics?: Record<string, unknown>;
+      tags?: string[];
+      license?: string;
+      addedAt?: string;
+    }>
+  >;
 };
 
 export type ConfigValidationIssue = {

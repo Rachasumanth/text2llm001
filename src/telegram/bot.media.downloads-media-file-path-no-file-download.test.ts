@@ -26,34 +26,6 @@ type ApiStub = {
 };
 
 const apiStub: ApiStub = {
-  config: { use: useSpy },import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { resetInboundDedupe } from "../auto-reply/reply/inbound-dedupe.js";
-import * as ssrf from "../infra/net/ssrf.js";
-import { MEDIA_GROUP_TIMEOUT_MS } from "./bot-updates.js";
-
-const useSpy = vi.fn();
-const middlewareUseSpy = vi.fn();
-const onSpy = vi.fn();
-const stopSpy = vi.fn();
-const sendChatActionSpy = vi.fn();
-const cacheStickerSpy = vi.fn();
-const getCachedStickerSpy = vi.fn();
-const describeStickerImageSpy = vi.fn();
-const resolvePinnedHostname = ssrf.resolvePinnedHostname;
-const lookupMock = vi.fn();
-let resolvePinnedHostnameSpy: ReturnType<typeof vi.spyOn> = null;
-
-const sleep = async (ms: number) => {
-  await new Promise<void>((resolve) => setTimeout(resolve, ms));
-};
-
-type ApiStub = {
-  config: { use: (arg: unknown) => void };
-  sendChatAction: typeof sendChatActionSpy;
-  setMyCommands: (commands: Array<{ command: string; description: string }>) => Promise<void>;
-};
-
-const apiStub: ApiStub = {
   config: { use: useSpy },
   sendChatAction: sendChatActionSpy,
   setMyCommands: vi.fn(async () => undefined),

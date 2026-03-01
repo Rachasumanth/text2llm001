@@ -52,6 +52,15 @@ Always provide estimates for:
 
 Report both training-time and inference-time memory expectations.
 
+## Tokenizer Integration
+
+Before generating `config.json`, import outputs from the **tokenizer-trainer** skill:
+
+- Read `vocab_size` from trained tokenizer and set in config.
+- Import `bos_token_id`, `eos_token_id`, `pad_token_id`, `unk_token_id` from `special_tokens_map.json`.
+- Validate that `max_position_embeddings` aligns with tokenizer sequence length analysis.
+- Fail explicitly if tokenizer artifacts are missing — never use placeholder token IDs.
+
 ## Decision Protocol
 
 - Start with target quality, latency, and budget constraints.

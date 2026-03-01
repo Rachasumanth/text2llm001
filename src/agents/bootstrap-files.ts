@@ -56,5 +56,28 @@ export async function resolveBootstrapContextForRun(params: {
     maxChars: resolveBootstrapMaxChars(params.config),
     warn: params.warn,
   });
+
+  const storeResources = params.config?.storeResourcesByProject?.["default"] || [];
+  if (storeResources.length > 0) {
+    const lines = [
+      "# Saved Store Resources",
+      "The following resources have been added to this workspace from the text2llm store:",
+      "",
+    ];
+    for (const res of storeResources) {
+      lines.push(`## ${res.name || res.id}`);
+      lines.push(`- **Type:** ${res.type}`);
+      lines.push(`- **Source:** ${res.source}`);
+      if (res.author) lines.push(`- **Author:** ${res.author}`);
+      if (res.url) lines.push(`- **URL:** ${res.url}`);
+      if (res.description) lines.push(`- **Description:** ${res.description}`);
+      lines.push("");
+    }
+    contextFiles.push({
+      path: "STORE_RESOURCES.md",
+      content: lines.join("\n"),
+    });
+  }
+
   return { bootstrapFiles, contextFiles };
 }

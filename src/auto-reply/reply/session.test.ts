@@ -25,33 +25,6 @@ describe("initSessionState thread forking", () => {
       type: "message",
       id: "m1",
       parentId: null,
-      timestamp: new Date()import fs from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import { describe, expect, it, vi } from "vitest";
-import type { TEXT2LLMConfig } from "../../config/config.js";
-import { saveSessionStore } from "../../config/sessions.js";
-import { initSessionState } from "./session.js";
-
-describe("initSessionState thread forking", () => {
-  it("forks a new session from the parent session file", async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "text2llm-thread-session-"));
-    const sessionsDir = path.join(root, "sessions");
-    await fs.mkdir(sessionsDir, { recursive: true });
-
-    const parentSessionId = "parent-session";
-    const parentSessionFile = path.join(sessionsDir, "parent.jsonl");
-    const header = {
-      type: "session",
-      version: 3,
-      id: parentSessionId,
-      timestamp: new Date().toISOString(),
-      cwd: process.cwd(),
-    };
-    const message = {
-      type: "message",
-      id: "m1",
-      parentId: null,
       timestamp: new Date().toISOString(),
       message: { role: "user", content: "Parent prompt" },
     };

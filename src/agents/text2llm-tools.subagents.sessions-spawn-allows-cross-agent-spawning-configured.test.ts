@@ -35,43 +35,6 @@ describe("text2llm-tools: subagents", () => {
     };
   });
 
-  it("sessions_spawn allows cross-agent spawning when confiimport { beforeEach, describe, expect, it, vi } from "vitest";
-
-const callGatewayMock = vi.fn();
-vi.mock("../gateway/call.js", () => ({
-  callGateway: (opts: unknown) => callGatewayMock(opts),
-}));
-
-let configOverride: ReturnType<(typeof import("../config/config.js"))["loadConfig"]> = {
-  session: {
-    mainKey: "main",
-    scope: "per-sender",
-  },
-};
-
-vi.mock("../config/config.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../config/config.js")>();
-  return {
-    ...actual,
-    loadConfig: () => configOverride,
-    resolveGatewayPort: () => 18789,
-  };
-});
-
-import "./test-helpers/fast-core-tools.js";
-import { createTEXT2LLMTools } from "./text2llm-tools.js";
-import { resetSubagentRegistryForTests } from "./subagent-registry.js";
-
-describe("text2llm-tools: subagents", () => {
-  beforeEach(() => {
-    configOverride = {
-      session: {
-        mainKey: "main",
-        scope: "per-sender",
-      },
-    };
-  });
-
   it("sessions_spawn allows cross-agent spawning when configured", async () => {
     resetSubagentRegistryForTests();
     callGatewayMock.mockReset();

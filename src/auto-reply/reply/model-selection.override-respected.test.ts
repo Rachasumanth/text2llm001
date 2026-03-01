@@ -25,33 +25,6 @@ describe("createModelSelectionState respects session model override", () => {
     const sessionKey = "agent:main:main";
     const sessionEntry = makeEntry({
       providerOverride: "kimi-coding",
-import { describe, expect, it, vi } from "vitest";
-import type { TEXT2LLMConfig } from "../../config/config.js";
-import { createModelSelectionState } from "./model-selection.js";
-
-vi.mock("../../agents/model-catalog.js", () => ({
-  loadModelCatalog: vi.fn(async () => [
-    { provider: "inferencer", id: "deepseek-v3-4bit-mlx", name: "DeepSeek V3" },
-    { provider: "kimi-coding", id: "k2p5", name: "Kimi K2.5" },
-    { provider: "anthropic", id: "claude-opus-4-5", name: "Claude Opus 4.5" },
-  ]),
-}));
-
-const defaultProvider = "inferencer";
-const defaultModel = "deepseek-v3-4bit-mlx";
-
-const makeEntry = (overrides: Record<string, unknown> = {}) => ({
-  sessionId: "session-id",
-  updatedAt: Date.now(),
-  ...overrides,
-});
-
-describe("createModelSelectionState respects session model override", () => {
-  it("applies session modelOverride when set", async () => {
-    const cfg = {} as TEXT2LLMConfig;
-    const sessionKey = "agent:main:main";
-    const sessionEntry = makeEntry({
-      providerOverride: "kimi-coding",
       modelOverride: "k2p5",
     });
     const sessionStore = { [sessionKey]: sessionEntry };

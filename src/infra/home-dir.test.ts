@@ -24,32 +24,6 @@ describe("resolveEffectiveHomeDir", () => {
     );
     expect(resolveEffectiveHomeDir({} as NodeJS.ProcessEnv, () => "/fallback")).toBe(
       path.resolve("/fallback"),
-    );import path from "node:path";
-import { describe, expect, it } from "vitest";
-import { expandHomePrefix, resolveEffectiveHomeDir, resolveRequiredHomeDir } from "./home-dir.js";
-
-describe("resolveEffectiveHomeDir", () => {
-  it("prefers TEXT2LLM_HOME over HOME and USERPROFILE", () => {
-    const env = {
-      TEXT2LLM_HOME: "/srv/text2llm-home",
-      HOME: "/home/other",
-      USERPROFILE: "C:/Users/other",
-    } as NodeJS.ProcessEnv;
-
-    expect(resolveEffectiveHomeDir(env, () => "/fallback")).toBe(
-      path.resolve("/srv/text2llm-home"),
-    );
-  });
-
-  it("falls back to HOME then USERPROFILE then homedir", () => {
-    expect(resolveEffectiveHomeDir({ HOME: "/home/alice" } as NodeJS.ProcessEnv)).toBe(
-      path.resolve("/home/alice"),
-    );
-    expect(resolveEffectiveHomeDir({ USERPROFILE: "C:/Users/alice" } as NodeJS.ProcessEnv)).toBe(
-      path.resolve("C:/Users/alice"),
-    );
-    expect(resolveEffectiveHomeDir({} as NodeJS.ProcessEnv, () => "/fallback")).toBe(
-      path.resolve("/fallback"),
     );
   });
 

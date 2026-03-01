@@ -7,9 +7,12 @@ ALTER TABLE profiles ADD COLUMN IF NOT EXISTS tier text DEFAULT 'free';
 CREATE TABLE IF NOT EXISTS dataset_jobs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE,
-  file_key text NOT NULL,
+  file_key text, -- Now optional because scrape/api tasks might not have an initial upload
   output_format text NOT NULL DEFAULT 'jsonl',
-  status text NOT NULL DEFAULT 'pending', -- pending, processing, completed, failed
+  status text NOT NULL DEFAULT 'pending', -- pending, queuing, scraping, cleaning, processing, completed, failed
+  scrape_config jsonb,
+  api_config jsonb,
+  synth_config jsonb,
   output_url text,
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
